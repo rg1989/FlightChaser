@@ -1,12 +1,13 @@
 // client/scene/wxGather.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { encodeSatCut } from '../../shared/sat.ts'
 import { MODEL_CLOUD_HPA, MODEL_WIND_HPA, type Metar, type ModelGrid } from '../../shared/wx.ts'
 import { MAX_CLOUDS, PUFF_FILL, RADAR_LOOK, modelClouds, nearestClouds, observedClouds, radarBases, radarClouds, sequence, type CloudSpec } from './cloudField.ts'
 import { NONE, type SourceTile } from './radar.ts'
 import { radarCells } from './radarCells.ts'
 import { SAT_GRID_N } from './satGrid.ts'
-import type { SatPictures } from './satellite.ts'
+import { satBare, satBuffers, type SatPictures } from './satellite.ts'
 import { gatherTransfers, gatherer, type GatherJob } from './wxGather.ts'
 
 const [LAT, LON] = [37.6, -122.4]
@@ -247,4 +248,55 @@ test('gatherer with the satellite\'s pictures: a job that brings a frame without
   assert.deepEqual(fresh.clouds, gatherer()(satJob(null, { grid: null })).clouds)
   const other = gather(satJob({ ...bare, timeMs: T0 + 15 * 60_000 }, { id: 4, grid: null }))
   assert.equal(other.satInfo!.missing, true, 'another frame, without its pixels')
+})
+
+/** The same frame as numbers, as the app's server's route gives it (shared/sat.ts): a top of 3,840 m where pictures(…) paints BLUE. */
+function numbers(paint: (east: number, north: number) => number | 'clear' | 'unseen'): SatPictures {
+  const p = pictures(() => 'unseen')
+  const n = p.n
+  const [cloud, seen, topM] = [new Uint8Array(n * n), new Uint8Array(n * n), new Uint16Array(n * n)]
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const px = paint((i + 0.5) * 2.5 - 200, 200 - (j + 0.5) * 2.5)
+      if (px === 'unseen') continue
+      seen[j * n + i] = 1
+      if (px !== 'clear') [cloud[j * n + i], topM[j * n + i]] = [255, px]
+    }
+  }
+  return { ...p, mask: new Uint8ClampedArray(0), tops: new Uint8ClampedArray(0), raw: encodeSatCut({ timeMs: p.timeMs, box: p.box, n, cloud, seen, topM }) }
+}
+
+test('gatherer with the satellite\'s frame as numbers (the server\'s route): they are used as they are, and give the grid that pictures of the same sky give', () => {
+  const sky = (east: number, north: number): 'clear' | 'unseen' | null => (north > 150 ? 'unseen' : east < 0 ? null : 'clear')
+  const fromPictures = gatherer()(satJob(pictures((e, n) => sky(e, n) ?? BLUE), { grid: null }))
+  const got = gatherer()(satJob(numbers((e, n) => sky(e, n) ?? 3840), { grid: null }))
+  assert.deepEqual([got.satInfo!.timeMs, got.satInfo!.bad, got.satInfo!.missing], [T0, false, false])
+  assert.deepEqual(got.sat!.cover, fromPictures.sat!.cover)
+  assert.deepEqual(got.sat!.topM, fromPictures.sat!.topM)
+  assert.deepEqual(got.sat!.seen, fromPictures.sat!.seen)
+  assert.deepEqual(got.clouds, fromPictures.clouds)
+  assert.equal(got.satInfo!.cloudy, fromPictures.satInfo!.cloudy)
+  // A height the pictures have no colour for is kept as it is: the numbers are not rounded to the fifty colours.
+  const odd = gatherer()(satJob(numbers((e) => (e < 0 ? 4000 : 'clear')), { grid: null }))
+  const cell = Math.floor((0 + 160) / 2.5) * odd.sat!.n + Math.floor((-50 + 160) / 2.5)
+  assert.ok(Math.abs(odd.sat!.topM[cell] - 4000) < 1, String(odd.sat!.topM[cell]))
+})
+
+test('gatherer with the satellite\'s frame as numbers: read once and kept, as the pictures are: a job that brings the frame without its bytes uses it; a gatherer that has not read it says it is missing; the pictures of the same time are another frame; bytes that are not the frame are bad', () => {
+  const p = numbers((east) => (east < 0 ? 3840 : 'clear'))
+  const bare = satBare(p)
+  const gather = gatherer()
+  const first = gather(satJob(p, { grid: null }))
+  const again = gather(structuredClone(satJob(bare, { id: 2, grid: null })))
+  assert.deepEqual([again.satInfo!.missing, again.satInfo!.bad, again.satInfo!.decodeMs], [false, false, 0])
+  assert.deepEqual(again.sat!.cover, first.sat!.cover)
+  const crossed = structuredClone(satJob(p, { id: 3, grid: null }), { transfer: satBuffers(p) }) // as it goes to a worker: the answer's bytes handed over
+  assert.equal(p.raw!.length, 0, 'handed over')
+  assert.deepEqual(gatherer()(crossed).sat!.cover, first.sat!.cover)
+  assert.deepEqual([gatherer()(satJob(bare, { grid: null })).satInfo!.missing, gatherer()(satJob(bare, { grid: null })).sat], [true, null])
+  const other = gather(satJob(satBare(pictures(() => BLUE)), { id: 4, grid: null }))
+  assert.equal(other.satInfo!.missing, true, 'the pictures of that time, without their pixels: not the frame read')
+  const wrong = numbers(() => 3840)
+  const bad = gatherer()(satJob({ ...wrong, raw: wrong.raw!.slice(0, 4000) }, { grid: null }))
+  assert.deepEqual([bad.satInfo!.bad, bad.sat], [true, null])
 })

@@ -27,10 +27,19 @@
 // A frame is used (usable) inside the satellite's view (within SAT_VIEW_DEG of the point under it), for a place it serves, until
 // SAT_KEEP_MS after the source last answered for it (a failed ask keeps the last frame that long) and never when it is SAT_OLD_MS
 // old; then the weather is drawn as it was without a satellite. A failed ask is made again at the next check.
-// Not used here: EUMETSAT's Data Store gives the same products as numbers (and the newer satellite's, every 10 minutes), for a key
-// and a NetCDF or GRIB reader; it would plug in as another SatFetch, answering frames instead of pictures.
+// The raw route, first: where the app's own server has the user's EUMETSAT key it serves the same frame as numbers, cut out of the
+// satellite's raw products (GET /api/wx/sat: server/eumetsat.ts, shared/sat.ts), and a source given that route asks it before the
+// pictures: nothing is read back from a colour, and the frame is there 8 to 16 minutes sooner (the Data Store has it 14 minutes after
+// its time). The server is asked for the same box, with the time of the frame held; every minute while it answers (it asks EUMETSAT
+// only when a newer frame can be there, so the minute costs EUMETSAT nothing). Its answer is held in the pictures' place (`raw`: the
+// bytes as they came; the gatherer reads the planes where they lie). A server with no key (404) is asked again in half an hour; one
+// that fails (EUMETSAT down, the server not answering, an answer that is no frame) at the next check, with one warning for the outage;
+// either way the look goes on to the pictures at once, so nothing is worse than without the route. A frame held is never given up
+// for an older one (the pictures lag the server), and the server's frame takes the place of the pictures of the same time.
 // ponytail: the Indian Ocean satellite (msg_iodc, at 45.5° E) sees Israel at a better angle and reaches India; only the one at 0° is
 // asked. Upgrade: pick the satellite by the place, and the point under it with it (satPlace.ts takes it).
+
+import { decodeSatCut } from '../../shared/sat.ts'
 
 const SAT_HOST = 'https://view.eumetsat.int/geoserver'
 /** The two layers asked for. */
@@ -44,6 +53,10 @@ export const SAT_N = 400
 export const SAT_STEP_M = 320
 /** The newest frame's time is asked for this often at most. */
 export const SAT_CHECK_MS = 5 * 60_000
+/** While the app's server answers with the frame's numbers it is asked this often: it asks EUMETSAT only when a newer frame can be there. */
+export const SAT_RAW_CHECK_MS = 60_000
+/** A server with no EUMETSAT key is asked again after this long (a key may have been given to it meanwhile). */
+export const SAT_RAW_NONE_MS = 30 * 60_000
 /** A frame is used this long after the source last answered for it. */
 export const SAT_KEEP_MS = 45 * 60_000
 /** And never when its own time is this long past. */
@@ -63,13 +76,31 @@ const RAD = Math.PI / 180
 /** South, west, north, east, degrees. */
 export type SatBox = readonly [south: number, west: number, north: number, east: number]
 
-/** A frame's two pictures as they came: n × n pixels each, RGBA bytes, row by row from the north-west corner. */
+/**
+ * A frame as the source holds it: its two pictures as they came (n × n pixels each, RGBA bytes, row by row from the north-west corner),
+ * or, from the app's server's route, the frame's numbers as they came (`raw`: an answer of shared/sat.ts; the pictures are then empty).
+ */
 export interface SatPictures {
   timeMs: number // the frame's own time
   box: SatBox
   n: number
   mask: Uint8ClampedArray
   tops: Uint8ClampedArray
+  raw?: Uint8Array // the raw route's answer, whole; absent: the frame is its two pictures
+}
+
+const NO_PIXELS = new Uint8ClampedArray(0)
+const NO_BYTES = new Uint8Array(0)
+
+/** What a frame held hands to a worker with its job: its two pictures' pixels, or the server's one answer; nothing when it is without them (satBare, or handed over already). */
+export function satBuffers(p: SatPictures): ArrayBuffer[] {
+  if (p.raw !== undefined) return p.raw.length > 0 ? [p.raw.buffer as ArrayBuffer] : []
+  return p.mask.length > 0 && p.tops.length > 0 ? [p.mask.buffer as ArrayBuffer, p.tops.buffer as ArrayBuffer] : []
+}
+
+/** The frame without its pixels or bytes: what says which frame it is (its time, its box, its route) to a gatherer that has read it. */
+export function satBare(p: SatPictures): SatPictures {
+  return p.raw === undefined ? { ...p, mask: NO_PIXELS, tops: NO_PIXELS } : { ...p, mask: NO_PIXELS, tops: NO_PIXELS, raw: NO_BYTES }
 }
 
 /**
@@ -180,6 +211,17 @@ export function decodeFrame(p: SatPictures): SatFrame | null {
   return { timeMs: p.timeMs, box: p.box, n: p.n, cloud: m.cloud, seen: m.seen, topM: t.topM }
 }
 
+/**
+ * The frame of the raw route's answer: its three planes, read where they lie in the bytes (nothing is decoded). Null for pictures, for
+ * a frame without its bytes, and for bytes that are not the frame they are held as (another time, box or size).
+ */
+export function rawFrame(p: SatPictures): SatFrame | null {
+  if (p.raw === undefined || p.raw.length === 0) return null
+  const whole = p.raw.byteOffset === 0 && p.raw.byteLength === p.raw.buffer.byteLength
+  const f = decodeSatCut((whole ? p.raw.buffer : p.raw.slice().buffer) as ArrayBuffer)
+  return f !== null && f.timeMs === p.timeMs && f.n === p.n && f.box.every((v, i) => v === p.box[i]) ? f : null
+}
+
 /** The share of a frame's processed pixels that are cloud (half cloud or more); 0 when none is processed. */
 export function cloudyShare(f: SatFrame): number {
   let seen = 0
@@ -233,10 +275,14 @@ export function satMapUrl(layer: string, box: SatBox, n: number, timeMs: number)
   return `${SAT_HOST}/ows?service=WMS&version=1.3.0&request=GetMap&layers=${layer}&styles=&format=image/png&transparent=true&crs=EPSG:4326&bbox=${box.join(',')}&width=${n}&height=${n}&time=${time}`
 }
 
-/** What fetches for the source: a text, and a picture as RGBA bytes with its size as sent. The browser's by default; fakes in tests. */
+/**
+ * What fetches for the source: a text, and a picture as RGBA bytes with its size as sent; and, for the raw route, the app's server's
+ * answer: its status, its body when it is 200, and the body's size as sent. The browser's by default; fakes in tests.
+ */
 export interface SatFetch {
   text(url: string): Promise<string>
   pixels(url: string, n: number): Promise<{ rgba: Uint8ClampedArray; bytes: number }>
+  raw?(url: string): Promise<{ status: number; body: ArrayBuffer | null; bytes: number }>
 }
 
 let reader: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null
@@ -267,17 +313,24 @@ const browserFetch: SatFetch = {
     img.close()
     return { rgba: reader.ctx.getImageData(0, 0, n, n).data, bytes: blob.size }
   },
+  async raw(url) {
+    const r = await fetch(url) // (the app's own server)
+    if (r.status !== 200) return { status: r.status, body: null, bytes: 0 }
+    const body = await r.arrayBuffer() // read off the main thread, unzipped by the browser: 640 KB that cost a frame nothing
+    return { status: 200, body, bytes: Number(r.headers.get('content-length')) || body.byteLength }
+  },
 }
 
-/** What the pictures held cost: both pictures' bytes as sent, and the time from asking for them to having their pixels. */
+/** What the frame held cost: both pictures' bytes as sent (or the server's answer's), and the time from asking for them to having their pixels. */
 export interface SatStats {
   bytes: number
   fetchMs: number
 }
 
 /**
- * The satellite's newest frame round the aircraft, as its two pictures, kept up as look() is called (once a second while the weather
- * shows). See the header for when it asks, and for when a frame is used.
+ * The satellite's newest frame round the aircraft, as its two pictures or, with the app's server's route (opts.raw: its address,
+ * /api/wx/sat), as the server's numbers when it has them. Kept up as look() is called (once a second while the weather shows). See
+ * the header for when it asks, and for when a frame is used.
  */
 export class SatelliteSource {
   readonly #fetch: SatFetch
@@ -290,9 +343,13 @@ export class SatelliteSource {
   #down = false
   #gen = 0
   #stats: SatStats | null = null
+  readonly #rawUrl: string | null // the app's server's route; null: the pictures only
+  #rawDue = -Infinity // the server's route is not asked before this (the frames' clock): it had no key, or it failed
+  #rawDown = false // the route's last ask failed: its warning is given
 
-  constructor(opts: { fetch?: SatFetch } = {}) {
+  constructor(opts: { fetch?: SatFetch; raw?: string | null } = {}) {
     this.#fetch = opts.fetch ?? browserFetch
+    this.#rawUrl = opts.raw ?? null
   }
 
   /** The pictures held, whether or not they may be used now (usable); null until the first have come. */
@@ -327,25 +384,74 @@ export class SatelliteSource {
 
   /**
    * A look, for an aircraft at lat, lon (where the satellite's pixels are: not moved by ?wxat): outside the view nothing is asked.
-   * When a check is due (nowMs: the frames' clock) the newest frame's time is asked for, and then its pictures if it is another frame
-   * than the one held, or the frame held does not serve the place. Between checks the pictures are asked for when the place has left
-   * what the frame held serves. One ask at a time; after a failed one, nothing before the next check.
+   * When a check is due (nowMs: the frames' clock) the app's server is asked first, if the source has its route; when it has no
+   * frame to give, the newest frame's time is asked of EUMETView, and then its pictures if it is a newer frame than the one held,
+   * or the frame held does not serve the place. Between checks the frame is asked for (of the server, else as pictures) when the
+   * place has left what the frame held serves. One ask at a time; after a failed one, nothing before the next check.
    */
   look(nowMs: number, epochMs: number, lat: number, lon: number): void {
     if (this.#busy || !inSatView(lat, lon)) return
-    if (nowMs >= this.#checkDue) {
+    const check = nowMs >= this.#checkDue
+    if (check) {
       this.#checkDue = nowMs + SAT_CHECK_MS
       this.#failed = false
-      void this.#ask(async () => {
+    } else if (this.#failed || !this.#wants(lat, lon)) return
+    void this.#ask(async () => {
+      if (await this.#askServer(nowMs, epochMs, lat, lon)) {
+        if (check) this.#checkDue = nowMs + SAT_RAW_CHECK_MS
+        return
+      }
+      if (check) {
         this.#newest = satFrameTime(await this.#fetch.text(satCapsUrl()))
         if (this.#newest === null) throw new Error('no frame time in the capabilities')
         if (this.#held?.timeMs === this.#newest) this.#answeredMs = epochMs
-        if (this.#wants(lat, lon)) await this.#load(this.#newest, satBox(lat, lon), epochMs)
-      })
-    } else if (!this.#failed && this.#newest !== null && this.#wants(lat, lon)) {
-      const newest = this.#newest
-      void this.#ask(() => this.#load(newest, satBox(lat, lon), epochMs))
+      }
+      if (this.#newest !== null && this.#wants(lat, lon)) await this.#load(this.#newest, satBox(lat, lon), epochMs)
+    })
+  }
+
+  /**
+   * The app's server asked for the frame over the place's box; whether it answered for one (its frame is held, or it said the frame
+   * held is still its newest). False when the source has no such route or it is not to be asked yet, when the server has no key
+   * (404: not asked again for SAT_RAW_NONE_MS), and when it failed (asked again at the next check; one warning for an outage).
+   */
+  async #askServer(nowMs: number, epochMs: number, lat: number, lon: number): Promise<boolean> {
+    if (this.#rawUrl === null || this.#fetch.raw === undefined || nowMs < this.#rawDue) return false
+    const box = satBox(lat, lon)
+    const held = this.#held
+    const serves = held !== null && satServes(held.box, lat, lon)
+    const have = serves && held.raw !== undefined ? held.timeMs : null
+    const t0 = performance.now()
+    let why: string
+    try {
+      const r = await this.#fetch.raw(`${this.#rawUrl}?bbox=${box.join(',')}&n=${SAT_N}${have === null ? '' : `&have=${have}`}`)
+      if (r.status === 404) {
+        this.#rawDue = nowMs + SAT_RAW_NONE_MS // no key on the server: no fault
+        return false
+      }
+      if (r.status === 204 && have !== null) {
+        this.#rawDown = false
+        if (this.#held === held) this.#answeredMs = epochMs
+        return true
+      }
+      const f = r.status === 200 && r.body !== null ? decodeSatCut(r.body) : null
+      if (f !== null && f.n === SAT_N && f.box.every((v, i) => v === box[i])) {
+        this.#rawDown = false
+        if (serves && f.timeMs < held.timeMs) return false // (the pictures' frame held is newer: kept)
+        this.#held = { timeMs: f.timeMs, box, n: SAT_N, mask: NO_PIXELS, tops: NO_PIXELS, raw: new Uint8Array(r.body!) }
+        this.#answeredMs = epochMs
+        this.#stats = { bytes: r.bytes, fetchMs: performance.now() - t0 }
+        this.#gen++
+        return true
+      }
+      why = r.status === 200 ? 'an answer that is no frame' : `HTTP ${r.status}`
+    } catch (e) {
+      why = (e as Error).message
     }
+    if (!this.#rawDown) console.warn(`FlightHopper: the weather satellite's raw products (this app's server): ${why}. EUMETView's pictures are used meanwhile.`)
+    this.#rawDown = true
+    this.#rawDue = this.#checkDue // asked again at the next check
+    return false
   }
 
   /**
@@ -367,9 +473,9 @@ export class SatelliteSource {
     if (p === this.#held) this.#held = null
   }
 
-  /** Whether the frame held is not the newest known, or does not serve the place. */
+  /** Whether EUMETView's newest frame is newer than the one held (or none is held), or the frame held does not serve the place. */
   #wants(lat: number, lon: number): boolean {
-    return this.#held === null || this.#held.timeMs !== this.#newest || !satServes(this.#held.box, lat, lon)
+    return this.#held === null || (this.#newest !== null && this.#held.timeMs < this.#newest) || !satServes(this.#held.box, lat, lon)
   }
 
   /** One ask at a time; a failure is one warning for a whole outage. */

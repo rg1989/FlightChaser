@@ -3,8 +3,10 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { inflateSync } from 'node:zlib'
+import { encodeSatCut } from '../../shared/sat.ts'
 import {
-  SAT_CHECK_MS, SAT_KEEP_MS, SAT_KM, SAT_LAYER, SAT_N, SAT_OLD_MS, SAT_STEP_M, SAT_TOPS, SatelliteSource, cloudyShare, decodeFrame, decodeMask, decodeTops, inSatView, satBox, satCapsUrl, satFrameTime, satMapUrl, satServes,
+  SAT_CHECK_MS, SAT_KEEP_MS, SAT_KM, SAT_LAYER, SAT_N, SAT_OLD_MS, SAT_RAW_CHECK_MS, SAT_RAW_NONE_MS, SAT_STEP_M, SAT_TOPS, SatelliteSource, cloudyShare, decodeFrame, decodeMask, decodeTops, inSatView, rawFrame, satBare, satBox, satBuffers,
+  satCapsUrl, satFrameTime, satMapUrl, satServes,
   type SatFetch,
 } from './satellite.ts'
 
@@ -395,4 +397,208 @@ test('SatelliteSource.usable: a frame that serves the aircraft serves the field 
   assert.deepEqual(eumetview.asked, [])
   assert.ok(sat.usable(t, lat + 28 / 111.195, LON) === sat.pictures, 'the field 28 km ahead of it')
   assert.equal(sat.usable(t, lat + 40 / 111.195, LON), null)
+})
+
+// ---- the raw route: the app's own server's frames first ----
+
+const RAW = '/api/wx/sat'
+const rawUrl = (lat: number, lon: number, have?: number): string => `${RAW}?bbox=${satBox(lat, lon).join(',')}&n=${SAT_N}${have === undefined ? '' : `&have=${have}`}`
+/**
+ * A stand-in for EUMETView and for the app's server's route: the server's newest frame (`rawNewest`: 15 minutes ahead of the
+ * pictures', as the Data Store is), cloud over the northern half with its top at 5,120 m, or the status it answers with instead.
+ */
+function both(opts: { status?: number; rawNewest?: number } = {}) {
+  const s = Object.assign(server(), {
+    status: opts.status ?? 200, rawNewest: opts.rawNewest ?? T0 + 15 * 60_000, garbled: false,
+    raw(url: string): Promise<{ status: number; body: ArrayBuffer | null; bytes: number }> {
+      s.asked.push(url)
+      if (s.status === 0) return Promise.reject(new TypeError('Failed to fetch'))
+      const q = new URL(url, 'http://localhost').searchParams
+      if (s.status !== 200) return Promise.resolve({ status: s.status, body: null, bytes: 0 })
+      if (q.get('have') === String(s.rawNewest)) return Promise.resolve({ status: 204, body: null, bytes: 0 })
+      const n = Number(q.get('n'))
+      const box = q.get('bbox')!.split(',').map(Number) as [number, number, number, number]
+      const half = (n * n) / 2
+      const body = encodeSatCut({
+        timeMs: s.rawNewest, box, n,
+        cloud: Uint8Array.from({ length: n * n }, (_, p) => (p < half ? 255 : 0)), seen: new Uint8Array(n * n).fill(1), topM: Uint16Array.from({ length: n * n }, (_, p) => (p < half ? 5120 : 0)),
+      }).buffer
+      return Promise.resolve({ status: 200, body: s.garbled ? body.slice(0, 1000) : body, bytes: 30_000 })
+    },
+  })
+  return s
+}
+const quiet = async (run: (warned: unknown[][]) => Promise<void>): Promise<void> => {
+  const warn = console.warn
+  const warned: unknown[][] = []
+  console.warn = (...a: unknown[]) => void warned.push(a)
+  try {
+    await run(warned)
+  } finally {
+    console.warn = warn
+  }
+}
+
+test('SatelliteSource with the app\'s server\'s route: the first look asks the server for the place\'s box and holds its answer, the frame\'s numbers as they came; EUMETView is not asked', async () => {
+  const app = both()
+  const sat = new SatelliteSource({ fetch: app, raw: RAW })
+  sat.look(0, T0 + 30 * 60_000, LAT, LON)
+  await settle()
+  assert.deepEqual(app.asked, [rawUrl(LAT, LON)])
+  const p = sat.pictures!
+  assert.deepEqual([p.timeMs, p.n, p.mask.length, p.tops.length, p.raw!.length], [T0 + 15 * 60_000, SAT_N, 0, 0, 48 + 4 * SAT_N * SAT_N])
+  assert.deepEqual(p.box, satBox(LAT, LON))
+  assert.deepEqual([sat.gen, sat.down, sat.stats!.bytes], [1, false, 30_000])
+  assert.equal(sat.usable(T0 + 30 * 60_000, LAT, LON), p)
+  // Read (nothing to decode: the planes lie in the answer): cloud over the northern half, its top at 5,120 m.
+  const f = rawFrame(p)!
+  assert.deepEqual([f.timeMs, f.n, f.cloud[0], f.seen[0], f.topM[0], f.cloud[SAT_N * SAT_N - 1], f.topM[SAT_N * SAT_N - 1]], [T0 + 15 * 60_000, SAT_N, 255, 1, 5120, 0, 0])
+  assert.deepEqual(f.box, satBox(LAT, LON))
+  assert.equal(cloudyShare(f), 0.5)
+})
+
+test('SatelliteSource with the server\'s route: the server is asked every minute, with the time of the frame held; "the same" keeps the frame and counts as an answer for it; a newer frame takes its place', async () => {
+  const app = both()
+  const sat = new SatelliteSource({ fetch: app, raw: RAW })
+  const t = T0 + 30 * 60_000
+  sat.look(0, t, LAT, LON)
+  await settle()
+  const first = sat.pictures
+  app.asked.length = 0
+  sat.look(SAT_RAW_CHECK_MS - 1000, t + 59_000, LAT, LON)
+  await settle()
+  assert.deepEqual(app.asked, [], 'not within the minute')
+  for (let k = 1; k <= 20; k++) sat.look(k * SAT_RAW_CHECK_MS, t + k * 60_000, LAT, LON), await settle()
+  assert.equal(app.asked.length, 20)
+  assert.ok(app.asked.every((u) => u === rawUrl(LAT, LON, T0 + 15 * 60_000)))
+  assert.deepEqual([sat.pictures, sat.gen], [first, 1], 'the same frame, held on')
+  assert.equal(sat.usable(t + 20 * 60_000 + SAT_KEEP_MS, LAT, LON), first, 'the server answered for it 20 minutes on: used 45 minutes from then')
+  app.rawNewest = T0 + 30 * 60_000
+  sat.look(21 * SAT_RAW_CHECK_MS, t + 21 * 60_000, LAT, LON)
+  await settle()
+  assert.deepEqual([sat.pictures!.timeMs, sat.gen], [T0 + 30 * 60_000, 2])
+})
+
+test('SatelliteSource with the server\'s route: a server with no key (404) is not asked again for half an hour; the look goes on to EUMETView\'s pictures at once, and checks them every 5 minutes as before', async () => {
+  const app = both({ status: 404 })
+  const sat = new SatelliteSource({ fetch: app, raw: RAW })
+  await quiet(async (warned) => {
+    sat.look(0, T0 + 20 * 60_000, LAT, LON)
+    await settle()
+    const box = satBox(LAT, LON)
+    assert.deepEqual(app.asked, [rawUrl(LAT, LON), satCapsUrl(), satMapUrl(SAT_LAYER.mask, box, SAT_N, T0), satMapUrl(SAT_LAYER.top, box, SAT_N, T0)])
+    assert.deepEqual([sat.pictures!.timeMs, sat.pictures!.raw, sat.pictures!.mask.length, sat.down], [T0, undefined, SAT_N * SAT_N * 4, false])
+    assert.deepEqual(warned, [], 'a server without the key is no fault')
+    app.asked.length = 0
+    for (let ms = 60_000; ms < SAT_RAW_NONE_MS; ms += 60_000) sat.look(ms, T0 + 20 * 60_000 + ms, LAT, LON), await settle()
+    assert.deepEqual(app.asked, new Array(5).fill(satCapsUrl()), 'the pictures\' checks, 5 minutes apart: at 5, 10, 15, 20 and 25 minutes')
+    app.asked.length = 0
+    app.status = 200
+    app.rawNewest = T0 + 45 * 60_000
+    sat.look(SAT_RAW_NONE_MS, T0 + 50 * 60_000, LAT, LON)
+    await settle()
+    assert.deepEqual(app.asked, [rawUrl(LAT, LON)], 'asked again after half an hour (a key may have been given to the server)')
+    assert.deepEqual([sat.pictures!.timeMs, sat.pictures!.raw !== undefined], [T0 + 45 * 60_000, true])
+  })
+})
+
+test('SatelliteSource with the server\'s route: a server that fails (EUMETSAT down: 502 or 503; the server itself not answering; an answer that is no frame) falls back to the pictures for that check and is asked again at the next, with one warning for the outage', async () => {
+  for (const fault of [502, 503, 0, 'garbled'] as const) {
+    const app = both(fault === 'garbled' ? {} : { status: fault })
+    app.garbled = fault === 'garbled'
+    const sat = new SatelliteSource({ fetch: app, raw: RAW })
+    await quiet(async (warned) => {
+      sat.look(0, T0 + 20 * 60_000, LAT, LON)
+      await settle()
+      assert.deepEqual(app.asked.map((u) => u.split('?')[0]).slice(0, 2), [RAW, 'https://view.eumetsat.int/geoserver/msg_fes/cth/ows'], String(fault))
+      assert.deepEqual([app.asked.length, sat.pictures!.timeMs, sat.pictures!.raw, sat.down], [4, T0, undefined, false], 'the pictures\' frame; the satellite is not down')
+      assert.equal(warned.length, 1)
+      app.asked.length = 0
+      sat.look(60_000, T0 + 21 * 60_000, LAT, LON)
+      await settle()
+      assert.deepEqual(app.asked, [], 'not before the next check')
+      sat.look(SAT_CHECK_MS, T0 + 25 * 60_000, LAT, LON)
+      await settle()
+      assert.deepEqual(app.asked, [rawUrl(LAT, LON), satCapsUrl()], 'the server again, then the pictures\' check (the same frame: no picture)')
+      assert.equal(warned.length, 1, 'one warning for the outage')
+      app.status = 200
+      app.garbled = false
+      app.asked.length = 0
+      sat.look(2 * SAT_CHECK_MS, T0 + 30 * 60_000, LAT, LON)
+      await settle()
+      assert.deepEqual(app.asked, [rawUrl(LAT, LON)])
+      assert.deepEqual([sat.pictures!.timeMs, sat.pictures!.raw !== undefined], [T0 + 15 * 60_000, true], 'back on the server\'s frames')
+    })
+  }
+})
+
+test('SatelliteSource with the server\'s route: a frame held is not given up for an older one: when the server fails, EUMETView\'s frame takes its place only once it is newer; and the server\'s frame replaces the pictures of the same time', async () => {
+  const app = both()
+  const sat = new SatelliteSource({ fetch: app, raw: RAW })
+  await quiet(async () => {
+    sat.look(0, T0 + 30 * 60_000, LAT, LON) // the server has 05:00; EUMETView has 04:45 still
+    await settle()
+    const held = sat.pictures
+    app.status = 503
+    app.asked.length = 0
+    sat.look(SAT_RAW_CHECK_MS, T0 + 31 * 60_000, LAT, LON)
+    await settle()
+    assert.deepEqual(app.asked, [rawUrl(LAT, LON, T0 + 15 * 60_000), satCapsUrl()], 'the pictures\' newest is older than the frame held: none is asked for')
+    assert.equal(sat.pictures, held)
+    app.newest = T0 + 15 * 60_000 // EUMETView has the same frame now: still none asked for, and it counts as an answer for the frame
+    sat.look(SAT_RAW_CHECK_MS + SAT_CHECK_MS, T0 + 36 * 60_000, LAT, LON)
+    await settle()
+    assert.equal(sat.pictures, held)
+    assert.equal(sat.usable(T0 + 36 * 60_000 + SAT_KEEP_MS, LAT, LON), held)
+    app.newest = T0 + 30 * 60_000
+    sat.look(SAT_RAW_CHECK_MS + 2 * SAT_CHECK_MS, T0 + 41 * 60_000, LAT, LON)
+    await settle()
+    assert.deepEqual([sat.pictures!.timeMs, sat.pictures!.raw], [T0 + 30 * 60_000, undefined], 'a newer frame, from the pictures')
+    app.status = 200
+    app.rawNewest = T0 + 30 * 60_000
+    sat.look(SAT_RAW_CHECK_MS + 3 * SAT_CHECK_MS, T0 + 46 * 60_000, LAT, LON)
+    await settle()
+    assert.deepEqual([sat.pictures!.timeMs, sat.pictures!.raw !== undefined, sat.gen], [T0 + 30 * 60_000, true, 3], 'the same frame as numbers: it takes the pictures\' place')
+  })
+})
+
+test('SatelliteSource with the server\'s route: a place the frame held does not serve asks the server for the other box at once; a frame forgotten is asked for again', async () => {
+  const app = both()
+  const sat = new SatelliteSource({ fetch: app, raw: RAW })
+  sat.look(0, T0 + 30 * 60_000, LAT, LON)
+  await settle()
+  app.asked.length = 0
+  sat.look(1000, T0 + 30 * 60_000, LAT + 1, LON)
+  await settle()
+  assert.deepEqual(app.asked, [], 'served')
+  sat.look(2000, T0 + 30 * 60_000, LAT + 3, LON)
+  await settle()
+  assert.deepEqual(app.asked, [rawUrl(LAT + 3, LON)], 'the other box, whatever frame is held')
+  assert.deepEqual(sat.pictures!.box, satBox(LAT + 3, LON))
+  app.asked.length = 0
+  sat.forget(sat.pictures!)
+  sat.look(3000, T0 + 30 * 60_000, LAT + 3, LON)
+  await settle()
+  assert.deepEqual(app.asked, [rawUrl(LAT + 3, LON)])
+  assert.equal(sat.gen, 3)
+})
+
+test('satBuffers, satBare, rawFrame: what a frame held hands to a worker (two pictures\' pixels, or the one answer), the frame without it, and the numbers of an answer; none of bytes that are not that frame', async () => {
+  const app = both()
+  const pictures = new SatelliteSource({ fetch: app })
+  pictures.look(0, T0 + 20 * 60_000, LAT, LON)
+  const raw = new SatelliteSource({ fetch: app, raw: RAW })
+  raw.look(0, T0 + 30 * 60_000, LAT, LON)
+  await settle()
+  const [p, r] = [pictures.pictures!, raw.pictures!]
+  assert.deepEqual(satBuffers(p), [p.mask.buffer, p.tops.buffer])
+  assert.deepEqual(satBuffers(r), [r.raw!.buffer])
+  for (const bare of [satBare(p), satBare(r)]) assert.deepEqual([satBuffers(bare), bare.mask.length, bare.tops.length], [[], 0, 0])
+  assert.deepEqual([satBare(p).raw, satBare(r).raw!.length, satBare(r).timeMs, satBare(r).box], [undefined, 0, r.timeMs, r.box], 'still the server\'s frame, by its time and box')
+  assert.equal(rawFrame(p), null, 'pictures are no numbers')
+  assert.equal(rawFrame(satBare(r)), null)
+  assert.equal(rawFrame({ ...r, timeMs: r.timeMs + 1 }), null, 'an answer of another frame than it is held as')
+  assert.equal(rawFrame({ ...r, box: satBox(LAT + 3, LON) }), null)
+  assert.equal(rawFrame({ ...r, raw: r.raw!.slice(0, 5000) }), null)
+  assert.notEqual(rawFrame(r), null)
 })
