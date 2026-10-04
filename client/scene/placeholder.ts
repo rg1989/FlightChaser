@@ -18,7 +18,7 @@ import type { ModelFit } from './modelFor.ts'
 /** 1: a hologram (a glowing outline, scan lines inside); 2: a frame (a wire grid, the far side through it); 3: a flat ghost (a pale hatch, a dashed outline). */
 export type PlaceholderLook = 1 | 2 | 3
 export const LOOK_NAMES: Record<PlaceholderLook, string> = { 1: 'hologram', 2: 'frame', 3: 'flat ghost' }
-export const DEFAULT_LOOK: PlaceholderLook = 2
+export const DEFAULT_LOOK: PlaceholderLook = 3 // the user's pick of the three (2026-10-04)
 
 /** The placeholder's colours (sRGB). INK is theme.css's --fh-placeholder: the card's line is in it. */
 export const INK = '#7fe6ff'

@@ -100,20 +100,20 @@ The lists at this time:
 An aircraft that is not on its own model must not look like a real aircraft. `client/scene/placeholder.ts` draws it as
 a placeholder, in the chase view and in the chase traffic:
 
-- It is a wire frame in one light blue colour (`--fh-placeholder`): rings round the fuselage, ribs on the wings, the
-  outline, and nothing between the lines. You can see the far side of the frame and the scene through it.
-- The colour does not change with the sun. By night the frame shows as bright as by day.
+- It is a flat ghost: one pale colour laid on as a fine hatch, with a dashed outline in light blue
+  (`--fh-placeholder`) round its shape. You can see the scene through the hatch.
+- The colour does not change with the sun. By night the ghost shows as bright as by day.
 - It has no livery. The paint of an airline on the shape of a different aircraft would be false.
 - The landing gear, the lights, the brackets, the smallest size on screen and the click area are the same as for a
   real model.
-- The frame is drawn with holes, not with transparency. Each pixel of a line has a depth, so the ground, the
+- The ghost is drawn with holes, not with transparency. Each pixel it draws has a depth, so the ground, the
   buildings and the clouds of the weather hide it and are hidden by it as with a real model.
 - The flight card and the traffic card tell it in words below the header: "Shown as a Boeing 787-9: no B763 model yet"
   for a stand-in, "Placeholder model: no J328 model yet" for the generic model, and "Placeholder model: type unknown"
   if the aircraft sends no type.
 
 To see the other two looks that were made for comparison, add `?ghost=1` (a hologram: scan lines and a bright outline)
-or `?ghost=3` (a flat ghost: a pale hatch and a dashed outline) to the address. `?ghost=2` is the wire frame.
+or `?ghost=2` (a wire frame: rings round the fuselage, ribs on the wings) to the address. `?ghost=3` is the flat ghost.
 `?ghost=2,all` draws each aircraft as a placeholder and `?ghost=0` draws none as a placeholder. Use these two only to
 compare the cost.
 
