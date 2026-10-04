@@ -168,7 +168,7 @@ export function eraLayerOptions(spec: ImagerySpec): UrlTemplateImageryProvider.C
 /** The parts of ChaseModel (scene/model.ts) a scenario sets. */
 export interface DressableModel {
   readonly entry: ModelManifestEntry
-  use(entry: ModelManifestEntry): boolean
+  use(entry: ModelManifestEntry, placeholder?: boolean): boolean
   paintLivery(livery: Livery): void
   setShape(halfSpanM: number | null): void
   setDamage(d: Damage): void
@@ -179,22 +179,26 @@ export interface DressableModel {
  * The scenario's aircraft on the chase model. apply() runs every frame: it asks for the scenario's type until it is
  * drawn (use() loads it asynchronously and switches when it is ready), paints and folds whatever model is drawn, again
  * after a switch (a switch keeps shape and damage but not the paint), and sets the damage and gear of this moment.
+ * placeholder: the model is not the aircraft's own (a recording of a type that has only a stand-in, or the generic
+ * one): it is drawn as a placeholder, which takes no livery (ChaseModel.use).
  */
 export class Dresser {
   readonly #entry: ModelManifestEntry | null
   readonly #livery: Livery | null
   readonly #halfSpanM: number | null
+  readonly #placeholder: boolean
   #dressed: ModelManifestEntry | null = null
 
-  constructor(entry: ModelManifestEntry | null, livery: Livery | null, halfSpanM: number | null) {
+  constructor(entry: ModelManifestEntry | null, livery: Livery | null, halfSpanM: number | null, placeholder = false) {
     this.#entry = entry
     this.#livery = livery
     this.#halfSpanM = halfSpanM
+    this.#placeholder = placeholder
   }
 
   /** True when the drawn model switched this call: the Sun re-attaches its light to it. */
   apply(model: DressableModel, damage: Damage, gear: boolean): boolean {
-    const switched = this.#entry !== null && model.use(this.#entry)
+    const switched = this.#entry !== null && model.use(this.#entry, this.#placeholder)
     if (model.entry !== this.#dressed) {
       this.#dressed = model.entry
       if (this.#livery !== null) model.paintLivery(this.#livery)

@@ -1,7 +1,8 @@
 // client/scene/model.ts
 // WP-V3 model calibration: place the chase model so that its nose points along RenderState.headingDeg.
 // The aircraft must never fly sideways. model.test.ts proves it from the GLB's own geometry.
-// ChaseModel also carries a scenario's look: its livery, a folded span, damage and a separate landing gear.
+// ChaseModel also carries a scenario's look: its livery, a folded span, damage and a separate landing gear; and the
+// placeholder look of an aircraft drawn on a model that is not its own (placeholder.ts).
 import { Axis, Cartesian2, Cartesian3, HeadingPitchRoll, Math as CesiumMath, Matrix3, Matrix4, Model, Quaternion, Transforms } from 'cesium'
 import type { CustomShader, ModelNode, Viewer } from 'cesium'
 import type { Damage } from '../scenario/timeline.ts'
@@ -9,6 +10,7 @@ import type { ModelManifestEntry, RenderState } from '../types.ts'
 import { GearMotion, swingLegs } from './gear.ts'
 import { LiveryShaders } from './livery.ts'
 import type { Livery } from './livery.ts'
+import { dress } from './placeholder.ts'
 
 // ---------- glTF geometry in Cesium's model frame ----------
 
@@ -191,6 +193,8 @@ export class ChaseModel {
   private placed = false
   private readonly liveries = new Map<string, LiveryShaders>()
   private livery: string | null | undefined
+  private placeholder = false // the model drawn is not the aircraft's own: no livery on it
+  private readonly dressed = new Set<Model>() // the models and gears that wear the placeholder look now
   private readonly ready = new Map<string, Model>() // every loaded model by entry id, in the scene (hidden unless drawn)
   private readonly asked = new Set<string>() // entry ids loading or loaded (or failed: not asked again)
   private readonly loader: (m: ModelManifestEntry) => Promise<Model>
@@ -229,9 +233,15 @@ export class ChaseModel {
   /**
    * Draws the chased aircraft on entry's model (ModelPicker). Loads it on first use and keeps the current model until
    * it is ready. True when the drawn model changed this call (the Sun re-attaches its light to the new one).
+   * placeholder: entry is not the aircraft's own model (a stand-in, the generic one): it is drawn in the placeholder
+   * look (placeholder.ts), its gear too, and takes no livery until it is some aircraft's own again.
    */
-  use(entry: ModelManifestEntry): boolean {
-    if (entry === this.m) return false
+  use(entry: ModelManifestEntry, placeholder = false): boolean {
+    if (entry === this.m) {
+      this.placeholder = placeholder
+      if (this.wear(this.model)) this.look()
+      return false
+    }
     if (!this.asked.has(entry.id)) {
       this.asked.add(entry.id)
       this.loader(entry).then(
@@ -250,6 +260,8 @@ export class ChaseModel {
     this.model = next
     this.m = entry
     this.livery = undefined
+    this.placeholder = placeholder
+    this.wear(next)
     this.model.show = this.visible && this.placed
     this.look()
     this.legsAt = -1
@@ -257,16 +269,19 @@ export class ChaseModel {
     return true
   }
 
-  /** Paints the model in a livery (livery.ts liveryCode; null: plain white). Cheap when unchanged. */
+  /** Paints the model in a livery (livery.ts liveryCode; null: plain white). Cheap when unchanged. Not a placeholder. */
   paint(code: string | null): void {
-    if (!this.m.paint || code === this.livery) return
+    if (this.placeholder || !this.m.paint || code === this.livery) return
     this.livery = code
     this.shade(this.shaders().for(code))
   }
 
-  /** Paints the model in a livery that is not in the table (a scenario's: liveryFromSpec) until the next paint(code). */
+  /**
+   * Paints the model in a livery that is not in the table (a scenario's: liveryFromSpec) until the next paint(code).
+   * Not a placeholder.
+   */
   paintLivery(livery: Livery): void {
-    if (!this.m.paint) return
+    if (this.placeholder || !this.m.paint) return
     this.livery = undefined
     this.shade(this.shaders().custom(livery))
   }
@@ -323,6 +338,7 @@ export class ChaseModel {
     this.model.show = this.visible
     const gear = this.drawnGear()
     if (gear === null) return
+    this.wear(gear.model)
     Matrix4.clone(this.model.modelMatrix, gear.model.modelMatrix)
     gear.model.imageBasedLighting.imageBasedLightingFactor = this.model.imageBasedLighting.imageBasedLightingFactor // the setter copies it
     gear.model.show = this.visible
@@ -344,6 +360,20 @@ export class ChaseModel {
     for (const model of [...this.ready.values(), ...this.gears.values()]) this.viewer.scene.primitives.remove(model)
     this.ready.clear()
     this.gears.clear()
+    this.dressed.clear()
+  }
+
+  /**
+   * A model (the aircraft's, a gear's) dressed as the aircraft is drawn now: as a placeholder, or as itself again
+   * (bare: the next paint paints the aircraft's). True when that changed it. Cheap when it did not.
+   */
+  private wear(model: Model): boolean {
+    if (this.dressed.has(model) === this.placeholder) return false
+    if (this.placeholder) this.dressed.add(model)
+    else this.dressed.delete(model)
+    dress(model, this.placeholder)
+    if (model === this.model) this.livery = undefined
+    return true
   }
 
   private shaders(): LiveryShaders {
@@ -361,9 +391,11 @@ export class ChaseModel {
   /**
    * Writes the shape and the damage onto the drawn model: its shader's u_span (mesh metres), u_cut and u_rudder (the
    * lost band's mesh heights, along the fin from finEdges' root to its tip), and back faces drawn only while damaged.
-   * Shaders are cached and shared by the models of one entry, so every switch rewrites them.
+   * Shaders are cached and shared by the models of one entry, so every switch rewrites them. A placeholder shows
+   * neither: the fold and the cut are the paint shader's.
    */
   private look(): void {
+    if (this.placeholder) return
     const { fin, rudder } = this.damage
     const edges = this.m.paint?.cut?.finEdges
     const band = rudder === null || edges === undefined ? null : rudder.map((f) => edges[0] + f * (edges[3] - edges[0]))

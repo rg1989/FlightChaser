@@ -10,6 +10,7 @@ import type { ModelManifest, RenderState } from '../types.ts'
 import { liveryFromSpec } from './livery.ts'
 import { RETRACT_S } from './gear.ts'
 import { ChaseModel, GLTF_TO_CESIUM, fixMatrix, hprFor, loadGearModel, measureGlb, modelMatrixFor, noseAzimuthDeg } from './model.ts'
+import { placeholderShader } from './placeholder.ts'
 import { NO_DAMAGE, type Damage } from '../scenario/timeline.ts'
 const FIN: Damage = { fin: true, rudder: null }
 
@@ -398,6 +399,62 @@ test('ChaseModel.setShape/setDamage: u_span and u_cut on the current shader, re-
   half.paint(null)
   half.setShape(29.8)
   assert.equal(half.model.customShader!.uniforms.u_span.value, 59.6, 'u_span is in the unscaled mesh frame')
+})
+
+test('ChaseModel.use(entry, placeholder): a model that is not the aircraft\'s own wears the placeholder look and takes no livery; its own again, it is painted again', async () => {
+  const f = fakes()
+  const first = fakeModel()
+  const other = fakeModel()
+  const clone = { ...b744, id: 'b744-other' }
+  const cm = new ChaseModel(f.viewer, b744, first as unknown as Model, async () => other as unknown as Model)
+  cm.paint('ELY')
+  const ely = first.customShader!
+  assert.notEqual(ely, placeholderShader())
+
+  assert.equal(cm.use(b744, true), false, 'the same model: no switch')
+  assert.equal(first.customShader, placeholderShader())
+  cm.paint('ELY')
+  cm.paintLivery(jal)
+  assert.equal(first.customShader, placeholderShader(), 'a stand-in takes no livery, an airline\'s or a scenario\'s')
+  const culling = first.backFaceCulling
+  cm.setShape(29.8) // the fold and the damage are the paint shader's: nothing of them on a placeholder, and no error
+  cm.setDamage(FIN)
+  assert.deepEqual([first.customShader, first.backFaceCulling], [placeholderShader(), culling], 'the look\'s own culling stays')
+  cm.setDamage(NO_DAMAGE)
+  cm.setShape(null)
+
+  assert.equal(cm.use(b744), false)
+  assert.equal(first.customShader, undefined, 'its own model again: bare until it is painted')
+  cm.paint('ELY')
+  assert.equal(first.customShader, ely, 'painted again, though the livery\'s code did not change')
+
+  cm.use(clone, true)
+  await Promise.resolve()
+  assert.equal(first.customShader, ely, 'the model drawn meanwhile stays as it was')
+  assert.equal(cm.use(clone, true), true)
+  assert.equal(other.customShader, placeholderShader(), 'another model, a placeholder from its first frame')
+  cm.paint('ELY')
+  assert.equal(other.customShader, placeholderShader())
+  assert.equal(cm.use(b744), true)
+  assert.equal(first.customShader, ely, 'the first model kept its paint while the other was drawn')
+  assert.equal(cm.use(clone), true)
+  assert.equal(other.customShader, undefined, 'the other model as an aircraft\'s own: the placeholder look is off it')
+})
+
+test('ChaseModel: a placeholder\'s landing gear is drawn as a placeholder too', async () => {
+  const f = fakes()
+  const body = fakeModel()
+  const gear = fakeModel()
+  const cm = new ChaseModel(f.viewer, b744, body as unknown as Model, undefined, async () => gear as unknown as Model)
+  const s = state(KSFO.lat, KSFO.lon, 0, 297.9)
+  cm.use(b744, true)
+  cm.setGear(true)
+  await Promise.resolve()
+  cm.update(s, 0.016)
+  assert.deepEqual([gear.show, gear.customShader], [true, placeholderShader()])
+  cm.use(b744)
+  cm.update(s, 0.016)
+  assert.equal(gear.customShader, undefined, 'the aircraft\'s own model: its gear as it is')
 })
 
 test('ChaseModel.setGear: loads the gear once, draws it with the chase matrix; the body stands gearHeightM up throughout', async () => {
