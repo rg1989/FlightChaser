@@ -363,3 +363,18 @@ test('SatelliteSource.reject: pictures that could not be read are held no longer
     console.warn = warn
   }
 })
+
+test('SatelliteSource.forget: pictures whose pixels are gone (handed to a worker that has lost them) are held no longer, and are asked for again at the next look; the source is not down', async () => {
+  const eumetview = server()
+  const sat = new SatelliteSource({ fetch: eumetview })
+  sat.look(0, T0 + 20 * 60_000, LAT, LON)
+  await settle()
+  eumetview.asked.length = 0
+  sat.forget(sat.pictures!)
+  assert.deepEqual([sat.pictures, sat.down], [null, false])
+  sat.look(1000, T0 + 20 * 60_000, LAT, LON)
+  await settle()
+  assert.equal(eumetview.asked.length, 2, 'the two pictures, with no check')
+  assert.equal(sat.pictures!.timeMs, T0)
+  assert.equal(sat.gen, 2)
+})

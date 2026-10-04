@@ -11,7 +11,9 @@
 // With the weather satellite's pictures in the job (satellite.ts: a frame in use) the satellite decides where cloud is and how high
 // its top is, and the sources say the rest:
 // - the pictures' colours are read here (decodeFrame: 4 to 16 ms, so not in a frame), once for a frame, and the frame made into a
-//   grid over the field's square (satGrid.ts), which the answer brings: the field takes it as cover directly;
+//   grid over the field's square (satGrid.ts), which the answer brings: the field takes it as cover directly. The frame read is
+//   kept: the asker sends a frame's pixels once (handed over, not copied) and afterwards the frame without them. A gatherer that
+//   is given a frame without pixels and has not read it (its worker was started again) says the frame is missing;
 // - the model's clouds, placed by a random rule, are not drawn where the satellite sees (the model still gives the grid its bases
 //   and its winds);
 // - an airport's layers are marked `masked`: the field lets them stand only where the satellite sees cloud. Not its FEW and SCT
@@ -44,7 +46,7 @@ export interface GatherJob {
   readKm: number // how far the radar is read
   reachKm: number // and where its clouds have faded out, whatever their puffs' own fade
   anew: boolean // what is kept is dropped first (a check aid: Weather3D rebuildSky)
-  sat?: SatPictures | null // the weather satellite's frame in use, as its pictures came (where the weather is: not shifted); none: no satellite
+  sat?: SatPictures | null // the weather satellite's frame in use, as its pictures came (where the weather is: not shifted), or without their pixels (empty) when the gatherer has read this frame before; none: no satellite
   epochMs?: number // the wall clock: the frame's age is from this
 }
 
@@ -52,6 +54,7 @@ export interface GatherJob {
 export interface SatInfo {
   timeMs: number // the frame's own time
   bad: boolean // its pictures' colours are not the ones known: it is not used, and should be dropped
+  missing: boolean // it came without its pixels, and the gatherer has not read it: it is not used, and should be sent again with them
   cloudy: number // the share of the field's square it sees that is cloud (0 when it sees none of it)
   decodeMs: number // how long the pictures' colours took to read; 0 when the frame was kept from a job before
   gridMs: number // and the grid to make
@@ -104,28 +107,30 @@ export function gatherer(): (job: GatherJob) => Gathered {
   let model: { metarGen: number; modelGen: number; specs: CloudSpec[] } | null = null // the model's clouds, for the grid and the reports they lean on
   let frame: { key: string; frame: SatFrame | null } | null = null // the satellite's frame read from its pictures (null: bad), for the pictures it was read from
   return (job) => {
+    const p = job.sat ?? null
+    const pixels = p !== null && p.mask.length > 0 && p.tops.length > 0
     if (job.anew) {
       made = new WeakMap()
       model = null
-      frame = null
+      if (pixels) frame = null // (read again only when the pixels have come to read it from)
     }
     if (held === null || held.gen !== job.metarGen) held = { gen: job.metarGen, metars: job.metars }
     const metars = held.metars
     let sat: SatGrid | null = null
     let satInfo: SatInfo | null = null
-    const p = job.sat ?? null
     if (p !== null) {
       const key = `${p.timeMs}|${p.n}|${p.box.join()}`
       let decodeMs = 0
-      if (frame === null || frame.key !== key) {
+      if ((frame === null || frame.key !== key) && pixels) {
         const t0 = performance.now()
         frame = { key, frame: decodeFrame(p) }
         decodeMs = performance.now() - t0
       }
-      satInfo = { timeMs: p.timeMs, bad: frame.frame === null, cloudy: 0, decodeMs, gridMs: 0 }
-      if (frame.frame !== null) {
+      const read = frame !== null && frame.key === key ? frame : null
+      satInfo = { timeMs: p.timeMs, bad: read !== null && read.frame === null, missing: read === null, cloudy: 0, decodeMs, gridMs: 0 }
+      if (read !== null && read.frame !== null) {
         const t0 = performance.now()
-        const g = satGrid(frame.frame, { lat: job.lat, lon: job.lon, shift: job.shift, epochMs: job.epochMs ?? p.timeMs, metars, model: job.grid })
+        const g = satGrid(read.frame, { lat: job.lat, lon: job.lon, shift: job.shift, epochMs: job.epochMs ?? p.timeMs, metars, model: job.grid })
         satInfo.gridMs = performance.now() - t0
         if (g.seen.some((s) => s === 1)) {
           sat = g

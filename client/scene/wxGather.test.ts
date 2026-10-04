@@ -229,3 +229,22 @@ test('gatherer with the satellite\'s pictures: the answer crosses back from a wo
   assert.equal(got.sat!.cover.length, 0, 'handed over')
   assert.deepEqual(gatherTransfers(gatherer()(satJob(null))), [])
 })
+
+test('gatherer with the satellite\'s pictures: a job that brings a frame without its pixels uses the frame it read at a job before; if it has read none it says the frame is missing, and gathers the sky as without a satellite', () => {
+  const p = pictures((east) => (east < 0 ? BLUE : 'clear'))
+  const bare: SatPictures = { ...p, mask: new Uint8ClampedArray(0), tops: new Uint8ClampedArray(0) }
+  const gather = gatherer()
+  const first = gather(satJob(p, { grid: null }))
+  const again = gather(satJob(bare, { id: 2, grid: null }))
+  assert.deepEqual([again.satInfo!.missing, again.satInfo!.bad, again.satInfo!.decodeMs], [false, false, 0])
+  assert.deepEqual(again.sat!.cover, first.sat!.cover)
+  assert.deepEqual(again.clouds, first.clouds)
+  assert.equal(first.satInfo!.missing, false)
+  // anew drops the reports' and the model's clouds; a frame is read again only when its pixels come with the job.
+  assert.equal(gather(satJob(bare, { id: 3, grid: null, anew: true })).satInfo!.missing, false)
+  const fresh = gatherer()(satJob(bare, { grid: null })) // (a worker started again, or this thread standing in for it)
+  assert.deepEqual([fresh.satInfo!.missing, fresh.satInfo!.bad, fresh.sat], [true, false, null])
+  assert.deepEqual(fresh.clouds, gatherer()(satJob(null, { grid: null })).clouds)
+  const other = gather(satJob({ ...bare, timeMs: T0 + 15 * 60_000 }, { id: 4, grid: null }))
+  assert.equal(other.satInfo!.missing, true, 'another frame, without its pixels')
+})

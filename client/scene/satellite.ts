@@ -352,6 +352,14 @@ export class SatelliteSource {
     this.#fail(new Error('colours not known in the pictures: the layers\' style has changed'))
   }
 
+  /**
+   * These pictures' pixels are gone (they were handed to the gatherer's worker, which has them no longer): the pictures are held no
+   * longer, and the next look asks for them again (the browser has kept them). The source is not down.
+   */
+  forget(p: SatPictures): void {
+    if (p === this.#held) this.#held = null
+  }
+
   /** Whether the frame held is not the newest known, or does not serve the place. */
   #wants(lat: number, lon: number): boolean {
     return this.#held === null || this.#held.timeMs !== this.#newest || !satServes(this.#held.box, lat, lon)

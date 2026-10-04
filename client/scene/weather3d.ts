@@ -55,7 +55,9 @@
 //   brings the satellite's cloud as a grid over the field's square (satGrid.ts), which is handed to the cloud volume with the
 //   clouds: there the satellite says where cloud is and how high its top is, the airports' layers stand only where it sees cloud,
 //   and the model's clouds are not drawn (wxGather.ts says the rules). A frame that comes, or stops being usable, builds the sky
-//   again. With no usable frame the sky is as it was before there was a satellite;
+//   again. With no usable frame the sky is as it was before there was a satellite. A frame's pixels (1.3 MB) go to the gatherer
+//   once, handed over, not copied (copied with every ask they held the asking frame 3 to 4 ms more); the asks after bring the frame
+//   without them, and a gatherer that has lost the frame says so and is sent it again;
 // Every frame the clouds and the fog are given the relief drawn and the Sun's night (setNight); the rest is looked at
 // once a second, when the clouds' reach is also centred on the aircraft.
 // It also hands the cloud volume the way ahead of the chased aircraft (wxAhead.ts aheadPath, given every frame by app.ts: setAhead)
@@ -148,6 +150,7 @@ const RADAR_READ_KM = REACH_KM[1] + REBUILD_KM
 /** The browser's worker for the gathering of a sky's clouds (Vite bundles the file named here); none outside a page. */
 const startGatherer = typeof Worker === 'undefined' || typeof document === 'undefined' ? null
   : (): WorkerLike<GatherJob, Gathered> => new Worker(new URL('./wxGather.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike<GatherJob, Gathered>
+const NO_PIXELS = new Uint8ClampedArray(0) // a frame sent to the gatherer without its pixels
 /** What tells one frame's pictures from another's ('' for none): the clouds are built again when it changes. */
 const satKey = (p: SatPictures | null): string => (p === null ? '' : `${p.timeMs}|${p.box.join()}`)
 /** A hazard area's colour: its edges', its footprint's and its label's. */
@@ -412,6 +415,7 @@ export class Weather3D {
   #pending: { clouds: CloudSpec[]; at: { lat: number; lon: number }; sat: SatGrid | null } | null = null // built round a place, drawn at the next frame
   readonly #sat: SatelliteSource | null // the weather satellite; null: none
   #builtSat = '' // the frame the clouds were last built with (satKey)
+  #satSent = '' // the frame whose pixels the gatherer was last sent (satKey): the jobs after bring it without them
   #satInfo: SatInfo | null = null // what the gatherer said of the frame it was last given
   #satUsed = false // the sky last gathered has the satellite's grid
   readonly #satCost = { decodeMs: Number.NaN, gridMs: Number.NaN } // what the frame held took the gatherer
@@ -942,25 +946,36 @@ export class Weather3D {
     }, at.lat - dLat, wrapLon(at.lon - dLon), this.#shift, RADAR_READ_KM)
     const id = ++this.#gatherAsk
     const sat = this.#pictures(at)
+    // A frame's pixels go to the gatherer once, handed over (1.3 MB: copied, they held this frame 3 to 4 ms); then the frame without them.
+    const pixels = sat !== null && sat.mask.length > 0 && this.#satSent !== satKey(sat)
     const job: GatherJob = {
       id, lat: at.lat, lon: at.lon, metars: this.#metars, metarGen: this.#metarGen, grid: this.#grid(), modelGen: this.#modelGen, tiles,
-      shift: { dLat, dLon }, readKm: RADAR_READ_KM, reachKm: REACH_KM[1], anew: this.#anew, sat, epochMs: this.#epochMs(),
+      shift: { dLat, dLon }, readKm: RADAR_READ_KM, reachKm: REACH_KM[1], anew: this.#anew, epochMs: this.#epochMs(),
+      sat: sat === null || pixels ? sat : { ...sat, mask: NO_PIXELS, tops: NO_PIXELS },
     }
     this.#anew = false
     this.#builtRadar = this.#radarGen
     this.#builtModel = this.#modelGen
     this.#builtSat = satKey(sat)
+    if (pixels) this.#satSent = satKey(sat)
     this.#gather.ask(job, (got) => {
       if (this.#destroyed) return
       if (sat !== null && got.satInfo?.bad === true) this.#sat?.reject(sat) // (the next look builds the sky again, without it)
+      if (sat !== null && got.satInfo?.missing === true) {
+        // The gatherer has not this frame (its worker was started again, or this thread stands in for it): sent again with its
+        // pixels at the next look, or, when they went with the worker, fetched again.
+        this.#satSent = ''
+        this.#builtSat = '?'
+        if (sat.mask.length === 0) this.#sat?.forget(sat)
+      }
+      if (got.satInfo !== null && got.satInfo.decodeMs > 0) this.#satCost.decodeMs = got.satInfo.decodeMs // (0: the frame was read at a job before; kept also from an answer that is overtaken)
       if (got.id !== this.#gatherAsk) return
       this.#satInfo = got.satInfo
       this.#satUsed = got.sat !== null
-      if (got.satInfo !== null && got.satInfo.decodeMs > 0) this.#satCost.decodeMs = got.satInfo.decodeMs // (0: the frame was read at a job before)
       if (got.satInfo !== null) this.#satCost.gridMs = got.satInfo.gridMs
       if (got.sat !== null) this.#known = true // the satellite has said where cloud is
       this.#pending = { clouds: got.clouds, at, sat: got.sat }
-    })
+    }, pixels ? [sat.mask.buffer, sat.tops.buffer] : [])
   }
 
   /** The satellite's pictures that may be used now for a field round a place of the drawn sky (the pixels are where the weather is: the place less the ?wxat shift); null: none. */

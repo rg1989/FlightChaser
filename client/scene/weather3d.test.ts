@@ -2520,3 +2520,35 @@ test('Weather3D with the satellite: pictures the gatherer cannot read are droppe
   assert.equal(r.w.satellite, null)
   assert.match(r.lines.at(-1)!, /some weather unavailable/)
 })
+
+test('Weather3D with the satellite: a frame\'s pixels go to the gatherer once, handed over; the jobs after bring the frame without them; a gatherer that has lost the frame gets the pixels again, or, when they are gone, the pictures are fetched again', async () => {
+  const asks: { job: GatherJob; transfer: Transferable[] | undefined; pixels: number }[] = []
+  const gather = { now: gatherer() }
+  const server = eumetview()
+  const source = new SatelliteSource({ fetch: server })
+  const r = rig({ satellite: source, gather: { ask: (job, done, transfer) => { asks.push({ job, transfer, pixels: job.sat?.mask.length ?? -1 }); done(gather.now(job)) }, destroy: () => {} } })
+  await open(r)
+  await looks(r, 1000, 3000)
+  const first = asks.find((a) => a.pixels > 0)!
+  assert.deepEqual(first.transfer, [first.job.sat!.mask.buffer, first.job.sat!.tops.buffer])
+  r.w.rebuildSky(false)
+  r.w.update(AC, 3016)
+  assert.deepEqual([asks.at(-1)!.pixels, asks.at(-1)!.transfer, asks.at(-1)!.job.sat!.timeMs], [0, [], SAT_T0], 'the frame, without its pixels')
+  assert.ok(r.sky.clouds.sats.at(-1) !== null)
+  // The gatherer is another (its worker failed, and this thread stands in): it has not the frame. The pixels are still here: sent again.
+  gather.now = gatherer()
+  r.w.rebuildSky(false)
+  await looks(r, 4000, 6000)
+  assert.ok(asks.at(-1)!.pixels > 0, 'sent again with its pixels')
+  assert.ok(r.sky.clouds.sats.at(-1) !== null)
+  // Lost again, and the pixels gone with the worker they were handed to: the pictures are fetched again (the browser has them).
+  gather.now = gatherer()
+  structuredClone(source.pictures!.mask.buffer, { transfer: [source.pictures!.mask.buffer] })
+  structuredClone(source.pictures!.tops.buffer, { transfer: [source.pictures!.tops.buffer] })
+  const fetched = server.asked.length
+  r.w.rebuildSky(false)
+  await looks(r, 7000, 11_000)
+  assert.equal(server.asked.length, fetched + 2)
+  assert.ok(asks.at(-1)!.pixels > 0 && r.sky.clouds.sats.at(-1) !== null)
+  assert.equal(source.down, false)
+})
