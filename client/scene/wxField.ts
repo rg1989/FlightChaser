@@ -37,7 +37,7 @@ const KM_PER_DEG = 111.195 // of latitude, on a sphere of 6,371 km
 const RAD = Math.PI / 180
 const RADIUS = 0.36 // a disc's radius, of its spec's billboard width (a puff fills about PUFF_FILL of the billboard)
 const SOLID = 0.55 // inside this share of the radius a disc weighs 1
-// profile()'s four numbers are written into the weather pass's shader too (cloudVolume.ts), so the two cannot drift.
+// profile()'s four numbers are written into the weather pass's shader too (cloudShaders.ts), so the two cannot drift.
 export const RISE = 0.14 // profile: full from this share of the way up from the base …
 export const FALL = 0.55 // … to this, then rounded off to nothing at the top …
 export const RISE_MAX_M = 300 // … but the base rises over no more than this …
@@ -225,13 +225,20 @@ export function sampleField(f: WxField | null, lat: number, lon: number, altM: n
   return coverAt(f, lat, lon, altM, { cover: 0, sev: 0 })
 }
 
+/** Bytes of an RGBA image, row by row from the first. */
+export interface Bitmap {
+  data: Uint8ClampedArray
+  width: number
+  height: number
+}
+
 /**
  * The field as one image for the GPU: 3 × 2 tiles of FIELD_N², band b at column b % 3 and row ⌊b / 3⌋ (x = (b % 3) × FIELD_N,
  * y = ⌊b / 3⌋ × FIELD_N; the sixth tile is empty), a texel in a tile as in the field (row 0 the south). R the cover, G the base and B the
  * top (each over HEIGHT_MAX_M), A the severity over 3, each 0 … 255. A texel just outside a cloud has no cover and has its heights and
  * severity (see the header). Not premultiplied: upload the bytes as they are, not through a canvas.
  */
-export function fieldAtlas(f: WxField): { data: Uint8ClampedArray; width: number; height: number } {
+export function fieldAtlas(f: WxField): Bitmap {
   const [width, height] = [3 * FIELD_N, 2 * FIELD_N]
   const data = new Uint8ClampedArray(width * height * 4)
   for (let b = 0; b < BANDS; b++) {
