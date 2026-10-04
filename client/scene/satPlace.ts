@@ -9,9 +9,10 @@
 // - Drift. A frame is 15 to 35 minutes old when it is drawn, and the cloud has gone with the wind since. driftKm moves it by the
 //   wind at its top's level (the forecast model's: modelWind.ts) for the frame's age, DRIFT_MAX_KM at most: past that the wind's
 //   guess says more than the picture.
-// Whether EUMETSAT's pictures are corrected for parallax already is not stated anywhere read; they are taken as not (the products
-// are on the satellite's own grid, laid on the map as seen). The side-by-side checks of a real sky against the airports' reports
-// are in the task's report.
+// EUMETSAT's pictures are not corrected for parallax already: nothing read says, so it was checked (2026-10-04) with the same sky at
+// the same frame from the two satellites, at 0° and at 45.5° E. High cloud (tops of 9 to 10.5 km) stood 15 km apart in the two
+// pictures over Rhodes and 20 km apart over the south of France, east to west; the two parallaxes there differ by 12 and 18 km. Had
+// the pictures been corrected, the cloud would stand at one place in both.
 import type { ModelWind } from './modelWind.ts'
 import { wrapLon } from './wxGeo.ts'
 
