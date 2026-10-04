@@ -2,12 +2,41 @@
 /* The Weather panel is the Layers panel's look (sceneToggles.css: the section heads, segments, rows and switches); only what it adds. */
 
 /* A segment's buttons are equal shares of the row, but none narrower than its words: "Severity colours" needs more than a third,
-   and takes it from the two beside it; Curtain, Fence and Box are thirds. */
+   and takes it from the two beside it; Curtain, Fence and Box are thirds. Words that do not fit the row go to a second one: nothing
+   is cut off at the panel's edge. */
+.fh-wxm-seg {
+  flex-wrap: wrap;
+}
+
 .fh-wxm-seg .fh-seg-b {
   flex: 1 1 0;
   min-width: max-content;
   padding: 0 8px;
   white-space: nowrap;
+}
+
+/* The clouds' opacity: its name, the slider, its value, in the panel's margins. */
+.fh-wxm-opacity {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 14px 10px;
+  color: var(--fh-muted);
+  font: 600 12px/1 var(--fh-font);
+}
+
+.fh-wxm-range {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  accent-color: var(--fh-accent);
+}
+
+.fh-wxm-amount {
+  flex: none;
+  width: 36px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /* The severity scale's four colours, under the clouds' look, in the panel's margins. */
@@ -18,6 +47,7 @@
 /* A part that is out of use (the switch is off, the view is top-down, the clouds have failed): the stored choice still shows, dimmed, and the pointer goes
    through it. The buttons inside are disabled as well (native), so the keys skip them. */
 .fh-wxm-seg[aria-disabled='true'],
+.fh-wxm-opacity[aria-disabled='true'],
 .fh-scene-row[aria-disabled='true'] {
   opacity: 0.4;
   pointer-events: none;

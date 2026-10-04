@@ -15,8 +15,8 @@
 //   with the frame's time, and carries EUMETSAT's credit.
 // It draws the hazard areas that have a top and whose ring passes within 800 km of the aircraft (wxGeo.ts picks them): the cloud
 // volume draws each ring's edge from the area's base (none: the ground) to its top, in the style chosen (hazardStyle: a curtain, a
-// fence or a box), so that the edge sorts with the cloud; under a curtain or a fence the ring's footprint lies on the ground (its
-// outline and a striped fill, Cesium's: the ground has depth, so cloud covers it rightly); and the area's name and heights are a label
+// fence or a box), and the area's top face as a faint roof, so that they sort with the cloud; nothing is laid on the ground under an
+// area (the map there stays as it is); and the area's name and heights are a label
 // at the ring's middle at the top height, placed with the place names (placeLabels.ts keeps them clear of each other and of the
 // flight-data frame). A list of SIGMETs that brings the same areas draws nothing again.
 // And the sky a pilot would see (a Sky: Cesium's parts in the app):
@@ -71,7 +71,7 @@
 // Should the volume's pass fail (cloudVolume.ts: a render error takes it out for good, a shader this graphics card will not compile
 // among them), the rest goes on: the panel's line says "3-D clouds stopped after a drawing error", the app is told once
 // (onCloudsFailed: it disables the Weather panel's Clouds segment and says the note), and the hazard areas, whose edges the pass drew, are marked by
-// their footprints on the ground in every style. ?wxbreak=1 is a check aid for this: it makes the pass's shader not compile.
+// their outlines on the ground in every style. ?wxbreak=1 is a check aid for this: it makes the pass's shader not compile.
 // `known` says whether any source of clouds has answered yet: until one has, an empty sky is not a clear one (the status line's).
 // ponytail: what a build adds can still appear at once in two cases. While a field is drawn the aircraft goes up to 20 km from its
 // middle on each axis, and the field's rim then cuts into the last 20 km of the reach on that side, where the reach is fading the
@@ -92,14 +92,14 @@
 // the cloud march held at that tier, the frames' times not asked. ?wxsat=0 is a fifth (parseWxSat): no satellite for this load, to
 // compare the sky with what the other sources alone make of it, and ?wxsat=pictures: the satellite's keyless pictures alone, not the
 // server's raw frames, to compare the two routes; `satellite` says what frame is held and by which route it came (for checks in the console).
-import { Cartesian3, ClassificationType, Color, CustomDataSource, Ellipsoid, Math as CesiumMath, StripeMaterialProperty, StripeOrientation, type Cartographic, type Viewer } from 'cesium'
+import { Cartesian3, ClassificationType, Color, CustomDataSource, Ellipsoid, Math as CesiumMath, type Cartographic, type Viewer } from 'cesium'
 import { distanceNm } from '../../shared/geo.ts'
 import { geoidN } from '../../shared/geoid.ts'
 import { MODEL_CELL_DEG, type Metar, type ModelGrid, type Sigmet } from '../../shared/wx.ts'
 import type { TerrainFrame } from '../types.ts'
 import { DEFAULT_UNITS, type Units } from '../ui/units.ts'
 import { REBUILD_KM, observedClouds, overcastShade, type CloudSpec } from './cloudField.ts'
-import { REACH_KM } from './cloudShaders.ts'
+import { REACH_KM, VEIL } from './cloudShaders.ts'
 import { CloudVolume, resumeRendering, type CloudLook, type HazardStyle } from './cloudVolume.ts'
 import { MARCH_TIERS, MarchPace } from './marchPace.ts'
 import { SculptedClouds, type SculptTint } from './sculptedClouds.ts'
@@ -136,11 +136,7 @@ const RETRY_MS = 30_000 // a failed ask is made again after this
 const LOOK_MS = 1000 // update() looks at its clocks and the aircraft this often
 export const HAZARD_KM = 800 // hazard areas are drawn when their ring passes this near the aircraft
 const PICK_KM = 10 // the hazard areas are picked again once the aircraft has moved this far
-// A hazard area's footprint on the ground, under a curtain or a fence (the mock's hatch): its fill's stripes, alike wide whatever
-// the ring's size, their two alphas, and its outline.
-const STRIPE_KM = 3
-const STRIPE_ALPHA: readonly [number, number] = [0.26, 0.09]
-const STRIPE_TURN = Math.PI / 4 // the fill's texture is turned so that its upward axis points north-east: the stripes, laid across that axis, are a diagonal hatch (the mock's)
+// A hazard area's outline on the ground: drawn only when the cloud pass has failed, and nothing else marks the area.
 const OUTLINE_ALPHA = 0.9
 const OUTLINE_PX = 2.5
 const LABEL_KEY = 'hazards' // this layer in the names overlay
@@ -148,7 +144,6 @@ const LABEL_RANK = 1.5 // after the seas (1), before every city (2)
 const NOTE = 'some weather unavailable'
 const NO_CLOUDS = '3-D clouds stopped after a drawing error' // the cloud volume's pass failed (cloudVolume.ts): any render error while it was in the scene, a shader this graphics card will not compile among them
 const KM_PER_NM = 1.852
-const KM_PER_DEG = 111.195 // of latitude, on a sphere of 6,371 km
 /**
  * The radar is read this far from the field's middle: as far as the cloud volume shows a cloud round the aircraft, and REBUILD_KM past
  * that, which is further than the aircraft ever is from the middle of the field drawn (fieldPlace.ts: 28 km). What a build adds then
@@ -160,7 +155,7 @@ const startGatherer = typeof Worker === 'undefined' || typeof document === 'unde
   : (): WorkerLike<GatherJob, Gathered> => new Worker(new URL('./wxGather.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike<GatherJob, Gathered>
 /** What tells one frame held from another ('' for none; the pictures of a time from the server's numbers of it): the clouds are built again when it changes. */
 const satKey = (p: SatPictures | null): string => (p === null ? '' : `${p.timeMs}|${p.box.join()}|${p.raw === undefined ? 'pictures' : 'numbers'}`)
-/** A hazard area's colour: its edges', its footprint's and its label's. */
+/** A hazard area's colour: its edges', its outline's and its label's. */
 const hazardColor = (h: Hazard): string => sigmetColor(h.sigmet.hazard)
 const PRECIP_OVER_BASE_M = 300 // rain or snow shows round a camera up to this far over its cloud's base,
 const PRECIP_OVER_GROUND_M = 3000 // or this far over the ground when no base is known
@@ -269,7 +264,7 @@ type Feed = 'metar' | 'sigmet' | 'radar' | 'model'
 
 /** What draws the clouds: the cloud volume (cloudVolume.ts: a march, in three looks) or the sculpted bodies (sculptedClouds.ts: geometry, the Sculpted look). */
 export type SkyClouds = Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'>
-  & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'tier' | 'scale' | 'passMs' | 'passParts' | 'drawn' | 'marchSize' | 'madeMs'>> & Partial<Pick<SculptedClouds, 'stats' | 'through' | 'tint'>>
+  & Partial<Pick<CloudVolume, 'look' | 'opacity' | 'field' | 'failed' | 'tier' | 'scale' | 'passMs' | 'passParts' | 'drawn' | 'marchSize' | 'madeMs'>> & Partial<Pick<SculptedClouds, 'stats' | 'through' | 'tint'>>
 
 /**
  * What draws the sky round the aircraft: Cesium's parts in the app (cesiumSky), fakes in tests. clouds is the renderer in use;
@@ -401,9 +396,10 @@ export class Weather3D {
   #demoSpecs: CloudSpec[] | null = null // the demo sky's clouds, once it is laid out
   #look: CloudLook
   #hazardStyle: HazardStyle = 'box'
+  #opacity = VEIL // the clouds' opacity: the most a cloud hides of what is behind it
   #ahead: AheadPath | null = null
   readonly #aheadShow = { track: false, slice: false }
-  readonly #footprints = new CustomDataSource('hazard-footprints') // each ring's outline and striped fill on the ground, under a curtain or a fence
+  readonly #footprints = new CustomDataSource('hazard-footprints') // each ring's outline on the ground, once the cloud pass has failed
   readonly #here: Aircraft = { lat: 0, lon: 0, altM: 0 }
   #track: number | undefined // the way it flies, when that is a way ahead: the next field is built round a place on it
   readonly #hereWC = new Cartesian3()
@@ -563,7 +559,7 @@ export class Weather3D {
   }
 
   /**
-   * The clouds' look: natural, severity colours or blocks (cloudVolume.ts), or sculpted (sculptedClouds.ts). Changed on the fly. To or
+   * The clouds' look: natural or severity colours (cloudVolume.ts), or sculpted (sculptedClouds.ts). Changed on the fly. To or
    * from the Sculpted look the renderer changes (Sky.cloudsFor): the one in use is destroyed (its pass or its primitive leaves the
    * scene, its worker ends), and the other is made, shown as the weather is, and given what the one before had: the hazard areas, the
    * way ahead, and at the next frame the clouds last drawn (its field is made anew: until then the status line has no field to ask).
@@ -578,6 +574,7 @@ export class Weather3D {
     if (other && !this.#destroyed && this.#sky.cloudsFor !== undefined) {
       this.#sky.clouds.destroy()
       this.#sky.clouds = this.#sky.cloudsFor(l)
+      this.#sky.clouds.opacity = this.#opacity
       this.#sky.clouds.show = this.#show
       this.#pace.reset()
       if (this.#show) {
@@ -591,8 +588,22 @@ export class Weather3D {
   }
 
   /**
+   * The clouds' opacity, 0 … 1: the most a cloud hides of what is behind it (the renderer in use is told; cloudShaders.ts VEIL until
+   * set). The sky's grey and the ground's dimming under an overcast are as much fainter under it. At 0 no cloud is drawn: the
+   * hazard areas and the aids are.
+   */
+  get opacity(): number {
+    return this.#opacity
+  }
+
+  set opacity(o: number) {
+    this.#opacity = Number.isFinite(o) ? Math.min(1, Math.max(0, o)) : VEIL
+    if (!this.#destroyed) this.#sky.clouds.opacity = this.#opacity
+  }
+
+  /**
    * How the hazard areas' edges are drawn: curtain, fence or box (cloudVolume.ts draws them); the box until set. Changed on the fly:
-   * the cloud volume is told, and the footprints are drawn under a curtain or a fence and taken away for a box.
+   * the cloud volume is told.
    */
   get hazardStyle(): HazardStyle {
     return this.#hazardStyle
@@ -968,7 +979,7 @@ export class Weather3D {
     this.#sky.precip.set(fall)
     if (fall !== null && !this.#falling) this.#aimedMs = -Infinity // aimed at the next frame
     this.#falling = fall !== null
-    this.#shadeTarget = this.#overcast()
+    this.#shadeTarget = this.#overcast() * Math.min(1, this.#opacity / VEIL)
     this.#status()
   }
 
@@ -1193,7 +1204,7 @@ export class Weather3D {
 
   /**
    * The cloud pass has failed for good (seen at a look; Cesium's own sky tells at once): its clouds and the hazard areas' edges are
-   * gone from the view. The areas are then marked by their footprints in every style, the line says so, and the app is told, once
+   * gone from the view. The areas are then marked by their outlines on the ground in every style, the line says so, and the app is told, once
    * (it disables the Weather menu's Clouds segment: its choices do nothing now, and says the note). The rest goes on: the field is still built, so
    * the status line and the ahead strip still speak.
    */
@@ -1206,33 +1217,20 @@ export class Weather3D {
   }
 
   /**
-   * The hazard areas picked, drawn: their edges by the cloud volume, in the style chosen; and under a curtain or a fence each ring's
-   * footprint on the ground, by Cesium (a box has none, unless the cloud pass has failed: then nothing else marks an area): the
-   * outline clamped to the ground, and a fill in stripes STRIPE_KM wide that
-   * follow each other north-eastward. The stripes are counted over the ring's extent that way: the texture Cesium gives a polygon on
-   * the ground spans the ring as it is turned (Cesium's Geometry.js, _textureCoordinateRotationPoints: read, not seen drawn).
+   * The hazard areas picked, drawn: their edges and their roofs by the cloud volume, in the style chosen. Nothing lies on the ground
+   * under an area, unless the cloud pass has failed: then nothing else marks it, and each ring's outline is laid there, by Cesium,
+   * clamped to the ground.
    */
   #drawHazards(): void {
     this.#sky.clouds.setHazards(this.#hazards, this.#hazardStyle, hazardColor)
     const ents = this.#footprints.entities
     ents.suspendEvents()
     ents.removeAll()
-    if (this.#hazardStyle !== 'box' || this.#cloudsFailed) {
+    if (this.#cloudsFailed) {
       for (const h of this.#hazards) {
         const color = Color.fromCssColorString(hazardColor(h))
         for (const ring of h.rings) {
-          const [lon0, lat0] = ring[0]
-          const along = ring.map(([lon, lat]) => (wrapLon(lon - lon0) * KM_PER_DEG * Math.cos(lat0 * CesiumMath.RADIANS_PER_DEGREE) + (lat - lat0) * KM_PER_DEG) / Math.SQRT2)
           const positions = Cartesian3.fromDegreesArray(ring.flat())
-          ents.add({
-            polygon: {
-              hierarchy: positions, stRotation: STRIPE_TURN, classificationType: ClassificationType.TERRAIN,
-              material: new StripeMaterialProperty({
-                evenColor: color.withAlpha(STRIPE_ALPHA[0]), oddColor: color.withAlpha(STRIPE_ALPHA[1]), orientation: StripeOrientation.HORIZONTAL,
-                repeat: (Math.max(...along) - Math.min(...along)) / STRIPE_KM,
-              }),
-            },
-          })
           const closed = Cartesian3.equals(positions[0], positions[positions.length - 1])
           ents.add({
             polyline: {

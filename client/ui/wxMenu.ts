@@ -2,12 +2,12 @@
 // The Weather panel (a square of its own under the Layers square, always on the rail): a master switch (Weather, W: ScenePrefs.wx) with
 // what hangs under it: the rain scale in the radar's colours and the airports legend (the top-down map's) and the status line (both
 // views', with Open-Meteo's credit in it, and EUMETSAT's while the satellite's frame is in use, as links to their sites, as their licences
-// ask); Clouds, in four looks (natural, severity colours, blocks, sculpted) with the severity scale's four colours under them; Hazard areas, in
+// ask); Clouds, in three looks (natural, severity colours, sculpted), their opacity (a slider, none to solid: at none the hazard areas show alone) and the severity scale's four colours; Hazard areas, in
 // three styles (curtain, fence, box); Looking ahead, a switch row each for the track line, the level slice and the ahead strip (the
 // level slice is not drawn in the Sculpted look: there its switch is disabled, keeps its choice, and its hint says so). The
 // looks, styles and aids are the chase's: top-down they show disabled, with one line, "In the chase view". With the master switch off
-// every other control keeps the choice stored but is disabled (native `disabled` on the buttons, aria-disabled on the row or the button
-// group, which wxMenu.css dims); nothing in WxPrefs changes with the switch. After a drawing error the Clouds segment is disabled; in
+// every other control keeps the choice stored but is disabled (native `disabled` on the buttons and the slider, aria-disabled on the row or the
+// group, which wxMenu.css dims); nothing in WxPrefs changes with the switch. After a drawing error the Clouds segment and slider are disabled; in
 // History and a scenario ("Live only") the master switch is. It is the Layers panel's look (sceneToggles.css: its segments, rows and
 // switches). A click asks the app for the changed prefs through onChange (or onMaster, for the switch) and changes nothing itself;
 // update() and setView() only re-render, so the app is the one place the choices are applied and stored (wxPrefs.ts).
@@ -42,7 +42,7 @@ export interface WxMenuHandle {
   destroy(): void
 }
 
-const LOOKS: [CloudLook, string][] = [['natural', 'Natural'], ['severity', 'Severity colours'], ['blocks', 'Blocks'], ['sculpted', 'Sculpted']]
+const LOOKS: [CloudLook, string][] = [['natural', 'Natural'], ['severity', 'Severity colours'], ['sculpted', 'Sculpted']]
 const HAZARDS: [HazardStyle, string][] = [['curtain', 'Curtain'], ['fence', 'Fence'], ['box', 'Box']]
 // The severity scale's names (wxAhead.ts SEV_COLOR is in this order), as a legend says them.
 const LEGEND = ['Cloud', 'Light rain', 'Heavy rain', 'Thunderstorm']
@@ -56,8 +56,11 @@ const AIDS: Aid[] = [
   { key: 'strip', icon: 'altitude', label: 'Ahead strip', hint: 'Side view of the next 80 km' },
 ]
 const NO_SLICE = 'Not in the Sculpted look yet' // the level slice's hint in that look, where it is not drawn
-/** A control group or a row, in use or not: its buttons, and the box that says so. */
-interface Part { box: HTMLElement; buttons: HTMLButtonElement[]; off: boolean }
+/** A control group or a row, in use or not: its controls, and the box that says so. */
+interface Part { box: HTMLElement; buttons: (HTMLButtonElement | HTMLInputElement)[]; off: boolean }
+/** The opacity as the slider and its label say it: whole hundredths, and "Off" for none. */
+const percent = (opacity: number): number => Math.round(opacity * 100)
+const opacityText = (opacity: number): string => (percent(opacity) === 0 ? 'Off' : `${percent(opacity)} %`)
 
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ''): HTMLElementTagNameMap[K] {
   const el = document.createElement(tag)
@@ -96,7 +99,7 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
   const switches = new Map<Aid['key'], HTMLButtonElement>()
   const parts: Part[] = []
 
-  const part = (box: HTMLElement, buttons: HTMLButtonElement[]): Part => {
+  const part = (box: HTMLElement, buttons: Part['buttons']): Part => {
     box.setAttribute('aria-disabled', 'false')
     const p = { box, buttons, off: false }
     parts.push(p)
@@ -190,7 +193,20 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     k.style.setProperty('--c', SEV_COLOR[i])
     legend.append(k)
   })
-  clouds.append(looks.box, legend)
+  // The clouds' opacity: none (the hazard areas alone) to solid.
+  const opacity = h('label', 'fh-wxm-opacity')
+  const range = h('input', 'fh-wxm-range')
+  range.type = 'range'
+  range.min = '0'
+  range.max = '100'
+  range.step = '2'
+  range.value = String(percent(prefs.opacity))
+  range.setAttribute('aria-label', 'Cloud opacity')
+  const amount = h('span', 'fh-wxm-amount', opacityText(prefs.opacity))
+  range.addEventListener('input', () => opts.onChange({ ...prefs, opacity: Number(range.value) / 100 }))
+  opacity.append(h('span', 'fh-wxm-range-name', 'Opacity'), range, amount)
+  const dial = part(opacity, [range])
+  clouds.append(looks.box, opacity, legend)
   const hazards = section('Hazard areas')
   const styles = segment('hazard', 'Hazard area style', HAZARDS)
   hazards.append(styles.box)
@@ -209,6 +225,7 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     const use = wx && chasing // the looks, styles and aids act in the chase, with the weather on
     setOff(m.part, !live)
     setOff(looks, !use || failed)
+    setOff(dial, !use || failed)
     setOff(styles, !use)
     for (const a of aids) {
       const undrawn = a.key === 'slice' && prefs.look === 'sculpted' // the Sculpted look has no level slice
@@ -235,6 +252,10 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     update(next) {
       for (const s of segs) if (next[s.key] !== prefs[s.key]) s.b.setAttribute('aria-pressed', String(next[s.key] === s.value))
       for (const [key, sw] of switches) if (next[key] !== prefs[key]) sw.setAttribute('aria-checked', String(next[key]))
+      if (next.opacity !== prefs.opacity) {
+        range.value = String(percent(next.opacity))
+        amount.textContent = opacityText(next.opacity)
+      }
       const look = next.look !== prefs.look
       prefs = { ...next }
       if (look) fit() // the level slice's switch goes out of use in the Sculpted look, and comes back

@@ -26,15 +26,14 @@ test('the march\'s tier (marchPace.ts): a ray\'s step budget is a number it is g
   for (const text of ['uniform float u_steps;', 'uniform float u_detail;', 'float(used) >= u_steps', 'float lean = 128.0 / u_steps;', 'max(0.0, float(used) - 0.6 * u_steps) / (u_steps / 12.0)', 'lod < 0.12 && u_detail < 0.5']) {
     assert.ok(MARCH_SHADER.includes(text), text)
   }
-  assert.equal(MARCH_SHADER.split('for (int i = 0; i < 128; i++)').length, 3, 'both walks keep their loops of 128: the budget ends them sooner')
-  assert.ok(MARCH_SHADER.includes('if (t >= tEnd || float(i) >= u_steps) break;'), 'the blocks\' walk too')
+  assert.equal(MARCH_SHADER.split('for (int i = 0; i < 128; i++)').length, 2, 'the walk keeps its loop of 128: the budget ends it sooner')
   assert.ok(!MIX_SHADER.includes('u_steps') && !MIX_SHADER.includes('u_detail'))
 })
 
 test('the cheap tiers (marchPace.ts): a smaller step budget lengthens the search\'s steps, not the steps through dense cloud: the veil\'s cap ends that walk after a few, and each gives the cloud\'s colour a sample (one long step gave it one, and a cheap tier\'s clouds were flat patches); the light is two samples toward the Sun at every tier, and the mix the same', () => {
   assert.ok(MARCH_SHADER.includes('ds = max(ds / lean, min(0.25 / (sigma(sev) * d), 4.0 * small) * stretch);'))
   assert.ok(MARCH_SHADER.includes('float sh = exp(-(body(p + sun * 0.45, nr) * 1.1 + body(p + sun * 1.3, nr) * 1.6));') && !MARCH_SHADER.includes('u_shade'))
-  assert.ok(MIX_SHADER.includes('bool even = u_look < 1.5;'))
+  assert.ok(MIX_SHADER.includes('vec2 lo = 0.25 - 0.5 * d, mid = vec2(0.5), hi = 0.25 + 0.5 * d;'))
 })
 
 test('the march: a ray is clipped to the box the cover stands in, not to the whole field; a sample whose height no band near holds is not read from the field (nor the fine warp\'s noise for it); the edges are read only by a ray that passes the circle they stand in', () => {
@@ -47,7 +46,7 @@ test('the march: a ray is clipped to the box the cover stands in, not to the who
   assert.ok(Math.abs(BOX_PAD_KM - 8.1) < 1e-9, 'the clear-air map\'s margin (3.1 km) and the room for the map\'s bend (5 km)')
 })
 
-test('the clouds are see-through: a ray\'s weather hides no more than VEIL of what is behind it (a little over half: the ground, the roads and the names stay readable through a cloud, and the aircraft in thick cloud is veiled, not gone), in all three looks, and the march ends when it has hidden that much', () => {
+test('the clouds are see-through: a ray\'s weather hides no more than the opacity chosen of what is behind it (VEIL until one is, a little over half: the ground, the roads and the names stay readable through a cloud, and the aircraft in thick cloud is veiled, not gone), in both looks, and the march ends when it has hidden that much; at none, no cloud is drawn and no step taken', () => {
   assert.ok(VEIL >= 0.55 && VEIL <= 0.6, `${VEIL}`)
   // the rule, as the shader has it: a part adds what it would, or what is left under the cap
   assert.equal(veiled(0.2, 0), 0.2, 'under the cap: as it is')
@@ -57,13 +56,23 @@ test('the clouds are see-through: a ray\'s weather hides no more than VEIL of wh
   let hidden = 0
   for (const part of [0.1, 0.3, 0.05, 0.6, 0.9, 0.2]) hidden += (1 - hidden) * veiled(part, hidden)
   assert.ok(Math.abs(hidden - VEIL) < 1e-12, `part after part, a ray hides ${hidden}`)
+  // another opacity is another cap: a fainter cloud, a solid one, none
+  assert.equal(veiled(0.9, 0, 0.3), 0.3)
+  assert.equal(veiled(0.9, 0, 1), 0.9, 'solid: as it is')
+  assert.equal(veiled(0.9, 0, 0), 0, 'none: nothing is laid')
   for (const text of [
-    `const float VEIL = ${VEIL};`,
-    'float veiled(float a, float A) { return min(a, max(0.0, (VEIL - A) / max(1.0 - A, 1.0e-4))); }',
-    'if (t >= tEnd || A >= VEIL - 0.002 || float(used) >= u_steps) break;', // the volumes' walk ends at the cap
-    'fogA = min(VEIL, 1.0 - exp(-sigma(mistSev) * mist));', // from inside a block: its mist veils
-    'float fa = max(veiled(VEIL, 1.0 - (1.0 - fogA) * (1.0 - A)), FIRM * line);', // a block\'s face veils, its edge lines stay firm
+    'uniform float u_veil;',
+    'float veiled(float a, float A) { return min(a, max(0.0, (u_veil - A) / max(1.0 - A, 1.0e-4))); }',
+    'if (t >= tEnd || A >= u_veil - 0.002 || float(used) >= u_steps) break;', // the walk ends at the cap: at none, before its first step
   ]) assert.ok(MARCH_SHADER.includes(text), text)
-  assert.equal(MARCH_SHADER.split('a = veiled(a, A);').length - 1, 3, 'the cloud\'s part and the rain\'s, in the volumes and in the blocks')
+  assert.equal(MARCH_SHADER.split('a = veiled(a, A);').length - 1, 2, 'the cloud\'s part and the rain\'s')
+  assert.ok(!/blocks|u_look < 1\.5/.test(MARCH_SHADER + MIX_SHADER), 'the blocks are gone')
   assert.ok(!MARCH_SHADER.includes('0.985') && !MARCH_SHADER.includes('A = 1.0;'), 'nothing is solid any more')
+})
+
+test('a hazard area has a roof in every style: its top face, faint, is laid where the ray meets the top height inside the area, whatever u_hazard says', () => {
+  const body = MARCH_SHADER.slice(MARCH_SHADER.indexOf('void hazards('), MARCH_SHADER.indexOf('// The level slice'))
+  assert.equal(body.split('if (face && inside) ev(faceT, faceC, 0.1);').length - 1, 2, 'between two areas, and after the last')
+  const face = body.slice(body.indexOf('vec4 ec ='), body.indexOf('vec2 e = b - a;'))
+  assert.ok(face.includes('inside = !inside;') && !face.includes('box'), 'the face is found for a curtain and a fence too')
 })

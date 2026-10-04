@@ -95,6 +95,7 @@ void main() {
 /** The second, into the view. */
 export const SCULPT_FS = `
 uniform float u_light; // the Sun's brightness: 1 by day
+uniform float u_opacity; // the opacity chosen, as a share of the look's own: 1 as it is here
 uniform sampler2D u_nearest; // each pixel's nearest fragment's distance, packed
 in vec3 v_positionEC;
 in vec3 v_normalEC;
@@ -142,6 +143,6 @@ void main() {
   a = mix(a, ${f(CASING_ALPHA)}, inner);
   c = mix(c, mix(tint, vec3(1.0), 0.7), edge);
   a = mix(a, ${f(EDGE_ALPHA)}, edge);
-  out_FragColor = vec4(c * u_light, a);
+  out_FragColor = vec4(c * u_light, min(1.0, a * u_opacity));
 }
 `

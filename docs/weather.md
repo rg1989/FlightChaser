@@ -34,16 +34,18 @@
   The rail button shows the state: a cloud in the accent colour when the weather is on, a crossed-out grey cloud when it is off (and in
   History and scenarios, where none is drawn; the switch is then disabled and the line says "Live only"). With the switch off every
   control below keeps your choice but is disabled; they are the chase's, so top-down they are disabled too ("In the chase view").
-  **Clouds:** natural, severity colours (cloud white, light rain blue, heavy rain amber, thunderstorm red) or
-  blocks. **Hazard areas:** their edges as a curtain or a fence (each with the area's striped footprint on the ground) or a box.
+  **Clouds:** natural, severity colours (cloud white, light rain blue, heavy rain amber, thunderstorm red) or sculpted, and their
+  opacity (a slider: at "Off" no cloud is drawn and the hazard areas show alone). **Hazard areas:** their edges as a curtain, a
+  fence or a box, each with a faint roof at the area's top height; nothing is drawn on the ground under an area.
   **Looking ahead:** three switches, the track line (the next six minutes on this heading, a label at each minute, coloured where it
   enters weather), the level slice (the weather at the aircraft's own altitude within 60 km, with rings at 10, 20 and 40 km) and the
   ahead strip (a side view of the next 80 km: the weather's cells, the hazard areas, the aircraft's way; not in a window under 480 px
-  high). A choice applies at once and is kept in this browser; `?wxlook=natural|severity|blocks`, `?wxhaz=curtain|fence|box` and
+  high). A choice applies at once and is kept in this browser; `?wxlook=natural|severity|sculpted`, `?wxopacity=0…100`, `?wxhaz=curtain|fence|box` and
   `?wxtrack`, `?wxslice`, `?wxstrip` (`=0` or `=1`) set them for one load, and are not kept.
-- The clouds are see-through, in all three looks: a cloud hides a little over half of what is behind it and no more, so the ground,
-  the roads and the names stay readable under it, and the aircraft in thick cloud is veiled, not gone. A cloud's edge and its lit
-  and shadowed sides still show; a block's edge lines stay firm; the shadows on the ground are light.
+- The clouds are see-through, in every look: at the opacity they start with a cloud hides a little over half of what is behind it
+  and no more, so the ground, the roads and the names stay readable under it, and the aircraft in thick cloud is veiled, not gone.
+  A cloud's edge and its lit and shadowed sides still show; the shadows on the ground are light. The opacity slider makes them
+  fainter or more solid.
 - The clouds are drawn at one of nine tiers, 0 the finest (half the view's size, 128 steps a ray) and 8 the cheapest (a sixth of
   the view's size, 40 steps). The app starts at tier 6, a cheap one (a quarter of the view's size, 56 steps), and goes finer only
   when the graphics card's own time for the cloud pass proves the room (a budget of 4 ms a frame; the browser must have the timer

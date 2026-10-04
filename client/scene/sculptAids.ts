@@ -6,7 +6,8 @@
 //   with a line along the top and a fainter one along the base;
 // - fence: a rail along the top, and posts from the base to the top at each corner and every POST_KM between;
 // - box: the volume, faintly filled, with its edges.
-// The footprint on the ground under a curtain or a fence is Weather3D's, as in the other looks.
+// A curtain and a fence have the area's top face too, as faint as the box's fill: a roof over the walls. Nothing is laid on the
+// ground under an area, as in the other looks.
 // The track line is the way ahead (wxAhead.ts aheadPath) as a line of short pieces, each pale in clear air and in the severity's
 // colour where it is inside a body as drawn (sculptInside.ts trackSeverities): it shows where on this heading the aircraft enters
 // cloud, and of what kind. Its places follow the aircraft every frame.
@@ -21,7 +22,7 @@ import { wrapLon, type Hazard } from './wxGeo.ts'
 const POST_KM = 12 // a fence's posts stand at each corner and this far apart between
 const CURTAIN_ALPHA = 0.55 // a curtain's colour along its top
 const CURTAIN_FADE = 0.6 // and it has faded to nothing this share of the way down
-const BOX_ALPHA = 0.1 // a box's fill
+const BOX_ALPHA = 0.1 // a box's fill, and a curtain's or a fence's roof
 const LINE_PX = 2
 const TRACK_PX = 3
 const TRACK_CLEAR = Color.fromCssColorString('#d8ecff').withAlpha(0.9) // the track line in clear air
@@ -75,6 +76,7 @@ export function sceneAids(viewer: Viewer): SculptAids {
             continue
           }
           ents.add({ polyline: { positions: top, width: LINE_PX, material: c.withAlpha(0.95) } })
+          ents.add({ polygon: { hierarchy: top.slice(0, -1), height: h.topM, material: c.withAlpha(BOX_ALPHA) } })
           if (style === 'curtain') {
             ents.add({ wall: { positions: top, minimumHeights: closed.map(() => h.baseM), material: new ImageMaterialProperty({ image: curtainImage(viewer.container.ownerDocument, c), transparent: true }) } })
             ents.add({ polyline: { positions: base, width: 1, material: c.withAlpha(0.45) } })

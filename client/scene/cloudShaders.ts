@@ -25,20 +25,16 @@
 // is wxField.ts sampleField's (each band whose heights hold the point, cover × profile, the largest winning and giving the severity),
 // taken where a domain warp puts the point and eroded by four octaves of the noise, as the approved mock does
 // (.planning/mocks/chase-weather-mocks.html). In the two volume looks it is drawn times 1.5 and capped at 1 (GAIN, the mock's: bodies
-// are dense, their edges crisp), so what is drawn is denser than sampleField's number; the blocks use the number as it is. The noise is
+// are dense, their edges crisp), so what is drawn is denser than sampleField's number. The noise is
 // fixed to the Earth, not to the field: a field built round another place keeps every cloud's detail.
-// The clouds are see-through, in all three looks: a ray's weather (cloud, rain, a block's face, the mist inside a block) hides no more
-// than VEIL of what is behind it, a little over half, so that the ground, the roads and the names stay readable under a cloud and
-// the aircraft in thick cloud is veiled, not gone: where the place is, how high and over what matters more than a cloud that
-// looks solid. A cloud's edge and its lit and shadowed sides still show: its colour is its near side's, gathered until the cap is
-// reached, and there the walk ends (so thick cloud is also the cheapest to walk). A block's edge lines stay firm (FIRM).
-// Three looks, switched on the fly (look): natural (sunlit white to shadowed blue-grey, by two samples toward the light; darker with
-// severity), severity (the same, tinted by the severity's colour from light rain up) and blocks (the sky in cells of 1 × 1 km and 500 m
-// of height, a cell solid when the field's cover at its middle is over 0.28: faces shaded by the way they face, darker edges, the
-// severity's colour, veiling what is behind them; from inside a body, a mist of its colour). The blocks are walked cell by cell: each step ends on the cell's far
-// face, by the ray's way on the field's map at that cell, so the Earth's curve is in it and a face is exact as far as the walk gets:
-// 128 cells where weather is near, and strides between. (The plan was steps of a quarter cell and a bisect back to the face: those
-// reach 12 to 27 km, and a storm may stand 100 km off.) Under a
+// The clouds are see-through, in both looks: a ray's weather (cloud, rain) hides no more than the opacity chosen (u_veil: the Weather
+// menu's; VEIL, a little over half, until one is) of what is behind it, so that the ground, the roads and the names stay readable
+// under a cloud and the aircraft in thick cloud is veiled, not gone: where the place is, how high and over what matters more than a
+// cloud that looks solid. A cloud's edge and its lit and shadowed sides still show: its colour is its near side's, gathered until
+// the cap is reached, and there the walk ends (so thick cloud is also the cheapest to walk). At 0 no cloud or rain is drawn and no
+// step is taken: the hazard areas and the level slice are still laid.
+// Two looks, switched on the fly (look): natural (sunlit white to shadowed blue-grey, by two samples toward the light; darker with
+// severity) and severity (the same, tinted by the severity's colour from light rain up). Under a
 // cloud of light rain or more a thin veil of rain, streaked, falls to the ground. The cover fades to nothing between 130 and 150 km
 // from the aircraft (fade). By night the light is dimmed as cloudField.ts sunBrightness says, and the shadows go.
 // The same march draws what is see-through and thin, so that it sorts with the cloud (Cesium's own lines and volumes, drawn before the
@@ -47,8 +43,9 @@
 // over what it has gathered when its walk passes it; what is left is laid at the end, short of what the pixel shows.
 // - A hazard area's edge is a wall over the line between two corners of its ring, from the area's base to its top, in one of three
 //   styles (u_hazard): a curtain (a line at the top and one at the base, between them a veil strongest at the top and gone a quarter
-//   of the way up, in pleats 2 km wide), a fence (the two lines and a post every 4 km) or a box (a faint fill, lines at its edges, and
-//   the area's top face). The edges nearest the aircraft, at most 48, are given as an image of bytes (wxEdges.ts hazardEdges,
+//   of the way up, in pleats 2 km wide), a fence (the two lines and a post every 4 km) or a box (a faint fill and lines at its
+//   edges). In every style the area's top face is laid too, faintly: a roof over the walls, so the ground under an area is left as
+//   it is. The edges nearest the aircraft, at most 48, are given as an image of bytes (wxEdges.ts hazardEdges,
 //   packEdges: two bytes a number, read with texelFetch).
 // - The level slice is the field's cover at the aircraft's height within 60 km of it, filled in its severity's colour with a brighter
 //   rim, with rings at 10, 20 and 40 km.
@@ -62,9 +59,9 @@
 // field's cover as it is (not times GAIN), as the status line does (wxAhead.ts).
 // ponytail: the track line is laid over the cloud, not sorted with it: where it passes behind a storm's tower it is drawn over the
 // tower. Upgrade: the line as an event of the march, at the mix's size (the march would have to hand on the depth it hides to).
-// ponytail: sea level is the geoid's at the field's middle, over the whole field (it differs by a few metres across it), and the blocks'
-// cells and the rain's streaks are laid in the field's frame: they shift when the field is built round another place. Upgrade: a grid
-// fixed to the Earth.
+// ponytail: sea level is the geoid's at the field's middle, over the whole field (it differs by a few metres across it), and the
+// rain's streaks are laid in the field's frame: they shift when the field is built round another place. Upgrade: a grid fixed to
+// the Earth.
 // ponytail: a band's shadow is its cover where the light's ray meets the band's lowest base, not the cloud's whole height marched
 // toward the light. Upgrade: a few steps up the ray.
 // ponytail: a ray keeps the first 8 events it finds (the aids, then the edges as they are listed, the nearest area first), not the 8
@@ -80,8 +77,8 @@ export const ATLAS_W = 3 * FIELD_N // wxField.ts fieldAtlas: 3 × 2 tiles
 export const ATLAS_H = 2 * FIELD_N
 const WARP_KM = 2.2 // the warp moves a sample no further than this over the map (1.525 km each way)
 // What the march takes off the clear-air map's word before it strides: the word is mixed from the four cells round a place, each as
-// much as half a cell's diagonal from it, and the sample taken there is read where the warp puts it. (A block's middle, 0.7 km from
-// its corner, and the light's two samples, 1.3 km off at most, are nearer than the warp's reach.)
+// much as half a cell's diagonal from it, and the sample taken there is read where the warp puts it. (The light's two samples,
+// 1.3 km off at most, are nearer than the warp's reach.)
 const CLEAR_MARGIN_KM = Math.ceil((Math.SQRT1_2 * NEAR_KM + WARP_KM) * 10) / 10
 const STRIDE_KM = 20 // the longest stride: the ray's height is taken to change evenly along it, and over this far the Earth's curve adds 30 m
 const SEARCH = 0.035 // a search step is this share of the distance from the camera (SEARCH_MIN_KM at least) …
@@ -110,17 +107,17 @@ const SIGMA = 7 // extinction per km of full cloud (the mock's) …
 const SIGMA_STORM = 11 // … and in heavy rain and storms
 const RAIN = 0.1 // the rain's veil: this share of its cloud's extinction …
 const RAIN_MOST = 0.5 // … and however much rain the ray passes, it hides no more than this of what is behind: a veil, not a wall
-const FILL = 0.28 // blocks: a cell is solid when the field's cover at its middle is over this
 /**
- * The most of what is behind it that a ray's weather may hide (the user's wish: the clouds are felt to be there, and the map under
- * them is still read). The ground shadows are lighter in the same spirit (cloudVolume.ts SHADOW).
+ * The most of what is behind it that a ray's weather may hide, until the Weather menu's opacity says otherwise (the user's wish: the
+ * clouds are felt to be there, and the map under them is still read). The ground shadows are lighter in the same spirit
+ * (cloudVolume.ts SHADOW).
  */
 export const VEIL = 0.58
-const FIRM = 0.9 // blocks: a cell's edge lines hide this much, whatever the cap: the faces veil, the edges stay firm
+const ROOF = 0.1 // a hazard area's top face hides this much: a roof felt overhead, the sky still read through it
 
 /** The shader's veiled(): what a part that would hide `a` of what is behind it adds when the ray has hidden `hidden` already: `a`, or what is left under the cap. */
-export function veiled(a: number, hidden: number): number {
-  return Math.min(a, Math.max(0, (VEIL - hidden) / Math.max(1 - hidden, 1e-4)))
+export function veiled(a: number, hidden: number, cap = VEIL): number {
+  return Math.min(a, Math.max(0, (cap - hidden) / Math.max(1 - hidden, 1e-4)))
 }
 const SHADOW_LOW = 0.26 // the light's ray is taken no flatter than 15° for the shadows (a 2° sun would lay them 40 km off)
 // The mix: a march pixel weighs 1 / (1 + (its depth's difference from the pixel's / this)²). Depths are logarithmic: 0.01 is a quarter
@@ -214,7 +211,8 @@ uniform float u_hi[${BANDS}]; // and highest top
 uniform float u_floor[${BANDS}]; // how low it is read: its lowest base, or the sea when rain falls from it
 uniform float u_top; // the highest top of all (with no cloud: under the ground)
 uniform vec2 u_plane; // the aircraft on the map: the reach is round it
-uniform float u_look; // 0 natural, 1 severity colours, 2 blocks
+uniform float u_look; // 0 natural, 1 severity colours
+uniform float u_veil; // the most a ray's weather hides of what is behind it (the opacity chosen): the clouds are see-through; 0: none drawn
 uniform float u_light; // the Sun's brightness: 1 by day
 uniform sampler2D u_edges; // packEdges: the hazard areas' edges, ${EDGE_TEXELS} texels each, in one row
 uniform float u_edgeCount; // how many of them
@@ -236,9 +234,6 @@ const float THIN = ${glsl(THIN)}; // cover times profile times GAIN under this i
 const float NOISE_MEAN = ${glsl(NOISE_MEAN)};
 const float HOLD = ${glsl(HOLD_KM)};
 const float PAD = 1.0; // the warp moves a sample's height by 0.9 km at most
-const vec3 CELL = vec3(1.0, 1.0, 0.5); // blocks: a cell's size east, north and up
-const float VEIL = ${glsl(VEIL)}; // the most a ray's weather hides of what is behind it: the clouds are see-through
-const float FIRM = ${glsl(FIRM)}; // blocks: an edge line hides this much, whatever the cap
 const float EDGE_KM = ${glsl(EDGE_KM)}; // packEdges: an edge's end is packed over this far each way,
 const float EDGE_Q = ${glsl(EDGE_Q)}; // this far apart;
 const float HEIGHT_Q = ${glsl(HEIGHT_Q)}; // a height this far apart, from the sea;
@@ -256,8 +251,8 @@ int gI = 0;
 float sigma(float sev) { return sev > 1.5 ? ${glsl(SIGMA_STORM)} : ${glsl(SIGMA)}; }
 
 // What a part of the weather that would hide a of what is behind it adds when the ray has hidden A already: a, or what is left
-// under the cap (nothing, once the ray has hidden VEIL).
-float veiled(float a, float A) { return min(a, max(0.0, (VEIL - A) / max(1.0 - A, 1.0e-4))); }
+// under the cap (nothing, once the ray has hidden u_veil).
+float veiled(float a, float A) { return min(a, max(0.0, (u_veil - A) / max(1.0 - A, 1.0e-4))); }
 
 // The clear-air map's word for band b (survey), less the margin: how far the ray may go over the map, km, before the band's cover may
 // be met; 0 or under: it may be here.
@@ -396,7 +391,7 @@ vec2 atHeight(vec3 ro, vec3 rd, float H) {
 // The rain's colour for the look: grey-blue, or its severity's.
 vec3 rainCol(float sev) {
   vec3 c = vec3(0.5, 0.56, 0.66);
-  return u_look < 0.5 ? c : u_look < 1.5 ? mix(c, sevCol(sev), 0.62) : sevCol(sev) * 0.85;
+  return u_look < 0.5 ? c : mix(c, sevCol(sev), 0.62);
 }
 
 // The rain's streaks at a place of the frame, t km along the ray: shafts a few km wide, and thin upright lines in them near the
@@ -457,9 +452,9 @@ float word(vec2 b) {
 }
 
 // The hazard areas' edges (packEdges), each a wall over the line between its two ends, from its area's base to its top, in the style
-// chosen (the mock's). For a box the area's top face is laid too: where the ray meets the top height, if that place is inside the
-// area's rings, which it is when a line from it eastward crosses an odd number of the area's edges (they are listed together, the
-// first of them marked; an area with an edge missing has no top face).
+// chosen (the mock's). In every style the area's top face is laid too, its roof: where the ray meets the top height, if that place
+// is inside the area's rings, which it is when a line from it eastward crosses an odd number of the area's edges (they are listed
+// together, the first of them marked; an area with an edge missing has no top face).
 void hazards(vec3 ro, vec3 rd, float tO, float pix) {
   bool box = u_hazard > 1.5;
   bool face = false; // the area being read has a top face this ray can meet
@@ -474,21 +469,19 @@ void hazards(vec3 ro, vec3 rd, float tO, float pix) {
     vec4 eb = texelFetch(u_edges, ivec2(x + 1, 0), 0);
     vec2 a = vec2(word(ea.rg), word(ea.ba)) * EDGE_Q - EDGE_KM;
     vec2 b = vec2(word(eb.rg), word(eb.ba)) * EDGE_Q - EDGE_KM;
-    if (box) {
-      vec4 ec = texelFetch(u_edges, ivec2(x + 3, 0), 0);
-      float flags = floor(ec.a * 255.0 + 0.5);
-      if (mod(flags, 2.0) > 0.5) {
-        // the first edge of an area: the area before it is read, and its top face laid if the ray met it; then this area's
-        if (face && inside) ev(faceT, faceC, 0.1);
-        vec2 hs = atHeight(ro, rd, word(texelFetch(u_edges, ivec2(x + 2, 0), 0).ba) * HEIGHT_Q);
-        faceT = hs.x > 0.0 ? hs.x : hs.y;
-        face = flags > 1.5 && faceT > 0.0 && faceT < tO;
-        inside = false;
-        faceP = ro.xy + rd.xy * faceT;
-        faceC = ec.rgb;
-      }
-      if (face && ((a.y > faceP.y) != (b.y > faceP.y)) && faceP.x < (b.x - a.x) * (faceP.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
+    vec4 ec = texelFetch(u_edges, ivec2(x + 3, 0), 0);
+    float flags = floor(ec.a * 255.0 + 0.5);
+    if (mod(flags, 2.0) > 0.5) {
+      // the first edge of an area: the area before it is read, and its top face laid if the ray met it; then this area's
+      if (face && inside) ev(faceT, faceC, ${glsl(ROOF)});
+      vec2 hs = atHeight(ro, rd, word(texelFetch(u_edges, ivec2(x + 2, 0), 0).ba) * HEIGHT_Q);
+      faceT = hs.x > 0.0 ? hs.x : hs.y;
+      face = flags > 1.5 && faceT > 0.0 && faceT < tO;
+      inside = false;
+      faceP = ro.xy + rd.xy * faceT;
+      faceC = ec.rgb;
     }
+    if (face && ((a.y > faceP.y) != (b.y > faceP.y)) && faceP.x < (b.x - a.x) * (faceP.y - a.y) / (b.y - a.y) + a.x) inside = !inside;
     vec2 e = b - a;
     vec2 n = vec2(e.y, -e.x);
     float den = dot(n, rd.xy);
@@ -520,9 +513,9 @@ void hazards(vec3 ro, vec3 rd, float tO, float pix) {
       float v = (hz - base) / max(top - base, 1.0e-3); // the share of the way up
       al = max(max(up * 0.9, low * 0.6), 0.36 * pow(smoothstep(0.25, 1.0, v), 1.4) * pleat);
     }
-    ev(t, texelFetch(u_edges, ivec2(x + 3, 0), 0).rgb, al);
+    ev(t, ec.rgb, al);
   }
-  if (face && inside) ev(faceT, faceC, 0.1);
+  if (face && inside) ev(faceT, faceC, ${glsl(ROOF)});
 }
 
 // The level slice (the mock's): where the ray meets the aircraft's height within 60 km of it, the field's cover there, filled in its
@@ -575,7 +568,7 @@ void main() {
   vec2 tn = min(ta, tb), tf = max(ta, tb);
   float tS = max(max(tn.x, tn.y), max(top.x, 0.0));
   float tEnd = min(min(tf.x, tf.y), min(top.y, tO));
-  if (tS >= tEnd && gN == 0) return; // no cloud to walk and nothing to lay (with only events, neither walk below takes a step)
+  if (tS >= tEnd && gN == 0) return; // no cloud to walk and nothing to lay (with only events, the walk below takes no step)
 
   // Each march pixel starts a share of a step further on than its neighbour, the four of a 2 × 2 block a quarter apart: the mix
   // lays the four together, so what one pixel's steps pass over the next one's find.
@@ -585,174 +578,112 @@ void main() {
   vec3 col = vec3(0.0);
   float A = 0.0;
   float tauR = 0.0; // the rain passed so far: its veil never hides more than RAIN_MOST of what is behind it
-  float mist = 0.0, mistSev = 0.0; // blocks: the length of the ray inside the body the camera is in, and its severity
-  float fogA = 0.0; // … and how much of what is behind it that mist hides
 
-  if (u_look < 1.5) {
-    // Clouds as volumes. The ray strides through clear air: to the heights of the next band that has weather, or as far as the
-    // clear-air map says that band's cover is, whichever is further. Where it may meet cloud it is searched in steps that cannot pass
-    // over a cloud unseen for long (over or under a cloud, as long as the height between them allows); a step that lands in cloud
-    // goes back, the stretch before it is walked again in quarters, and the cloud's near side is then found by halving the last
-    // quarter three times: the cloud is walked from its own edge, not from a step's place, so its shading is smooth from pixel to
-    // pixel. (There too the four pixels of a block start a quarter of a small step apart: the noise is finer than the steps, and
-    // their mean reads it four times as closely.) In cloud, where the noise has eaten it away, and for a little way past it, the
-    // steps are small; smallest while little is hidden yet, where the light changes fast. The walk ends when the ray has hidden
-    // VEIL of what is behind it: the cloud is a veil, and what it shows is its near side. A ray that has used three fifths of its
-    // steps takes longer and longer ones (twenty times at the last), so that it ends coarser, not short; the noise's fine octaves
-    // fade for a step too long to follow them (fbm), so a long step reads a smoother cloud and not a chance place of the detail.
-    float t = tS + phase * max(${glsl(SEARCH_MIN_KM)}, ${glsl(SEARCH)} * tS);
-    float tLast = t, fineTo = -1.0, walk = 0.03;
-    float by = -1.0; // cloud was met short of here: no long steps yet (a cloud's edge is in folds, and long steps would catch some and not others)
-    bool searched = false; // the last step was a search step
-    bool edging = false; // walking back up to a cloud: its near side is still to find
-    int used = 0; // steps taken, the halvings too
-    float pace = 0.03; // the last step taken in cloud: the next sample's detail is read as coarsely (fbm)
-    float hs = 1.04 * length(rd.xy) + 1.0e-4; // the ray's way over the map, km per km, at most
-    float lean = ${glsl(STEPS)} / u_steps; // with a smaller budget every step is longer by as much, in clear air, in cloud and in rain, so that the ray gets as far (1 at the first tier)
-    for (int i = 0; i < ${STEPS}; i++) {
-      if (t >= tEnd || A >= VEIL - 0.002 || float(used) >= u_steps) break;
-      used++;
-      float late = max(0.0, float(used) - 0.6 * u_steps) / (u_steps / 12.0);
-      float stretch = 1.0 + late * late;
-      vec3 p = ro + rd * t;
-      vec3 m = toMap(p);
-      float dh = rd.z + dot(p.xy, rd.xy) * INV_R; // the ray's climb here, km per km
-      vec4 nr = textureLod(u_near, m.xy / FIELD_KM + 0.5, 0.0);
-      float room, edge;
-      int kind = meets(nr, m.z, dh, hs, PAD, room, edge);
-      if (kind == 0) {
-        float least = max(${glsl(SEARCH_MIN_KM)}, ${glsl(SEARCH)} * t);
-        bool up = t < fineTo; // walking back up to a cloud: in the walk's steps
-        // A stride, to where the band's weather may begin; from there (or from here, when there is little room: the ray runs along
-        // the rim of a band's margin, or between two, and strides would be many and short) a step as in a search, of the pixel's own
-        // share: a stride ends at the same place for all four pixels of a block, and their searches should not.
-        bool strode = room >= least;
-        if (strode) t += room + 2.0e-3;
-        tLast = t;
-        t += up ? walk : (strode ? phase : 1.0) * max(${glsl(SEARCH_MIN_KM)}, ${glsl(SEARCH)} * t) * stretch * lean;
-        searched = !up;
-        edging = up;
+  // Clouds as volumes. The ray strides through clear air: to the heights of the next band that has weather, or as far as the
+  // clear-air map says that band's cover is, whichever is further. Where it may meet cloud it is searched in steps that cannot pass
+  // over a cloud unseen for long (over or under a cloud, as long as the height between them allows); a step that lands in cloud
+  // goes back, the stretch before it is walked again in quarters, and the cloud's near side is then found by halving the last
+  // quarter three times: the cloud is walked from its own edge, not from a step's place, so its shading is smooth from pixel to
+  // pixel. (There too the four pixels of a block start a quarter of a small step apart: the noise is finer than the steps, and
+  // their mean reads it four times as closely.) In cloud, where the noise has eaten it away, and for a little way past it, the
+  // steps are small; smallest while little is hidden yet, where the light changes fast. The walk ends when the ray has hidden
+  // u_veil of what is behind it: the cloud is a veil, and what it shows is its near side. A ray that has used three fifths of its
+  // steps takes longer and longer ones (twenty times at the last), so that it ends coarser, not short; the noise's fine octaves
+  // fade for a step too long to follow them (fbm), so a long step reads a smoother cloud and not a chance place of the detail.
+  float t = tS + phase * max(${glsl(SEARCH_MIN_KM)}, ${glsl(SEARCH)} * tS);
+  float tLast = t, fineTo = -1.0, walk = 0.03;
+  float by = -1.0; // cloud was met short of here: no long steps yet (a cloud's edge is in folds, and long steps would catch some and not others)
+  bool searched = false; // the last step was a search step
+  bool edging = false; // walking back up to a cloud: its near side is still to find
+  int used = 0; // steps taken, the halvings too
+  float pace = 0.03; // the last step taken in cloud: the next sample's detail is read as coarsely (fbm)
+  float hs = 1.04 * length(rd.xy) + 1.0e-4; // the ray's way over the map, km per km, at most
+  float lean = ${glsl(STEPS)} / u_steps; // with a smaller budget every step is longer by as much, in clear air, in cloud and in rain, so that the ray gets as far (1 at the first tier)
+  for (int i = 0; i < ${STEPS}; i++) {
+    if (t >= tEnd || A >= u_veil - 0.002 || float(used) >= u_steps) break;
+    used++;
+    float late = max(0.0, float(used) - 0.6 * u_steps) / (u_steps / 12.0);
+    float stretch = 1.0 + late * late;
+    vec3 p = ro + rd * t;
+    vec3 m = toMap(p);
+    float dh = rd.z + dot(p.xy, rd.xy) * INV_R; // the ray's climb here, km per km
+    vec4 nr = textureLod(u_near, m.xy / FIELD_KM + 0.5, 0.0);
+    float room, edge;
+    int kind = meets(nr, m.z, dh, hs, PAD, room, edge);
+    if (kind == 0) {
+      float least = max(${glsl(SEARCH_MIN_KM)}, ${glsl(SEARCH)} * t);
+      bool up = t < fineTo; // walking back up to a cloud: in the walk's steps
+      // A stride, to where the band's weather may begin; from there (or from here, when there is little room: the ray runs along
+      // the rim of a band's margin, or between two, and strides would be many and short) a step as in a search, of the pixel's own
+      // share: a stride ends at the same place for all four pixels of a block, and their searches should not.
+      bool strode = room >= least;
+      if (strode) t += room + 2.0e-3;
+      tLast = t;
+      t += up ? walk : (strode ? phase : 1.0) * max(${glsl(SEARCH_MIN_KM)}, ${glsl(SEARCH)} * t) * stretch * lean;
+      searched = !up;
+      edging = up;
+      continue;
+    }
+    vec3 q = (u_noiseFrame * vec4(p, 1.0)).xyz;
+    float sev = 0.0, gap;
+    vec2 rain = vec2(0.0);
+    vec3 pw = warpWide(p, q);
+    float dm = holds(pw, nr, gap) ? min(1.0, GAIN * cover(toMap(warpFine(pw, q)), nr, sev, rain, gap)) : 0.0;
+    float small = lean * clamp(0.018 * t, 0.03, max(0.1, 0.004 * t)); // a small step here: finer near the camera, where a pixel sees less
+    float ds = lean * clamp(0.018 * t, 0.03, max(0.1, 0.004 * t) + 0.6 * A) * stretch;
+    if (dm > THIN) {
+      if (searched && t > fineTo) { fineTo = t; walk = max(0.03, 0.25 * (t - tLast)); t = tLast + walk; searched = false; edging = true; continue; }
+      searched = false;
+      if (edging) {
+        edging = false;
+        float clear = tLast;
+        for (int k = 0; k < 3; k++) {
+          float mid = 0.5 * (clear + t);
+          vec3 pm = ro + rd * mid;
+          float s2, g2;
+          vec2 r2;
+          if (GAIN * cover(toMap(warp(pm, (u_noiseFrame * vec4(pm, 1.0)).xyz)), nr, s2, r2, g2) > THIN) t = mid;
+          else clear = mid;
+        }
+        used += 3;
+        t += phase * small; // from the edge found, each of the four pixels its share of a step in
         continue;
       }
-      vec3 q = (u_noiseFrame * vec4(p, 1.0)).xyz;
-      float sev = 0.0, gap;
-      vec2 rain = vec2(0.0);
-      vec3 pw = warpWide(p, q);
-      float dm = holds(pw, nr, gap) ? min(1.0, GAIN * cover(toMap(warpFine(pw, q)), nr, sev, rain, gap)) : 0.0;
-      float small = lean * clamp(0.018 * t, 0.03, max(0.1, 0.004 * t)); // a small step here: finer near the camera, where a pixel sees less
-      float ds = lean * clamp(0.018 * t, 0.03, max(0.1, 0.004 * t) + 0.6 * A) * stretch;
-      if (dm > THIN) {
-        if (searched && t > fineTo) { fineTo = t; walk = max(0.03, 0.25 * (t - tLast)); t = tLast + walk; searched = false; edging = true; continue; }
-        searched = false;
-        if (edging) {
-          edging = false;
-          float clear = tLast;
-          for (int k = 0; k < 3; k++) {
-            float mid = 0.5 * (clear + t);
-            vec3 pm = ro + rd * mid;
-            float s2, g2;
-            vec2 r2;
-            if (GAIN * cover(toMap(warp(pm, (u_noiseFrame * vec4(pm, 1.0)).xyz)), nr, s2, r2, g2) > THIN) t = mid;
-            else clear = mid;
-          }
-          used += 3;
-          t += phase * small; // from the edge found, each of the four pixels its share of a step in
-          continue;
-        }
-        by = t + ${glsl(STAY_KM)};
-        float n = fbm(q, max(pace, 3.0 * pix * t));
-        float d = clamp((dm - n * ${glsl(ERODE)}) / (1.0 - n * ${glsl(ERODE)}), 0.0, 1.0);
-        if (d <= 0.01) ds = min(ds, small * stretch); // eaten away by the noise here: steps that still find where it is not
-        else {
-          // thin cloud hides little in a step, and a ray through a long veil of it has many to take: longer ones, up to four small
-          // ones. Dense cloud is walked in steps that a smaller budget does not lengthen: the veil's cap ends that walk after a
-          // few of them, and each gives the cloud's colour a sample (one long step gave it one: flat patches at the cheap tiers).
-          ds = max(ds / lean, min(${glsl(THIN_STEP)} / (sigma(sev) * d), 4.0 * small) * stretch);
-          float sh = exp(-(body(p + sun * 0.45, nr) * 1.1 + body(p + sun * 1.3, nr) * 1.6));
-          vec3 c = mix(vec3(0.36, 0.42, 0.52), vec3(1.0, 0.98, 0.95), sh);
-          c *= sev < 1.5 ? mix(1.0, 0.86, sev) : mix(0.8, 0.6, clamp(sev - 2.0, 0.0, 1.0));
-          if (u_look > 0.5) c = mix(c, sevCol(sev) * (0.7 + 0.3 * sh), 0.62 * smoothstep(0.3, 0.7, sev));
-          c = mix(c, HAZE, hazed(t)) * u_light;
-          float a = 1.0 - exp(-d * sigma(sev) * min(ds, tEnd - t));
-          lay(t, col, A);
-          a = veiled(a, A);
-          col += (1.0 - A) * a * c;
-          A += (1.0 - A) * a;
-        }
-        pace = ds;
-      } else {
-        pace = small;
-        if (t < fineTo) { ds = walk; searched = false; edging = true; } // walking up to the cloud a search step found
-        else if (t < by) { ds = small * stretch; searched = false; } // just out of cloud
-        else if (kind == 2) {
-          // a search step: by the distance, climbing or sinking little; or, over or under a cloud, as far as the height between allows
-          float least = ${glsl(SEARCH_MIN_KM)};
-          ds = lean * min(max(least, ${glsl(SEARCH)} * t), max(least, ${glsl(SEARCH_UP_KM)} / max(abs(dh), 1.0e-4)));
-          ds = max(ds, min(gap / (abs(dh) + ${glsl(SLOPE)}), STRIDE)) * stretch;
-          searched = true;
-        }
-        else { ds = min(min(lean * max(0.12, 0.07 * t), room), edge) + 2.0e-3; searched = false; }
-        if (rain.x > 0.0) {
-          float tau = tauR + rain.x * streaks(p, t) * ${glsl(RAIN)} * sigma(rain.y) * min(ds, tEnd - t);
-          float a = ${glsl(RAIN_MOST)} * (exp(-tauR) - exp(-tau));
-          tauR = tau;
-          lay(t, col, A);
-          a = veiled(a, A);
-          col += (1.0 - A) * a * mix(rainCol(rain.y), HAZE, hazed(t)) * u_light;
-          A += (1.0 - A) * a;
-        }
+      by = t + ${glsl(STAY_KM)};
+      float n = fbm(q, max(pace, 3.0 * pix * t));
+      float d = clamp((dm - n * ${glsl(ERODE)}) / (1.0 - n * ${glsl(ERODE)}), 0.0, 1.0);
+      if (d <= 0.01) ds = min(ds, small * stretch); // eaten away by the noise here: steps that still find where it is not
+      else {
+        // thin cloud hides little in a step, and a ray through a long veil of it has many to take: longer ones, up to four small
+        // ones. Dense cloud is walked in steps that a smaller budget does not lengthen: the veil's cap ends that walk after a
+        // few of them, and each gives the cloud's colour a sample (one long step gave it one: flat patches at the cheap tiers).
+        ds = max(ds / lean, min(${glsl(THIN_STEP)} / (sigma(sev) * d), 4.0 * small) * stretch);
+        float sh = exp(-(body(p + sun * 0.45, nr) * 1.1 + body(p + sun * 1.3, nr) * 1.6));
+        vec3 c = mix(vec3(0.36, 0.42, 0.52), vec3(1.0, 0.98, 0.95), sh);
+        c *= sev < 1.5 ? mix(1.0, 0.86, sev) : mix(0.8, 0.6, clamp(sev - 2.0, 0.0, 1.0));
+        if (u_look > 0.5) c = mix(c, sevCol(sev) * (0.7 + 0.3 * sh), 0.62 * smoothstep(0.3, 0.7, sev));
+        c = mix(c, HAZE, hazed(t)) * u_light;
+        float a = 1.0 - exp(-d * sigma(sev) * min(ds, tEnd - t));
+        lay(t, col, A);
+        a = veiled(a, A);
+        col += (1.0 - A) * a * c;
+        A += (1.0 - A) * a;
       }
-      tLast = t;
-      t += ds;
-    }
-  } else {
-    // Clouds as blocks: the sky in cells, walked cell by cell where a band with weather near holds the height. The ray's way through
-    // the cells is worked out again in each (the map's heights curve with the Earth), so each step ends on the cell's far face.
-    float t = tS;
-    bool inBody = false;
-    vec3 face = vec3(0.0, 0.0, rd.z < 0.0 ? 1.0 : -1.0); // the face the ray came in by: a top or a bottom at first
-    float tB = -1.0, sevB = 0.0;
-    vec3 mB = vec3(0.0);
-    float hs = 1.04 * length(rd.xy) + 1.0e-4; // the ray's way over the map, km per km, at most
-    for (int i = 0; i < ${STEPS}; i++) {
-      if (t >= tEnd || float(i) >= u_steps) break;
-      vec3 p = ro + rd * t;
-      vec3 m = toMap(p);
-      float dh = rd.z + dot(p.xy, rd.xy) * INV_R;
-      vec4 nr = textureLod(u_near, m.xy / FIELD_KM + 0.5, 0.0);
-      float room, edge, gap;
-      int kind = meets(nr, m.z, dh, hs, 0.5 * CELL.z, room, edge);
-      float sev;
-      vec2 rain;
-      float adv;
-      bool filled = false;
-      if (kind < 2) {
-        // nothing here, or only rain: on to the next band's heights, or as far as the clear-air map vouches for
-        adv = min(room, edge);
-        if (kind == 1) { adv = min(adv, max(0.12, 0.07 * t)); cover(m, nr, sev, rain, gap); }
-        else rain = vec2(0.0);
-        inBody = false;
-        face = vec3(0.0, 0.0, dh < 0.0 ? 1.0 : -1.0);
-      } else {
-        vec3 cell = floor(m / CELL);
-        filled = cover((cell + 0.5) * CELL, nr, sev, rain, gap) > ${glsl(FILL)};
-        if (i == 0 && filled && tS <= 0.0) { inBody = true; mistSev = sev; }
-        if (filled && !inBody) { tB = t; sevB = sev; mB = m; break; }
-        vec3 dm = vec3(u_map.xy * rd.xy, dh); // the ray's way on the map here
-        vec3 sg = vec3(dm.x >= 0.0 ? 1.0 : -1.0, dm.y >= 0.0 ? 1.0 : -1.0, dm.z >= 0.0 ? 1.0 : -1.0);
-        vec3 tM = ((cell + max(sg, 0.0)) * CELL - m) / (sg * max(abs(dm), vec3(1.0e-6)));
-        if (tM.x < tM.y && tM.x < tM.z) { adv = tM.x; face = vec3(-sg.x, 0.0, 0.0); }
-        else if (tM.y < tM.z) { adv = tM.y; face = vec3(0.0, -sg.y, 0.0); }
-        else { adv = tM.z; face = vec3(0.0, 0.0, -sg.z); }
-        if (inBody) {
-          if (filled) mist = min(t + max(adv, 0.0), tEnd);
-          else inBody = false;
-        }
-        if (filled) rain = vec2(0.0);
-        adv = max(adv, 0.0);
+      pace = ds;
+    } else {
+      pace = small;
+      if (t < fineTo) { ds = walk; searched = false; edging = true; } // walking up to the cloud a search step found
+      else if (t < by) { ds = small * stretch; searched = false; } // just out of cloud
+      else if (kind == 2) {
+        // a search step: by the distance, climbing or sinking little; or, over or under a cloud, as far as the height between allows
+        float least = ${glsl(SEARCH_MIN_KM)};
+        ds = lean * min(max(least, ${glsl(SEARCH)} * t), max(least, ${glsl(SEARCH_UP_KM)} / max(abs(dh), 1.0e-4)));
+        ds = max(ds, min(gap / (abs(dh) + ${glsl(SLOPE)}), STRIDE)) * stretch;
+        searched = true;
       }
+      else { ds = min(min(lean * max(0.12, 0.07 * t), room), edge) + 2.0e-3; searched = false; }
       if (rain.x > 0.0) {
-        float tau = tauR + rain.x * ${glsl(RAIN)} * sigma(rain.y) * min(adv, tEnd - t);
+        float tau = tauR + rain.x * streaks(p, t) * ${glsl(RAIN)} * sigma(rain.y) * min(ds, tEnd - t);
         float a = ${glsl(RAIN_MOST)} * (exp(-tauR) - exp(-tau));
         tauR = tau;
         lay(t, col, A);
@@ -760,30 +691,12 @@ void main() {
         col += (1.0 - A) * a * mix(rainCol(rain.y), HAZE, hazed(t)) * u_light;
         A += (1.0 - A) * a;
       }
-      t += adv + 2.0e-3; // 2 m into what is next
     }
-    // The first solid cell the ray meets: its face veils what is behind it (to the cap, less what the mist of a body the camera is
-    // in has hidden already), and its edge lines stay firm.
-    fogA = min(VEIL, 1.0 - exp(-sigma(mistSev) * mist)); // from inside a body: its mist, as thick as the cloud it stands for, to the cap
-    if (tB >= 0.0) {
-      vec3 f = fract(mB / CELL);
-      vec2 e = abs(face.x) > 0.5 ? f.yz : abs(face.y) > 0.5 ? f.xz : f.xy;
-      vec2 de = min(e, 1.0 - e) * (abs(face.z) > 0.5 ? vec2(1.0) : vec2(1.0, 0.5));
-      float lw = max(0.035, 1.5 * pix * tB);
-      float line = 1.0 - smoothstep(lw * 0.5, lw, min(de.x, de.y));
-      float shade = face.z > 0.5 ? 1.0 : face.z < -0.5 ? 0.55 : abs(face.x) > 0.5 ? 0.84 : 0.7;
-      vec3 bc = sevB < 0.5 ? mix(vec3(0.6, 0.68, 0.8), vec3(0.96, 0.97, 0.98), shade) : sevCol(sevB) * shade;
-      bc *= 1.0 - 0.22 * line;
-      lay(tB, col, A);
-      float fa = max(veiled(VEIL, 1.0 - (1.0 - fogA) * (1.0 - A)), FIRM * line);
-      col += (1.0 - A) * fa * mix(bc, HAZE, hazed(tB)) * u_light;
-      A += (1.0 - A) * fa;
-    }
+    tLast = t;
+    t += ds;
   }
   lay(tO, col, A); // what the walk did not pass, short of what the pixel shows
-  // From inside a block's body: its mist over everything.
-  vec3 fogC = (mistSev < 0.5 ? vec3(0.86, 0.89, 0.93) : sevCol(mistSev) * 0.85) * u_light;
-  out_FragColor = vec4(mix(col, fogC, fogA), 1.0 - (1.0 - fogA) * (1.0 - A));
+  out_FragColor = vec4(col, A);
 }
 `
 
@@ -801,7 +714,6 @@ uniform float u_lo[${BANDS}]; // each band's lowest base, km
 uniform float u_hi[${BANDS}];
 uniform vec2 u_plane;
 uniform float u_shadow; // how dark full cover's shadow is: none by night
-uniform float u_look; // 2: blocks
 uniform float u_path[${PATH_N * 3}]; // the way ahead in the frame, km: the aircraft, then where it is after each minute (x, y, z of each)
 uniform vec2 u_aids; // 1 where it shows: x the track line, y the level slice (the march draws that)
 in vec2 v_textureCoordinates;
@@ -868,17 +780,16 @@ void main() {
     scene.rgb *= 1.0 - u_shadow * sh * smoothstep(0.03, 0.3, sun.z);
   }
 
-  // The march, from its smaller size: the nine march pixels round this one. For the volumes, each row and column of three weighs a
-  // half for the middle one and shares the other half between the two beside it by their nearness: wherever the pixel lies, the four
-  // starts of the march's steps then count alike (their mean is a march of four times the steps), and the mix changes evenly from one
-  // pixel to the next, so no march pixel shows as a block. For the blocks, whose march has no such starts, the four nearest by their
-  // nearness. Those that saw about the same depth as this pixel weigh most, so the aircraft's and the terrain's outlines stay sharp.
-  // (The volumes laid from the four nearest too, to make the cheap tiers cheaper, showed the four starts as a screen of dots.)
-  bool even = u_look < 1.5;
+  // The march, from its smaller size: the nine march pixels round this one. Each row and column of three weighs a half for the
+  // middle one and shares the other half between the two beside it by their nearness: wherever the pixel lies, the four starts of
+  // the march's steps then count alike (their mean is a march of four times the steps), and the mix changes evenly from one pixel to
+  // the next, so no march pixel shows as a block. Those that saw about the same depth as this pixel weigh most, so the aircraft's and
+  // the terrain's outlines stay sharp. (Laid from the four nearest, to make the cheap tiers cheaper, it showed the four starts as a
+  // screen of dots.)
   vec2 size = vec2(textureSize(u_march, 0));
   vec2 g = v_textureCoordinates * size - 0.5;
   vec2 c = floor(g + 0.5), d = g - c; // the nearest march pixel, and how far this pixel is from its middle: -1/2 to 1/2
-  vec2 lo = even ? 0.25 - 0.5 * d : max(-d, 0.0), mid = even ? vec2(0.5) : 1.0 - abs(d), hi = even ? 0.25 + 0.5 * d : max(d, 0.0);
+  vec2 lo = 0.25 - 0.5 * d, mid = vec2(0.5), hi = 0.25 + 0.5 * d;
   vec4 sum = vec4(0.0);
   float weights = 0.0;
   for (int k = 0; k < 9; k++) {
