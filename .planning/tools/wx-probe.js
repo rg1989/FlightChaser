@@ -23,8 +23,8 @@ const max = (a) => a.reduce((m, x) => Math.max(m, x), 0)
 const f1 = (x) => (Number.isFinite(x) ? x.toFixed(1) : 'n/a')
 const f2 = (x) => (Number.isFinite(x) ? x.toFixed(2) : 'n/a')
 
-/** The frames' times over s seconds, ms. at: an array that is given each frame's end, ms on the page's clock. */
-async function frames(s, at) {
+/** The frames' times over s seconds, ms. at: an array that is given each frame's end, ms on the page's clock. each: called at every frame. */
+async function frames(s, at, each) {
   const t = []
   let last = performance.now()
   const end = last + s * 1000
@@ -33,10 +33,14 @@ async function frames(s, at) {
     const n = performance.now()
     t.push(n - last)
     at?.push(n)
+    each?.()
     last = n
   }
   return t
 }
+
+/** Whether the volume times its own pass (passTimer.ts, from the tiers on): the probe then reads that, and puts no query of its own round the pass in use (two cannot run at once). */
+const timesItself = () => 'passMs' in window.weather3d.sky.clouds
 
 let timer = null
 
@@ -52,7 +56,7 @@ function gpuTimer() {
     const name = String(this.name)
     const which = name.endsWith('_old') ? 'Old' : name.endsWith('_new') ? 'New' : ''
     const key = name.startsWith('fh_cloud_march') ? `march${which}` : name.startsWith('fh_cloud_mix') ? `mix${which}` : null
-    if (key === null || !t.on) return execute.apply(this, args)
+    if (key === null || !t.on || (which === '' && timesItself())) return execute.apply(this, args)
     const q = gl.createQuery()
     gl.beginQuery(ext.TIME_ELAPSED_EXT, q)
     execute.apply(this, args)
@@ -75,6 +79,12 @@ function gpuTimer() {
  * program on the same graphics card stretches some frames' times; the quick ones are the pass's own).
  */
 async function gpu(s) {
+  if (timesItself()) { // the pass's whole time, as the volume has it (one frame in four)
+    const c = window.weather3d.sky.clouds
+    const got = []
+    const dts = await frames(s, undefined, () => Number.isFinite(c.passMs) && got.at(-1) !== c.passMs && got.push(c.passMs))
+    return { march: med(got), mix: 0, marchLow: pct(got, 25), mixLow: 0, frames: dts, whole: true }
+  }
   const t = gpuTimer()
   if (t === null) return { march: NaN, mix: NaN, marchLow: NaN, mixLow: NaN, frames: await frames(s) }
   t.march.length = t.mix.length = 0
@@ -114,14 +124,14 @@ export async function pass({ looks = ['natural', 'severity', 'blocks'], cycles =
     }
     c.show = true
     const diff = on.map((v, i) => v - off[i])
-    out.push(`${look}: gpu march ${f2(g.march)} (low ${f2(g.marchLow)}) mix ${f2(g.mix)} (low ${f2(g.mixLow)}) ms; frame on ${f1(med(on))} off ${f1(med(off))} diff ${f1(med(diff))} (${f1(Math.min(...diff))} to ${f1(Math.max(...diff))}) ms`)
+    out.push(`${look}: gpu ${g.whole ? `pass ${f2(g.march)} (low ${f2(g.marchLow)})` : `march ${f2(g.march)} (low ${f2(g.marchLow)}) mix ${f2(g.mix)} (low ${f2(g.mixLow)})`} ms; frame on ${f1(med(on))} off ${f1(med(off))} diff ${f1(med(diff))} (${f1(Math.min(...diff))} to ${f1(Math.max(...diff))}) ms`)
     await frames(0.3)
   }
   w.look = was
   return `${where()} [${innerWidth}x${innerHeight}, march ${tier()}] ${out.join(' | ')}`
 }
 
-export async function rebuild({ n = 5, gapS = 3 } = {}) {
+export async function rebuild({ n = 5, gapS = 3, anew = true } = {}) {
   const w = window.weather3d
   const long = []
   const po = new PerformanceObserver((l) => {
@@ -136,7 +146,7 @@ export async function rebuild({ n = 5, gapS = 3 } = {}) {
   for (let k = 0; k < n; k++) {
     performance.clearMeasures('fh:wx')
     const t0 = performance.now()
-    w.rebuildSky()
+    w.rebuildSky(anew)
     const call = performance.now() - t0
     const ends = []
     const dts = await frames(gapS, ends)
@@ -150,7 +160,7 @@ export async function rebuild({ n = 5, gapS = 3 } = {}) {
   const since = long.filter((l) => l.t >= t00)
   const f = w.field
   const sky = f === null || f === undefined ? 'no field' : `bands ${f.lo.map((lo, b) => (lo > f.hi[b] ? '-' : `${Math.round(lo)}-${Math.round(f.hi[b])}`)).join(' ')}`
-  return `${where()} rebuild x${n} [${sky}; metars ${w.metars.length}, model ${w.model !== null}, radar ${w.radar !== null}, hazards ${w.hazards.length}; first draw ${f1(first)} ms; long tasks before ${before} (max ${f1(max(long.slice(0, before).map((l) => l.ms)))} ms)]: `
+  return `${where()} rebuild x${n}${anew ? '' : ' (the sources\' clouds kept, as when the next field is due)'} [${sky}; metars ${w.metars.length}, model ${w.model !== null}, radar ${w.radar !== null}, hazards ${w.hazards.length}; first draw ${f1(first)} ms; long tasks before ${before} (max ${f1(max(long.slice(0, before).map((l) => l.ms)))} ms)]: `
     + rows.map((r) => `call ${f1(r.call)} wx ${r.wx.map(f1).join('/')} (${r.over} over 8) frame max ${f1(r.frameMax)} med ${f1(r.frameMed)} draw ${f1(r.draw)}${r.made === undefined ? '' : ` made in ${f1(r.made)}`} [longest frames ms@ms after the call: ${r.slow}; wx over 1.5: ${r.held}]`).join(' | ')
     + ` || long tasks in the rebuilds ${since.length} (max ${f1(max(since.map((l) => l.ms)))} ms); worst wx ${f1(max(rows.map((r) => r.wx[0] ?? 0)))} ms, worst frame ${f1(max(rows.map((r) => r.frameMax)))} ms`
 }
@@ -185,16 +195,10 @@ export async function hud({ s = 6, n = 200 } = {}) {
 
 export async function steady({ s = 20 } = {}) {
   const w = window.weather3d
-  const t = gpuTimer()
   const rows = []
   for (let k = 0; k < s; k++) {
-    if (t !== null) {
-      t.march.length = t.mix.length = 0
-      t.on = true
-    }
-    const dts = await frames(1)
-    if (t !== null) t.on = false
-    rows.push(`${tier()}:${f1(med(dts))}${t === null ? '' : `(${f1(med(t.march) + med(t.mix))})`}`)
+    const g = await gpu(1)
+    rows.push(`${tier()}:${f1(med(g.frames))}(${f1(g.march + g.mix)})`)
   }
   return `${where()} [${innerWidth}x${innerHeight}, ${w.look}] each second, tier:frame ms(pass gpu ms): ${rows.join(' ')}`
 }
@@ -337,35 +341,62 @@ export function edges48(style = 'box') {
 export async function tiers({ looks = ['natural'], rounds = 3, s = 1 } = {}) {
   const w = window.weather3d
   const c = w.sky.clouds
-  const t = gpuTimer()
-  if (t === null || c.tier === undefined) return `${where()} tiers: ${t === null ? 'no timer query' : 'no tiers'}`
-  const [was, held] = [w.look, c.tier]
-  const n = c.tiers ?? 6
+  if (typeof w.holdTier !== 'function') return `${where()} tiers: no tiers`
+  const was = w.look
+  const n = 6
   const out = []
   for (const look of looks) {
     w.look = look
     const got = Array.from({ length: n }, () => [])
+    const frame = Array.from({ length: n }, () => [])
     for (let r = 0; r < rounds; r++) {
       for (let k = 0; k < n; k++) {
-        c.tier = k
-        await frames(0.5)
+        w.holdTier(k)
+        await frames(0.6)
         const g = await gpu(s)
-        got[k].push(g.march + g.mix)
+        if (c.tier === k) {
+          got[k].push(g.march + g.mix)
+          frame[k].push(med(g.frames))
+        }
       }
     }
     const ms = got.map(med)
-    out.push(`${look}: ${ms.map((v, k) => `t${k} ${f2(v)}`).join(', ')} ms; of the first tier's: ${ms.map((v) => f2(v / ms[0])).join(' ')}`)
+    out.push(`${look}: ${ms.map((v, k) => `t${k} ${f2(v)}`).join(', ')} ms on the GPU; of the first tier's: ${ms.map((v) => f2(v / ms[0])).join(' ')}; frames ${frame.map((f) => f1(med(f))).join(' ')} ms`)
   }
   w.look = was
-  c.tier = held
+  w.holdTier(null)
   return `${where()} [${innerWidth}x${innerHeight}] the pass at each tier (march + mix): ${out.join(' | ')}`
 }
 
-/** The first load: the frames in which the weather held the main thread longest since the page began, and when (s after the first of them). */
-export async function first() {
-  const all = performance.getEntriesByName('fh:wx')
-  if (all.length === 0) return `${where()} first: no fh:wx measure (?bench=1)`
-  const t0 = all[0].startTime
-  const top = [...all].sort((a, b) => b.duration - a.duration).slice(0, 6)
-  return `${where()} the first load: ${all.length} frames; the weather's longest holds: ${top.map((e) => `${f1(e.duration)} ms at ${f1((e.startTime - t0) / 1000)} s`).join(', ')}; over 8 ms: ${all.filter((e) => e.duration > 8).length}`
+/**
+ * A flight of s seconds as it is, with no rebuild asked for: each new field that comes into use (the next one being due, 35 km on),
+ * with the weather's longest hold of the main thread and the longest frame in the two seconds round it; and over the whole flight,
+ * the weather's longest hold, the frames it took more than 8 ms, and the long tasks.
+ */
+export async function flown({ s = 240 } = {}) {
+  const w = window.weather3d
+  const long = []
+  const po = new PerformanceObserver((l) => {
+    for (const e of l.getEntries()) long.push({ t: e.startTime, ms: e.duration })
+  })
+  po.observe({ type: 'longtask' })
+  performance.clearMeasures('fh:wx')
+  const t0 = performance.now()
+  const ends = []
+  const swaps = []
+  let [field, start] = [w.field, w.aircraft === null ? null : { ...w.aircraft }]
+  const dts = await frames(s, ends, () => {
+    if (w.field !== field) {
+      field = w.field
+      swaps.push(performance.now())
+    }
+  })
+  po.disconnect()
+  const wx = performance.getEntriesByName('fh:wx')
+  const km = start === null || w.aircraft === null ? NaN : Math.hypot((w.aircraft.lat - start.lat) * 111.195, (w.aircraft.lon - start.lon) * 111.195 * Math.cos((start.lat * Math.PI) / 180))
+  const round = swaps.map((at) => {
+    const near = (t) => Math.abs(t - at) <= 1000
+    return `at ${Math.round((at - t0) / 1000)} s: weather ${f1(max(wx.filter((e) => near(e.startTime)).map((e) => e.duration)))} ms, frame ${f1(max(dts.filter((_, i) => near(ends[i]))))} ms`
+  })
+  return `${where()} flown ${Math.round(s)} s, ${f1(km)} km: ${swaps.length} new field${swaps.length === 1 ? '' : 's'} [${round.join('; ')}]; the weather's longest hold ${f1(max(wx.map((e) => e.duration)))} ms, ${wx.filter((e) => e.duration > 8).length} frames over 8 ms; frames median ${f1(med(dts))} p99 ${f1(pct(dts, 99))} max ${f1(max(dts))} ms; long tasks ${long.length} (max ${f1(max(long.map((l) => l.ms)))} ms)`
 }
