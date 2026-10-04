@@ -14,6 +14,10 @@ public/scenarios/*/local/
 # Livery reference photos (copyrighted; only their URLs and credits are committed): livery-pipeline-design.md §9
 data/livery-refs/
 
+# EUMETSAT's cloud products recorded with one's own key, for the tests that read a real one (data/fixtures/README.md):
+# the licence does not let the original data be passed on
+data/eumetsat/
+
 # Subagent-driven development scratch (briefs, reports, the progress ledger)
 .superpowers/
 
