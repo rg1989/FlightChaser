@@ -4,6 +4,8 @@
 # tap CSS, key KEY, eval JS, until JS, wait S …) and run after the settle time, before the shot.
 # SIZE="<w> <h> <dpr> [mobile]" is the window every shot of the run is taken at (default "1440 900 1 0"; a phone: "390 844 2 mobile").
 # UNCAP=1 starts Chromium with no frame-rate limit, for timing runs: a frame then takes as long as it costs.
+# QA_ENV=<file> is the settings file the API is started with (default .env.local, which holds the EUMETSAT key there): a copy with the
+# key taken out shows the weather as it is without the key.
 # A folder of links, not one link to the folder: Vite keeps its cache in node_modules/.vite, and two sessions that share
 # it rebuild it under each other ("Failed to fetch dynamically imported module" in the shots).
 [ -s ~/.nvm/nvm.sh ] && . ~/.nvm/nvm.sh # the Ubuntu desktop keeps node under nvm
@@ -13,7 +15,7 @@ CHROME=$(command -v chromium || ls -d ~/.cache/fh-chrome/chrome/*/chrome-linux64
 rm -rf shots && mkdir -p shots
 API_P=${QA_API:-8798} FE_P=${QA_FE:-5198} CDP_P=${QA_CDP:-9377}
 PROF=/tmp/chrome-prof-qa-$FE_P
-ADSB_SOURCE=replay REPLAY_FILES="${REPLAY:-data/recordings/2026-09-23.jsonl}" PORT=$API_P RECORD_DIR= node --env-file-if-exists=.env.local server/main.ts > api.log 2>&1 &
+ADSB_SOURCE=replay REPLAY_FILES="${REPLAY:-data/recordings/2026-09-23.jsonl}" PORT=$API_P RECORD_DIR= node --env-file-if-exists="${QA_ENV:-.env.local}" server/main.ts > api.log 2>&1 &
 API=$!
 API_PORT=$API_P npx vite --port $FE_P --strictPort > vite.log 2>&1 &
 VITE=$!
