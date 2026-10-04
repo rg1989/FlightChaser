@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync, statSync } from 'node:fs'
-import { Cartesian2, Cartesian3, Cartographic, HeadingPitchRoll, Math as CesiumMath, Matrix3, Matrix4, Model, Transforms } from 'cesium'
+import { Cartesian2, Color, ColorBlendMode, Cartesian3, Cartographic, HeadingPitchRoll, Math as CesiumMath, Matrix3, Matrix4, Model, Transforms } from 'cesium'
 import type { CustomShader, Viewer } from 'cesium'
 import type { Airport } from '../../shared/airports.ts'
 import { bearingDeg } from '../../shared/geo.ts'
@@ -533,4 +533,28 @@ test("loadGearModel: a plain model (no minimum pixel size), true height, hidden;
   assert.deepEqual(fromGltf.mock.calls[0].arguments, [{
     url: '/models/b744-gear.glb', show: false, enableVerticalExaggeration: false, environmentMapOptions: { maximumPositionEpsilon: 20_000 },
   }])
+})
+
+test('ChaseModel.tint: the drawn model and its gear mixed toward a colour by an amount, the livery and the placeholder look left on it; null takes the colour off; a model drawn later is tinted too', async () => {
+  const f = fakes()
+  type Tinted = FakeModel & { color?: Color; colorBlendMode?: ColorBlendMode; colorBlendAmount?: number }
+  const first: Tinted = fakeModel()
+  const other: Tinted = fakeModel()
+  const cm = new ChaseModel(f.viewer, b744, first as unknown as Model, async () => other as unknown as Model)
+  cm.tint(null)
+  assert.equal(first.color, undefined, 'never tinted: nothing written')
+  cm.use(b744, true) // a placeholder: its own shader stays
+  const worn = first.customShader
+  cm.tint({ color: [0.5, 0.75, 1], amount: 0.3 })
+  assert.deepEqual([first.color!.red, first.color!.green, first.color!.blue, first.color!.alpha], [0.5, 0.75, 1, 1], 'opaque: tinted, not removed')
+  assert.deepEqual([first.colorBlendMode, first.colorBlendAmount, first.customShader === worn], [ColorBlendMode.MIX, 0.3, true])
+  cm.tint({ color: [0.5, 0.75, 1], amount: 0 })
+  assert.deepEqual([first.color !== undefined, first.colorBlendAmount], [true, 0], 'no amount: the colour stays on (no shader is rebuilt), and shows nothing')
+  cm.use({ ...b744, id: 'other' })
+  await new Promise((r) => setImmediate(r))
+  cm.use({ ...b744, id: 'other' })
+  cm.tint({ color: [1, 0.5, 0.25], amount: 0.5 })
+  assert.deepEqual([other.color!.green, other.colorBlendAmount], [0.5, 0.5], 'the model drawn now')
+  cm.tint(null)
+  assert.equal(other.color, undefined)
 })

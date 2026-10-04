@@ -3,12 +3,14 @@
 // where there is no worker, the caller's own thread: the field of the cloud specs round a place (wxField.ts buildField), its image for
 // the GPU, a tile for each band that has cloud (fieldTile: the cloud volume writes them to the card one at a time), what the march asks
 // of the field before it walks it (wxSurvey.ts survey) and, when asked, the noise (cloudNoise.ts: 64³ values, the longest of it all to
-// make). Pure (no Cesium, no DOM), so Node tests cover it.
+// make). A job for the Sculpted look (sculpt) is the field and its bodies as a mesh (sculptMesh.ts) in place of the images and the
+// noise: that look reads no image. Pure (no Cesium, no DOM), so Node tests cover it.
 // The specs cross to the worker as numbers (packSpecs: what a field reads of a spec, no more), and with them the weather satellite's
 // grid when there is one (satGrid.ts: 213 KB, copied as the specs are: a worker that fails leaves its job to this thread, which
 // then needs it whole); the answer's arrays cross back handed over, not copied (transfers): 21 MB of field, up to 5 MB of image.
 import { noiseAtlas } from './cloudNoise.ts'
 import type { SatGrid } from './satGrid.ts'
+import { sculptMesh, type SculptMesh } from './sculptMesh.ts'
 import { BANDS, buildField, fieldTile, type Bitmap, type FieldSpec, type WxField } from './wxField.ts'
 import { survey } from './wxSurvey.ts'
 
@@ -23,6 +25,8 @@ export interface FieldJob {
   lon: number
   noise: boolean
   sat?: SatGrid | null
+  sculpt?: boolean // the field's bodies as a mesh, and no image
+  light?: [number, number, number] | null // a sculpt job's: the unit vector toward the scene's light at the place (east, north, up), for the bodies' shadow
 }
 
 /** A field made: with each band's tile of its image (none for a band with no cloud), its clear-air map (none of an empty field), which bands rain, the noise if it was asked for, and how long the making took, ms. */
@@ -34,6 +38,7 @@ export interface FieldMade {
   wet: boolean[]
   box: [number, number, number, number] // wxSurvey.ts survey: the map's rectangle all the cover stands in
   noise: Bitmap | null
+  mesh?: SculptMesh | null // a sculpt job's: the field's bodies
   ms: number
 }
 
@@ -71,7 +76,8 @@ export function makeField(job: FieldJob): FieldMade {
   let near: Bitmap | null = null
   let wet = Array.from({ length: BANDS }, () => false)
   let box: [number, number, number, number] = [1, 1, -1, -1]
-  if (!field.empty) {
+  const mesh = job.sculpt === true ? sculptMesh(field, job.light ?? null) : null
+  if (!field.empty && mesh === null) {
     const s = survey(field)
     tiles = tiles.map((_, b) => fieldTile(field, b))
     near = s.near
@@ -83,7 +89,7 @@ export function makeField(job: FieldJob): FieldMade {
     const n = noiseAtlas()
     noise = { data: n.data.slice(), width: n.width, height: n.height }
   }
-  return { id: job.id, field, tiles, near, wet, box, noise, ms: performance.now() - t0 }
+  return { id: job.id, field, tiles, near, wet, box, noise, mesh, ms: performance.now() - t0 }
 }
 
 /** The answer's arrays, each once: what a worker hands over with it. */
@@ -91,5 +97,7 @@ export function transfers(made: FieldMade): ArrayBuffer[] {
   const f = made.field
   const out = [...f.cov, ...f.base, ...f.top, ...f.sev].map((a) => a.buffer as ArrayBuffer)
   for (const image of [...made.tiles, made.near, made.noise]) if (image !== null) out.push(image.data.buffer as ArrayBuffer)
+  for (const band of made.mesh?.bands ?? []) out.push(...[band.vertices, band.indices, band.roof, band.floor].map((a) => a.buffer as ArrayBuffer))
+  if (made.mesh?.shadow) out.push(made.mesh.shadow.data.buffer as ArrayBuffer)
   return out
 }

@@ -846,6 +846,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const weather3d = new Weather3D(viewer, {
     apiBase: cfg.apiBase, labels: placeLabels, onStatus: (text) => wxMenu.setWeather(text), units: () => frameUnits, at: parseWxAt(location.search),
     demo: parseWxDemo(location.search), broken: parseWxBreak(location.search), tier: parseWxTier(location.search), satellite: satelliteFor(parseWxSat(location.search), cfg.apiBase),
+    look: wxPrefs.look,
     onShade: (shade) => sun.setOvercast(shade),
     onCloudsFailed: (note) => {
       applyLayers()
@@ -2007,6 +2008,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       weather3d.setNight(prefs.light && st !== null ? st.night : 0)
       weather3d.update(chased !== null ? wxAircraft : null, now, tf)
     }
+    model?.tint(weather3d.tint) // in the Sculpted look the chased aircraft takes the colour of the cloud it is in or behind
     const tAhead = bench === null ? 0 : performance.now()
     lookAhead(chased, now)
     if (bench !== null) {
@@ -2077,7 +2079,10 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       const pass = weather3d.sky.clouds.passMs ?? Number.NaN
       const sat = weather3d.satellite
       const from = sat === null ? 'no satellite frame' : `the satellite's ${sat.time} frame ${sat.raw ? 'raw from the server' : 'from EUMETView\'s pictures'}${sat.used ? '' : ', not in use'}`
-      const wx = weather3d.show ? `${weather3d.look}, march at tier ${weather3d.tier} (size ${weather3d.sky.clouds.scale ?? '?'}), the pass ${Number.isFinite(pass) ? `${pass.toFixed(1)} ms on the GPU` : 'not timed'}, last draw ${weather3d.drawMs.toFixed(0)} ms, its field made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms, ${from}` : 'off'
+      const bodies = weather3d.sky.clouds.stats // the Sculpted look's: its triangles in place of a march
+      const wx = !weather3d.show ? 'off'
+        : bodies !== undefined ? `${weather3d.look}, ${bodies.triangles} triangles in ${bodies.bodies} bodies, their mesh built in ${bodies.meshMs.toFixed(0)} ms, last draw ${weather3d.drawMs.toFixed(0)} ms, its field and mesh made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms, its own work held a frame ${bodies.heldMs.toFixed(1)} ms at most (all the weather's: ${bench.report().wxMsMax.toFixed(1)} ms, ${bench.report().wxOver} frames over 8 ms), ${from}`
+        : `${weather3d.look}, march at tier ${weather3d.tier} (size ${weather3d.sky.clouds.scale ?? '?'}), the pass ${Number.isFinite(pass) ? `${pass.toFixed(1)} ms on the GPU` : 'not timed'}, last draw ${weather3d.drawMs.toFixed(0)} ms, its field made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms, ${from}`
       console.warn(`FlightHopper bench: frame p50 ${(1000 / b.fpsP50).toFixed(1)} ms, p95 ${b.frameMsP95.toFixed(1)} ms · weather ${wx}`)
     }
     measure?.('fh:frame', now)

@@ -101,6 +101,10 @@ import { REBUILD_KM, observedClouds, overcastShade, type CloudSpec } from './clo
 import { REACH_KM } from './cloudShaders.ts'
 import { CloudVolume, resumeRendering, type CloudLook, type HazardStyle } from './cloudVolume.ts'
 import { MARCH_TIERS, MarchPace } from './marchPace.ts'
+import { SculptedClouds, type SculptTint } from './sculptedClouds.ts'
+import { sceneAids } from './sculptAids.ts'
+import { groundShadow } from './sculptShadow.ts'
+import { domVeil } from './sculptVeil.ts'
 import { drawnHeightM } from './exaggeration.ts'
 import { GroundFog, fogNear } from './groundFog.ts'
 import { inInnerHalf, modelWindAt, type ModelWind } from './modelWind.ts'
@@ -262,9 +266,19 @@ export function parseWxTier(search: string): number | null {
 type Box = readonly [south: number, west: number, north: number, east: number]
 type Feed = 'metar' | 'sigmet' | 'radar' | 'model'
 
-/** What draws the sky round the aircraft: Cesium's parts in the app (cesiumSky), fakes in tests. */
+/** What draws the clouds: the cloud volume (cloudVolume.ts: a march, in three looks) or the sculpted bodies (sculptedClouds.ts: geometry, the Sculpted look). */
+export type SkyClouds = Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'>
+  & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'tier' | 'scale' | 'passMs' | 'madeMs'>> & Partial<Pick<SculptedClouds, 'stats' | 'through' | 'tint'>>
+
+/**
+ * What draws the sky round the aircraft: Cesium's parts in the app (cesiumSky), fakes in tests. clouds is the renderer in use;
+ * cloudsFor makes the renderer of a look, when the look asked for is another renderer's than the one in use (the Sculpted look's
+ * bodies, the other three looks' volume): Weather3D destroys the one in use and takes the new one. Without it the one renderer
+ * is given every look.
+ */
 export interface Sky {
-  clouds: Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'> & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'tier' | 'scale' | 'passMs' | 'madeMs'>>
+  clouds: SkyClouds
+  cloudsFor?: (look: CloudLook) => SkyClouds
   fog: Pick<GroundFog, 'set' | 'frame' | 'destroy'>
   precip: Pick<Precipitation, 'set' | 'aim' | 'destroy'>
 }
@@ -276,16 +290,17 @@ export interface Sky {
  * ponytail: cloudLayer.ts (the clouds as Cesium's puffs) and rainShafts.ts stay in the tree, unused, until the user has accepted the
  * volumes. Upgrade: delete them, their tests, and what of cloudField.ts only they read.
  */
-const cesiumSky = (viewer: Viewer, onCloudsFailed: () => void, broken: boolean): Sky => ({
-  clouds: new CloudVolume(viewer.scene, {
-    broken,
-    onFailed: () => {
-      resumeRendering(viewer)
-      onCloudsFailed()
-    },
-  }),
-  fog: new GroundFog(viewer.scene), precip: new Precipitation(viewer.container as HTMLElement),
-})
+function cesiumSky(viewer: Viewer, onCloudsFailed: () => void, broken: boolean, look: CloudLook): Sky {
+  const onFailed = (): void => {
+    resumeRendering(viewer)
+    onCloudsFailed()
+  }
+  // Only the renderer of the look in use is made: the other's worker, images and shaders cost nothing until it is asked for.
+  const cloudsFor = (l: CloudLook): SkyClouds => (l === 'sculpted'
+    ? new SculptedClouds({ primitives: viewer.scene.primitives, camera: viewer.scene.camera, renderError: viewer.scene.renderError, context: (viewer.scene as unknown as { context: unknown }).context, light: () => viewer.scene.light as { direction?: Cartesian3 } }, { onFailed, veil: domVeil(viewer.container as HTMLElement), shadow: groundShadow(viewer), aids: sceneAids(viewer) })
+    : new CloudVolume(viewer.scene, { broken, onFailed }))
+  return { clouds: cloudsFor(look), cloudsFor, fog: new GroundFog(viewer.scene), precip: new Precipitation(viewer.container as HTMLElement) }
+}
 
 export interface Weather3DOptions {
   apiBase: string // the app's /api
@@ -304,6 +319,7 @@ export interface Weather3DOptions {
   broken?: boolean // ?wxbreak=1: the cloud pass's shader is made not to compile, to see the failure handled
   tier?: number | null // ?wxtier: the cloud march held at this tier; null or absent: by the frames' times (marchPace.ts)
   satellite?: SatelliteSource | null // the weather satellite; null: none (?wxsat=0); absent: the app's server's raw frames first, else EUMETView's pictures, fetched by the page (satelliteFor)
+  look?: CloudLook // the clouds' look at the start: the sky's renderer is made for it (default: the sky's own, else severity colours)
   onCloudsFailed?: (note: string) => void // told once, with the words for it, when the cloud pass has failed for good (the Clouds choices of the Weather menu then do nothing)
 }
 
@@ -427,6 +443,7 @@ export class Weather3D {
   #centre = { lat: Number.NaN, lon: Number.NaN } // the place the clouds were last built round: the field's middle (fieldPlace.ts)
   #stations = 0 // the stations the clouds were built from
   #pending: { clouds: CloudSpec[]; at: { lat: number; lon: number }; sat: SatGrid | null } | null = null // built round a place, drawn at the next frame
+  #drawn: { clouds: CloudSpec[]; at: { lat: number; lon: number }; sat: SatGrid | null } | null = null // what the renderer in use was last given: another renderer is given it again (look)
   readonly #sat: SatelliteSource | null // the weather satellite; null: none
   #builtSat = '' // the frame the clouds were last built with (satKey)
   #satSent = '' // the frame whose pixels the gatherer was last sent (satKey): the jobs after bring it without them
@@ -467,14 +484,14 @@ export class Weather3D {
     this.#at = opts.at ?? null
     this.#onCloudsFailed = opts.onCloudsFailed ?? (() => {})
     this.#heldTier = opts.tier ?? null
-    this.#sky = opts.sky ?? cesiumSky(viewer, () => this.#seeFailed(), opts.broken === true)
+    this.#sky = opts.sky ?? cesiumSky(viewer, () => this.#seeFailed(), opts.broken === true, opts.look ?? 'severity')
     this.#tile = opts.tile ?? ((radar, z, x, y) => radar.get(z, x, y))
     this.#epochMs = opts.epochMs ?? Date.now
     this.#onShade = opts.onShade ?? (() => {})
     this.#dwellMs = opts.dwellMs ?? MODEL_DWELL_MS
     this.#demo = opts.demo ?? null
     this.#sat = opts.satellite === undefined ? satelliteFor('server', opts.apiBase) : opts.satellite
-    this.#look = this.#sky.clouds.look ?? 'severity'
+    this.#look = opts.look ?? this.#sky.clouds.look ?? 'severity'
     this.#footprints.show = false
     void viewer.dataSources.add(this.#footprints)
   }
@@ -542,13 +559,31 @@ export class Weather3D {
     return this.#hazards
   }
 
-  /** The clouds' look: natural, severity colours or blocks (cloudVolume.ts). Changed on the fly. */
+  /**
+   * The clouds' look: natural, severity colours or blocks (cloudVolume.ts), or sculpted (sculptedClouds.ts). Changed on the fly. To or
+   * from the Sculpted look the renderer changes (Sky.cloudsFor): the one in use is destroyed (its pass or its primitive leaves the
+   * scene, its worker ends), and the other is made, shown as the weather is, and given what the one before had: the hazard areas, the
+   * way ahead, and at the next frame the clouds last drawn (its field is made anew: until then the status line has no field to ask).
+   */
   get look(): CloudLook {
     return this.#look
   }
 
   set look(l: CloudLook) {
+    const other = (l === 'sculpted') !== (this.#look === 'sculpted')
     this.#look = l
+    if (other && !this.#destroyed && this.#sky.cloudsFor !== undefined) {
+      this.#sky.clouds.destroy()
+      this.#sky.clouds = this.#sky.cloudsFor(l)
+      this.#sky.clouds.show = this.#show
+      this.#pace.reset()
+      if (this.#show) {
+        this.#drawHazards()
+        this.#sky.clouds.setAhead(this.#ahead, this.#aheadShow)
+        if (this.#seen) this.#sky.clouds.fade(this.#hereWC)
+      }
+      this.#pending ??= this.#drawn
+    }
     this.#sky.clouds.look = l
   }
 
@@ -634,6 +669,14 @@ export class Weather3D {
     }
   }
 
+  /**
+   * The chased aircraft's tint while it is in or behind cloud, in the Sculpted look (sculptedClouds.ts: toward the cloud's colour,
+   * by the cloud between the camera and it); null while hidden and in the other looks, whose pass veils the aircraft itself.
+   */
+  get tint(): Readonly<SculptTint> | null {
+    return this.#show ? this.#sky.clouds.tint ?? null : null
+  }
+
   /** What draws the sky (for checks in the console). */
   get sky(): Sky {
     return this.#sky
@@ -695,9 +738,11 @@ export class Weather3D {
       const t0 = performance.now()
       this.#sky.clouds.draw(this.#pending.clouds, this.#pending.at, this.#pending.sat)
       this.#drawMs = performance.now() - t0
+      this.#drawn = this.#pending
       this.#pending = null
     } else if (this.#staged) this.#askClouds() // one heavy piece of work a frame: the look, this, the draw
     this.#sky.clouds.frame(tf, this.#night)
+    this.#sky.clouds.through?.(aircraft !== null && Number.isFinite(aircraft.lat) && Number.isFinite(aircraft.lon) ? aircraft : null, nowMs)
     this.#sky.fog.frame(tf, this.#night)
     this.#easeShade(nowMs)
     if (this.#falling && nowMs - this.#aimedMs >= AIM_MS) {

@@ -22,10 +22,14 @@ import { RadarSource, type SourceTile } from './radar.ts'
 import { radarCells } from './radarCells.ts'
 import { modelWindAt } from './modelWind.ts'
 import { REACH_KM } from './cloudShaders.ts'
-import type { CloudLook, HazardStyle } from './cloudVolume.ts'
+import { CloudVolume, type CloudLook, type HazardStyle } from './cloudVolume.ts'
+import { bytesImage } from './gpuImage.ts'
+import { countLayer } from './sculptGpu.ts'
+import { SculptedClouds } from './sculptedClouds.ts'
+import { makeField } from './wxFieldJob.ts'
 import { SAT_GRID_N, type SatGrid } from './satGrid.ts'
 import { SAT_CHECK_MS, SAT_KEEP_MS, SAT_LAYER, SAT_N, SatelliteSource, satBox, satCapsUrl, type SatFetch } from './satellite.ts'
-import { HAZARD_KM, HttpError, MODEL_DWELL_MS, Weather3D, echoShade, parseWxAt, parseWxBreak, parseWxDemo, parseWxSat, parseWxTier, satelliteFor, statusText3d } from './weather3d.ts'
+import { HAZARD_KM, HttpError, MODEL_DWELL_MS, Weather3D, type Sky, type SkyClouds, echoShade, parseWxAt, parseWxBreak, parseWxDemo, parseWxSat, parseWxTier, satelliteFor, statusText3d } from './weather3d.ts'
 import { aheadPath, type AheadPath } from './wxAhead.ts'
 import { gatherer, type GatherJob, type Gathered } from './wxGather.ts'
 import { demoSky } from './wxDemo.ts'
@@ -164,7 +168,7 @@ function geoOf(url: string): ModelGeo {
  * was asked, answered from `answers` (or failed, or held until release()). The model is asked at the first look (no dwell) unless
  * `dwell` asks for the real 10 s; `network` has it use its own getJson, over the global fetch; `demo`: ?wxdemo's km.
  */
-function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: boolean; demo?: number; tier?: number; gather?: Builder<GatherJob, Gathered>; satellite?: SatelliteSource } = {}) {
+function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: boolean; demo?: number; tier?: number; gather?: Builder<GatherJob, Gathered>; satellite?: SatelliteSource; sky?: ReturnType<typeof fakeSky> & Pick<Sky, 'cloudsFor'>; look?: CloudLook } = {}) {
   const asked: string[] = []
   const answers: Record<'metar' | 'sigmet' | 'radar', unknown> = { metar: [], sigmet: [], radar: INDEX }
   const failing = new Set<Kind>()
@@ -194,7 +198,7 @@ function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: 
   const labels = { setLayer: (key: string, rank: number, ls: readonly LayerLabel[]) => void labelCalls.push({ key, rank, labels: [...ls] }) }
   const lines: (string | null)[] = []
   let units: Units = DEFAULT_UNITS
-  const sky = fakeSky()
+  const sky = o.sky ?? fakeSky()
   const tiles = new Map<string, SourceTile>() // z/x/y
   const tileAsks: string[] = []
   const frameTiles = new Map<string, Map<string, SourceTile>>() // tiles of the frame whose URL has this in it, over `tiles`
@@ -213,6 +217,7 @@ function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: 
   const w = new Weather3D(viewer, {
     apiBase: '/api', labels, getJson: o.network ? undefined : getJson, onStatus: (t) => lines.push(t), units: () => units, at: o.at, sky, tile, epochMs: () => epoch.now,
     onShade: (s) => shades.push(s), dwellMs: o.dwell ? undefined : 0, demo: o.demo, onCloudsFailed: (note) => failedNotes.push(note), tier: o.tier, gather: o.gather, satellite: o.satellite ?? null, // (no satellite unless a test brings one: the default asks EUMETSAT)
+    look: o.look,
   })
   return {
     w, asked, answers, model, epoch, failing, hold, sources, removed, labelCalls, lines, shades, failedNotes, sky, tiles, tileAsks, tileHold, frameTiles,
@@ -2637,4 +2642,93 @@ test('satelliteFor: the app\'s server\'s route first by default; ?wxsat=pictures
   await flush()
   assert.equal(server.asked[0], satCapsUrl())
   assert.ok(server.asked.every((u) => !u.startsWith('/api/')))
+})
+
+// ---- the Sculpted look: another renderer behind the same seam ---------------------------------------------------------------
+
+test('Weather3D: to the Sculpted look and back the renderer changes: the one in use is destroyed, the other made, shown as the weather is, and given the hazard areas, the way ahead and the clouds last drawn; between the volume\'s three looks nothing is made', async () => {
+  const sky = fakeSky() as ReturnType<typeof fakeSky> & Pick<Sky, 'cloudsFor'>
+  const made: { look: CloudLook; clouds: ReturnType<typeof fakeSky>['clouds'] }[] = []
+  sky.cloudsFor = (look) => {
+    made.push({ look, clouds: fakeSky().clouds })
+    return made.at(-1)!.clouds
+  }
+  const first = sky.clouds
+  const r = rig({ demo: 0, sky })
+  await open(r)
+  r.w.update(AC, 16)
+  r.w.setAhead(aheadPath({ ...AC }, 90, 400, 0), { track: true, slice: false })
+  assert.deepEqual([first.draws.length, first.hazardSets.at(-1)!.hazards.length, first.show], [1, 1, true])
+  r.w.look = 'blocks'
+  r.w.look = 'natural'
+  assert.deepEqual([made.length, first.look, first.destroyed], [0, 'natural', false], 'the volume draws all three: nothing is made')
+  r.w.look = 'sculpted'
+  assert.deepEqual([made.map((m) => m.look), first.destroyed, sky.clouds === made[0].clouds], [['sculpted'], true, true])
+  const second = made[0].clouds
+  assert.deepEqual([second.show, second.look, second.hazardSets.at(-1)!.hazards.length, second.aheads.at(-1)!.show, second.fades.length], [true, 'sculpted', 1, { track: true, slice: false }, 1])
+  assert.equal(second.draws.length, 0, 'the clouds at the next frame, not within the click')
+  r.w.update(AC, 32)
+  assert.deepEqual([second.draws.length, second.draws[0], second.ats[0]], [1, first.draws[0], first.ats[0]], 'what the volume was last given')
+  r.w.update(AC, 48)
+  assert.equal(second.draws.length, 1, 'once')
+  r.w.look = 'sculpted'
+  assert.equal(made.length, 1, 'the same look again: nothing')
+  r.w.look = 'severity'
+  assert.deepEqual([made.map((m) => m.look), second.destroyed, r.w.look], [['sculpted', 'severity'], true, 'severity'])
+  r.w.update(AC, 64)
+  assert.equal(made[1].clouds.draws.length, 1)
+  // Hidden, the renderer made is hidden, and is given the clouds when the weather shows again.
+  r.w.show = false
+  r.w.look = 'sculpted'
+  assert.deepEqual([made[2].clouds.show, made[2].clouds.hazardSets.length, made[2].clouds.draws.length], [false, 0, 0])
+  r.w.show = true
+  r.w.update(AC, 80)
+  assert.deepEqual([made[2].clouds.show, made[2].clouds.draws.length], [true, 1])
+})
+
+test('Weather3D: the look it starts with is the one it is given, and a sky with one renderer is given every look', async () => {
+  const r = rig({ demo: 0, look: 'sculpted' })
+  assert.equal(r.w.look, 'sculpted')
+  r.w.look = 'blocks'
+  assert.deepEqual([r.sky.clouds.look, r.sky.clouds.destroyed], ['blocks', false])
+})
+
+test('Weather3D: the renderers themselves: in the Sculpted look there is no post-process stage in the scene, in the others no primitive, and nothing of the one left behind on the card', async () => {
+  const stages: unknown[] = []
+  const primitives: unknown[] = []
+  const layers: ReturnType<typeof countLayer>[] = []
+  const images: ReturnType<typeof bytesImage>[] = []
+  const scene = {
+    postProcessStages: { add: (x: unknown) => (stages.push(x), x), remove: (x: unknown) => (stages.splice(stages.indexOf(x), 1), true) },
+    primitives: { add: (x: unknown) => (primitives.push(x), x), remove: (x: unknown) => primitives.includes(x) && (primitives.splice(primitives.indexOf(x), 1), true) },
+    camera: { inverseViewMatrix: {}, positionCartographic: Cartographic.fromDegrees(AC.lon, AC.lat, AC.altM) },
+  }
+  const here = { ask: (job: Parameters<typeof makeField>[0], done: (made: ReturnType<typeof makeField>) => void): void => done(makeField(job)), destroy: (): void => {} }
+  const renderers: CloudLook[] = []
+  const cloudsFor = (look: CloudLook): SkyClouds => {
+    renderers.push(look)
+    return look === 'sculpted'
+      ? new SculptedClouds(scene as never, { builder: here, layer: () => (layers.push(countLayer()), layers.at(-1)!) })
+      : new CloudVolume(scene as never, { builder: here, images: (w, h) => (images.push(bytesImage(w, h)), images.at(-1)!), timer: null })
+  }
+  const sky = { ...fakeSky(), clouds: cloudsFor('severity'), cloudsFor } as unknown as ReturnType<typeof fakeSky> & Pick<Sky, 'cloudsFor'>
+  const r = rig({ demo: 0, sky, look: 'severity' })
+  const frames = (from: number): void => {
+    for (let t = from; t < from + 160; t += 16) r.w.update(AC, t)
+  }
+  await open(r)
+  frames(16)
+  assert.deepEqual([stages.length, primitives.length, images.some((i) => !i.destroyed)], [1, 0, true], 'the volume: its pass, its images')
+  r.w.look = 'sculpted'
+  frames(200)
+  assert.deepEqual([stages.length, primitives.length, images.every((i) => i.destroyed)], [0, 1, true], 'the bodies: no pass at all, no image left')
+  assert.ok(layers[0].live > 0 && (sky.clouds as SkyClouds).stats!.triangles > 1000)
+  assert.ok(r.w.field !== null && !r.w.field.empty, 'the status line has its field again')
+  r.w.look = 'blocks'
+  frames(400)
+  assert.deepEqual([stages.length, primitives.length, layers.reduce((n, l) => n + l.live, 0), layers.every((l) => l.destroyed)], [1, 0, 0, true], 'the volume again: no primitive, no body left')
+  r.w.look = 'natural'
+  assert.deepEqual(renderers, ['severity', 'sculpted', 'blocks'], 'a renderer is made when its look is asked for, not before')
+  r.w.show = false
+  assert.deepEqual([stages.length, primitives.length], [0, 0])
 })
