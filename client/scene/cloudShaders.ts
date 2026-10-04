@@ -2,8 +2,8 @@
 // The cloud volume's two shaders (cloudVolume.ts makes the pass of them and gives them their numbers: its setHazards, setAhead and
 // fade are named below), and the numbers written into them.
 // The pass is two stages, both on the scene's own colour:
-// - the march, at half the size (scale: marchPace.ts makes it coarser when the frames are slow): the ray from the depth buffer (as
-//   groundFog.ts reads it), walked in at most 128 steps. Through clear air it strides: to the heights of the next band that has
+// - the march, at half the size and in at most 128 steps (less of each when the frames are slow: marchPace.ts's tiers, whose first
+//   is this): the ray from the depth buffer (as groundFog.ts reads it). Through clear air it strides: to the heights of the next band that has
 //   weather, or as far as the clear-air map (survey) says that band's cover is, whichever is further. Where it may meet cloud it
 //   searches in steps that grow with the distance (over or under a layer, as long as the height between allows), and a step that lands
 //   in cloud goes back: the cloud's near side is found (to a thirty-second of the step), and the cloud is walked in small steps from
@@ -207,6 +207,8 @@ uniform vec4 u_box; // the box the field's cover stands in, in the frame: west, 
 uniform float u_hazard; // how they are drawn: 0 a curtain, 1 a fence, 2 a box
 uniform vec3 u_aircraft; // the aircraft in the frame, km: the level slice is at its height, round it
 uniform vec2 u_aids; // 1 where it shows: x the track line (the mix draws it), y the level slice
+uniform float u_steps; // a ray's step budget: ${STEPS} at the first tier, fewer when the frames are slow (marchPace.ts)
+uniform float u_detail; // 0: the noise's four octaves; 1: without the finest
 in vec2 v_textureCoordinates;
 ${SHARED}
 const vec3 HAZE = vec3(0.66, 0.76, 0.88); // the air's colour over a long way
@@ -319,7 +321,7 @@ float noise(vec3 q) {
 // or a far pixel, then reads a smoother cloud, the same from pixel to pixel, where it would read a chance place of the detail (a
 // grain).
 float fbm(vec3 q, float lod) {
-  float fine = lod < 0.12 ? mix(noise(q * 23.0), NOISE_MEAN, smoothstep(0.06, 0.12, lod)) : NOISE_MEAN;
+  float fine = lod < 0.12 && u_detail < 0.5 ? mix(noise(q * 23.0), NOISE_MEAN, smoothstep(0.06, 0.12, lod)) : NOISE_MEAN;
   float mid = lod < 0.35 ? mix(noise(q * 8.0), NOISE_MEAN, smoothstep(0.17, 0.35, lod)) : NOISE_MEAN;
   float wide = lod < 1.0 ? mix(noise(q * 3.0), NOISE_MEAN, smoothstep(0.5, 1.0, lod)) : NOISE_MEAN;
   return 0.42 * noise(q) + 0.27 * wide + 0.19 * mid + 0.12 * fine;
@@ -582,10 +584,11 @@ void main() {
     int used = 0; // steps taken, the halvings too
     float pace = 0.03; // the last step taken in cloud: the next sample's detail is read as coarsely (fbm)
     float hs = 1.04 * length(rd.xy) + 1.0e-4; // the ray's way over the map, km per km, at most
+    float lean = ${glsl(STEPS)} / u_steps; // with a smaller budget every step is longer by as much, in clear air, in cloud and in rain, so that the ray gets as far (1 at the first tier)
     for (int i = 0; i < ${STEPS}; i++) {
-      if (t >= tEnd || A > 0.985 || used >= ${STEPS}) break;
+      if (t >= tEnd || A > 0.985 || float(used) >= u_steps) break;
       used++;
-      float late = max(0.0, float(used) - ${glsl(STEPS * 0.6)}) / ${glsl(STEPS / 12)};
+      float late = max(0.0, float(used) - 0.6 * u_steps) / (u_steps / 12.0);
       float stretch = 1.0 + late * late;
       vec3 p = ro + rd * t;
       vec3 m = toMap(p);
@@ -602,7 +605,7 @@ void main() {
         bool strode = room >= least;
         if (strode) t += room + 2.0e-3;
         tLast = t;
-        t += up ? walk : (strode ? phase : 1.0) * max(${glsl(SEARCH_MIN_KM)}, ${glsl(SEARCH)} * t) * stretch;
+        t += up ? walk : (strode ? phase : 1.0) * max(${glsl(SEARCH_MIN_KM)}, ${glsl(SEARCH)} * t) * stretch * lean;
         searched = !up;
         edging = up;
         continue;
@@ -612,8 +615,8 @@ void main() {
       vec2 rain = vec2(0.0);
       vec3 pw = warpWide(p, q);
       float dm = holds(pw, nr, gap) ? min(1.0, GAIN * cover(toMap(warpFine(pw, q)), nr, sev, rain, gap)) : 0.0;
-      float small = clamp(0.018 * t, 0.03, max(0.1, 0.004 * t)); // a small step here: finer near the camera, where a pixel sees less
-      float ds = clamp(0.018 * t, 0.03, max(0.1, 0.004 * t) + 0.6 * A) * stretch;
+      float small = lean * clamp(0.018 * t, 0.03, max(0.1, 0.004 * t)); // a small step here: finer near the camera, where a pixel sees less
+      float ds = lean * clamp(0.018 * t, 0.03, max(0.1, 0.004 * t) + 0.6 * A) * stretch;
       if (dm > THIN) {
         if (searched && t > fineTo) { fineTo = t; walk = max(0.03, 0.25 * (t - tLast)); t = tLast + walk; searched = false; edging = true; continue; }
         searched = false;
@@ -657,11 +660,11 @@ void main() {
         else if (kind == 2) {
           // a search step: by the distance, climbing or sinking little; or, over or under a cloud, as far as the height between allows
           float least = ${glsl(SEARCH_MIN_KM)};
-          ds = min(max(least, ${glsl(SEARCH)} * t), max(least, ${glsl(SEARCH_UP_KM)} / max(abs(dh), 1.0e-4)));
+          ds = lean * min(max(least, ${glsl(SEARCH)} * t), max(least, ${glsl(SEARCH_UP_KM)} / max(abs(dh), 1.0e-4)));
           ds = max(ds, min(gap / (abs(dh) + ${glsl(SLOPE)}), STRIDE)) * stretch;
           searched = true;
         }
-        else { ds = min(min(max(0.12, 0.07 * t), room), edge) + 2.0e-3; searched = false; }
+        else { ds = min(min(lean * max(0.12, 0.07 * t), room), edge) + 2.0e-3; searched = false; }
         if (rain.x > 0.0) {
           float tau = tauR + rain.x * streaks(p, t) * ${glsl(RAIN)} * sigma(rain.y) * min(ds, tEnd - t);
           float a = ${glsl(RAIN_MOST)} * (exp(-tauR) - exp(-tau));
@@ -684,7 +687,7 @@ void main() {
     vec3 mB = vec3(0.0);
     float hs = 1.04 * length(rd.xy) + 1.0e-4; // the ray's way over the map, km per km, at most
     for (int i = 0; i < ${STEPS}; i++) {
-      if (t >= tEnd) break;
+      if (t >= tEnd || float(i) >= u_steps) break;
       vec3 p = ro + rd * t;
       vec3 m = toMap(p);
       float dh = rd.z + dot(p.xy, rd.xy) * INV_R;

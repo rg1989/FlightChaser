@@ -5,10 +5,12 @@
 // buffer says. Weather3D hands it the cloud specs of every source at once (draw), and it has the field of them made round the place
 // given: by its builder (fieldBuilder.ts), in the app a worker, so that the frames do not wait for it. Until the builder answers, the
 // field made last is drawn, and asked by the HUD; then the new one is taken (the field, its two images, and with the first the noise).
-// The pass is a PostProcessStageComposite of two stages, the march at half the size (scale: marchPace.ts makes it coarser when the
-// frames are slow) and the mix at full size: cloudShaders.ts has their shaders and says what each draws (the clouds in three looks,
-// the rain, the shadows; the hazard areas' edges and the level slice, sorted with the cloud; the track line). This file makes the pass
-// and gives the shaders their numbers.
+// The pass is a PostProcessStageComposite of two stages, the march at half the size and the mix at full size: cloudShaders.ts has
+// their shaders and says what each draws (the clouds in three looks, the rain, the shadows; the hazard areas' edges and the level
+// slice, sorted with the cloud; the track line). This file makes the pass and gives the shaders their numbers.
+// The march is walked at a tier (tier: marchPace.ts MARCH_TIERS, the first until told): its step budget, whether it reads the
+// noise's finest octave, whether the ground has the clouds' shadows, and its size. The pace that picks the tier judges by the pass's
+// own time on the graphics card, which the volume measures where the browser can (passMs: passTimer.ts).
 // The shader works in a frame of its own, so that it holds no large number: km east, north and up from the field's middle at sea level
 // (localFrame; JS gives it u_eyeToLocal each frame, worked out in doubles). A point's height over the sea is z + (x² + y²) / 2R, and
 // its place on the field's flat map follows from x and y (localToMap, the shader's toMap: to 40 m within 150 km, 100 m in the corners).
@@ -40,7 +42,8 @@ import { NOISE_KM } from './cloudNoise.ts'
 import { ATLAS_H, ATLAS_W, BOX_PAD_KM, MARCH_SHADER, MIX_SHADER, PATH_N, R_KM } from './cloudShaders.ts'
 import { fieldBuilder, type FieldBuilder } from './fieldBuilder.ts'
 import { bytesImage, textureImages, type GpuImage, type MakeImage } from './gpuImage.ts'
-import { MARCH_SCALES } from './marchPace.ts'
+import { MARCH_TIERS } from './marchPace.ts'
+import { passTimer, type PassTimer } from './passTimer.ts'
 import type { AheadPath } from './wxAhead.ts'
 import { EDGE_TEXELS, MAX_EDGES, edgeBound, hazardEdges, packEdges } from './wxEdges.ts'
 import { FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.ts'
@@ -173,6 +176,7 @@ export class CloudVolume {
   readonly #broken: boolean
   readonly #builder: FieldBuilder
   readonly #image: MakeImage
+  readonly #timer: Pick<PassTimer, 'watch' | 'poll' | 'ms'> | null // the pass's time on the graphics card; none where it cannot be asked
   readonly #unlisten: (() => void) | null // ends its listening for the scene's render errors
   readonly #frame = new Matrix4() // world metres to the field's frame
   readonly #eyeToLocal = new Matrix4()
@@ -213,9 +217,10 @@ export class CloudVolume {
   #edges: Bitmap = packEdges([]) // the hazard areas' edges in the frame as it stands: what the edge image holds
   #edgeCount = 0
   #ahead: AheadPath | null = null
+  #night = 0 // the Sun's night, as frame() gave it
   #light = 1
   #shadow = SHADOW
-  #marchScale = MARCH_SCALES[0]
+  #tier = 0 // of MARCH_TIERS
   #show = false
   #failed = false
   #destroyed = false
@@ -224,9 +229,12 @@ export class CloudVolume {
    * geoid: the sea's height above the ellipsoid at a place, m (default EGM96). onFailed: told once, when a render error has taken the
    * pass out for good. broken: the march is given a shader that cannot compile (?wxbreak=1: the failure seen handled on any machine).
    * builder: who makes the fields (default: a worker in a page, this thread elsewhere). images: what makes its images (default:
-   * textures in the scene's context; with no context, bytes).
+   * textures in the scene's context; with no context, bytes). timer: what times its pass (default: a timer query in the scene's
+   * context, where there is one).
    */
-  constructor(scene: VolumeScene, opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage } = {}) {
+  constructor(scene: VolumeScene, opts: {
+    geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage; timer?: Pick<PassTimer, 'watch' | 'poll' | 'ms'> | null
+  } = {}) {
     this.#stages = scene.postProcessStages
     this.#camera = scene.camera
     this.#geoid = opts.geoid ?? geoidN
@@ -234,6 +242,7 @@ export class CloudVolume {
     this.#broken = opts.broken === true
     this.#builder = opts.builder ?? fieldBuilder()
     this.#image = opts.images ?? (scene.context === undefined ? bytesImage : textureImages(scene.context))
+    this.#timer = opts.timer !== undefined ? opts.timer : passTimer((scene.context as { _gl?: unknown } | undefined)?._gl)
     this.#unlisten = scene.renderError?.addEventListener((_scene, error) => this.#fail(error)) ?? null
   }
 
@@ -250,17 +259,30 @@ export class CloudVolume {
   }
 
   /**
-   * The share of the view's width and height the march is walked at: a half until told (marchPace.ts says when the frames ask for a
-   * coarser one). A stage's size is fixed when it is made, so another size is a new pass (which reads the same images).
+   * The tier the march is walked at, an index into marchPace.ts MARCH_TIERS: the first until told (the pace says when the frames ask
+   * for a coarser one). Its step budget, its detail and its shadows are numbers the pass reads each frame; a stage's size is fixed
+   * when it is made, so a tier of another size is a new pass (which reads the same images).
    */
-  get scale(): number {
-    return this.#marchScale
+  get tier(): number {
+    return this.#tier
   }
 
-  set scale(s: number) {
-    if (this.#destroyed || s === this.#marchScale || !(s > 0 && s <= 1)) return
-    this.#marchScale = s
-    this.#sync(true)
+  set tier(n: number) {
+    if (this.#destroyed || n === this.#tier || MARCH_TIERS[n] === undefined) return
+    const resized = MARCH_TIERS[n].scale !== MARCH_TIERS[this.#tier].scale
+    this.#tier = n
+    this.#shadow = MARCH_TIERS[n].shadows ? SHADOW * (1 - this.#night) : 0
+    if (resized) this.#sync(true)
+  }
+
+  /** The share of the view's width and height the march is walked at: the tier's. */
+  get scale(): number {
+    return MARCH_TIERS[this.#tier].scale
+  }
+
+  /** The pass's time on the graphics card in the last frame timed, ms; not a number where the browser cannot tell it, or before it has. */
+  get passMs(): number {
+    return this.#timer?.ms ?? Number.NaN
   }
 
   /** The field in use: what the pass draws, and what the HUD asks (wxField.ts sampleField). Null until the first has come. */
@@ -341,8 +363,10 @@ export class CloudVolume {
    */
   frame(_tf: TerrainFrame, night: number): void {
     const n = Number.isFinite(night) ? Math.min(1, Math.max(0, night)) : 0
+    this.#night = n
     this.#light = sunBrightness(n)
-    this.#shadow = SHADOW * (1 - n)
+    this.#shadow = MARCH_TIERS[this.#tier].shadows ? SHADOW * (1 - n) : 0
+    this.#timer?.poll()
     if (this.#coming !== null) this.#write(BANDS_A_FRAME)
   }
 
@@ -434,6 +458,7 @@ export class CloudVolume {
     this.#up = false
     if (coming !== null && !this.#destroyed) this.#use(coming, false)
     this.#sync()
+    this.#timer?.watch([])
     for (const image of [this.#shown?.field, this.#shown?.near, this.#spare?.field, this.#spare?.near, this.#noiseImage, this.#edgeImage]) image?.destroy()
     this.#shown = this.#spare = this.#noiseImage = this.#edgeImage = null
   }
@@ -507,10 +532,11 @@ export class CloudVolume {
     }
     const march = new PostProcessStage({
       name: `fh_cloud_march_${n}`, fragmentShader: this.#broken ? `${MARCH_SHADER}\n?wxbreak=1: this line is not a shader's, so the march does not compile.\n` : MARCH_SHADER,
-      textureScale: this.#marchScale,
+      textureScale: this.scale,
       uniforms: {
         ...shared, u_noise: () => (this.#noiseImage ?? this.#shown!.near).texture, u_near: () => this.#shown!.near.texture, u_noiseFrame: () => this.#noiseFrame,
         u_floor: () => this.#floor, u_top: () => this.#top, u_light: () => this.#light, u_box: () => this.#box,
+        u_steps: () => MARCH_TIERS[this.#tier].steps, u_detail: () => MARCH_TIERS[this.#tier].detail,
         u_edges: () => this.#edgeImage!.texture, u_edgeCount: () => this.#edgeCount, u_edgeBound: () => this.#edgeBound, u_hazard: () => HAZARD[this.#style] ?? HAZARD.box, u_aircraft: () => this.#aircraft,
       },
     })
@@ -518,6 +544,7 @@ export class CloudVolume {
       name: `fh_cloud_mix_${n}`, fragmentShader: MIX_SHADER,
       uniforms: { ...shared, u_march: march.name, u_shadow: () => this.#shadow, u_path: () => this.#path },
     })
+    this.#timer?.watch([march, mix] as unknown as Parameters<PassTimer['watch']>[0])
     return new PostProcessStageComposite({ name: `fh_cloud_${n}`, stages: [march, mix], inputPreviousStageTexture: false })
   }
 

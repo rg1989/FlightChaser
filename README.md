@@ -45,10 +45,12 @@ make replay                  # the same, replaying the newest recording
   ahead strip (a side view of the next 80 km: the weather's cells, the hazard areas, the aircraft's way; not in a window under 480 px
   high). A choice applies at once and is kept in this browser; `?wxlook=natural|severity|blocks`, `?wxhaz=curtain|fence|box` and
   `?wxtrack`, `?wxslice`, `?wxstrip` (`=0` or `=1`) set them for one load, and are not kept.
-- The clouds are drawn at half the view's size, and coarser (0.35, then 0.25) when the frames have been slow for a while and that helps.
-  Should the graphics card refuse the cloud pass, the view goes on without it: a toast says "3-D clouds stopped after a drawing error",
+- The clouds are drawn at half the view's size. When the cloud pass makes the frames slow for a while it gives up, a tier at a time,
+  what is seen least: a part of its steps, the finest detail of a cloud's edge, the clouds' shadows on the ground, and then its size
+  (0.35, then 0.25 of the view); when the view is cheap again it takes them back. The sky round the aircraft is worked out off the
+  main thread and ahead of the aircraft on its track, so the view does not stop for it. Should the graphics card refuse the cloud pass, the view goes on without it: a toast says "3-D clouds stopped after a drawing error",
   the Weather menu goes, and the hazard areas stay marked on the ground. Check aids: `?wxdemo=1` (a made-up sky, no weather asked for;
-  `?wxdemo=60` starts in its rain, `?wxdemo=98` at its storm), `?wxscale=0.5|0.35|0.25` (the clouds held at one size), `?wxbreak=1`
+  `?wxdemo=60` starts in its rain, `?wxdemo=98` at its storm), `?wxtier=0`…`5` (the clouds held at one tier, 0 the finest), `?wxbreak=1`
   (the cloud pass fails on purpose).
 
 ## Data sources

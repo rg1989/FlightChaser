@@ -22,6 +22,15 @@ test('the shaders: each is given the reach the radar is read by (REACH_KM), the 
   }
 })
 
+test('the march\'s tier (marchPace.ts): a ray\'s step budget is a number it is given (128 at the first tier), and with a smaller one its steps are longer by as much, so that it gets as far; the noise\'s finest octave is read only at detail 0', () => {
+  for (const text of ['uniform float u_steps;', 'uniform float u_detail;', 'float(used) >= u_steps', 'float lean = 128.0 / u_steps;', 'max(0.0, float(used) - 0.6 * u_steps) / (u_steps / 12.0)', 'lod < 0.12 && u_detail < 0.5']) {
+    assert.ok(MARCH_SHADER.includes(text), text)
+  }
+  assert.equal(MARCH_SHADER.split('for (int i = 0; i < 128; i++)').length, 3, 'both walks keep their loops of 128: the budget ends them sooner')
+  assert.ok(MARCH_SHADER.includes('if (t >= tEnd || float(i) >= u_steps) break;'), 'the blocks\' walk too')
+  assert.ok(!MIX_SHADER.includes('u_steps') && !MIX_SHADER.includes('u_detail'))
+})
+
 test('the march: a ray is clipped to the box the cover stands in, not to the whole field; a sample whose height no band near holds is not read from the field (nor the fine warp\'s noise for it); the edges are read only by a ray that passes the circle they stand in', () => {
   assert.ok(MARCH_SHADER.includes('uniform vec4 u_box;') && MARCH_SHADER.includes('(u_box.xy - ro.xy) / dir, tb = (u_box.zw - ro.xy) / dir'))
   assert.ok(!/\bBOX\b/.test(MARCH_SHADER.replace(/\/\/.*$/gm, '')), 'no other clip')

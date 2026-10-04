@@ -48,8 +48,9 @@
 // once a second, when the clouds' reach is also centred on the aircraft.
 // It also hands the cloud volume the way ahead of the chased aircraft (wxAhead.ts aheadPath, given every frame by app.ts: setAhead)
 // with which of its two aids show, the track line and the level slice: the volume draws them.
-// Every frame it also gives the frames' times to a pace (marchPace.ts), which says how fine the volume's march is walked: coarser
-// when the frames have been slow for a while, never to and fro.
+// Every frame it also gives the frame's time, and the cloud pass's own time on the graphics card where the volume can tell it, to a
+// pace (marchPace.ts), which says at which tier the volume's march is walked: coarser when the pass has made the frames slow for
+// a while, finer again when the view has become cheap, never to and fro.
 // Should the volume's pass fail (cloudVolume.ts: a render error takes it out for good, a shader this graphics card will not compile
 // among them), the rest goes on: the panel's line says "3-D clouds stopped after a drawing error", the app is told once
 // (onCloudsFailed: it takes the Weather menu away and says the note), and the hazard areas, whose edges the pass drew, are marked by
@@ -70,8 +71,8 @@
 // ?wxdemo=<km> is another (parseWxDemo): no weather is asked for at all; the sky is wxDemo.ts's made-up one (cumulus, a rain layer, two
 // storms in a hazard area), laid out once along the aircraft's track from its first place, the aircraft that many km into it.
 // ?wxbreak=1 is a third (parseWxBreak): the cloud pass is given a shader that does not compile, so that its failure is seen handled
-// on any machine (with ?wxdemo=1 the pass, and so the failure, comes at once). ?wxscale=0.5, 0.35 or 0.25 is a fourth (parseWxScale):
-// the cloud march held at that size, the frames' times not asked.
+// on any machine (with ?wxdemo=1 the pass, and so the failure, comes at once). ?wxtier=0 … 5 is a fourth (parseWxTier):
+// the cloud march held at that tier, the frames' times not asked.
 import { Cartesian3, ClassificationType, Color, CustomDataSource, Ellipsoid, Math as CesiumMath, StripeMaterialProperty, StripeOrientation, type Cartographic, type Viewer } from 'cesium'
 import { distanceNm } from '../../shared/geo.ts'
 import { geoidN } from '../../shared/geoid.ts'
@@ -81,7 +82,7 @@ import { DEFAULT_UNITS, type Units } from '../ui/units.ts'
 import { MAX_CLOUDS, RADAR_LOOK, REBUILD_KM, modelClouds, nearestClouds, observedClouds, overcastShade, radarBases, radarClouds, type CloudSpec } from './cloudField.ts'
 import { REACH_KM } from './cloudShaders.ts'
 import { CloudVolume, resumeRendering, type CloudLook, type HazardStyle } from './cloudVolume.ts'
-import { MARCH_SCALES, MarchPace } from './marchPace.ts'
+import { MARCH_TIERS, MarchPace } from './marchPace.ts'
 import { drawnHeightM } from './exaggeration.ts'
 import { GroundFog, fogNear } from './groundFog.ts'
 import { inInnerHalf, modelWindAt, type ModelWind } from './modelWind.ts'
@@ -190,10 +191,10 @@ export function parseWxDemo(search: string): number | null {
 /** ?wxbreak=1: the cloud pass's shader is made not to compile (a check aid: the failure's handling is then seen on any machine). */
 export const parseWxBreak = (search: string): boolean => new URLSearchParams(search).get('wxbreak') === '1'
 
-/** ?wxscale=0.5, 0.35 or 0.25: the cloud march held at that size, whatever the frames' times (a check aid); none when absent or another number. */
-export function parseWxScale(search: string): number | null {
-  const scale = Number(new URLSearchParams(search).get('wxscale') ?? '')
-  return MARCH_SCALES.includes(scale) ? scale : null
+/** ?wxtier=0 … 5: the cloud march held at that tier of marchPace.ts, whatever the frames' times (a check aid); none when absent or no tier. */
+export function parseWxTier(search: string): number | null {
+  const tier = new URLSearchParams(search).get('wxtier') ?? ''
+  return /^\d+$/.test(tier) && MARCH_TIERS[Number(tier)] !== undefined ? Number(tier) : null
 }
 
 type Box = readonly [south: number, west: number, north: number, east: number]
@@ -201,7 +202,7 @@ type Feed = 'metar' | 'sigmet' | 'radar' | 'model'
 
 /** What draws the sky round the aircraft: Cesium's parts in the app (cesiumSky), fakes in tests. */
 export interface Sky {
-  clouds: Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'> & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'scale' | 'madeMs'>>
+  clouds: Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'> & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'tier' | 'scale' | 'passMs' | 'madeMs'>>
   fog: Pick<GroundFog, 'set' | 'frame' | 'destroy'>
   precip: Pick<Precipitation, 'set' | 'aim' | 'destroy'>
 }
@@ -238,7 +239,7 @@ export interface Weather3DOptions {
   dwellMs?: number // how long the aircraft stays before the model is asked for; default MODEL_DWELL_MS
   demo?: number | null // ?wxdemo: the km along the demo sky the aircraft starts at; null or absent: the real weather
   broken?: boolean // ?wxbreak=1: the cloud pass's shader is made not to compile, to see the failure handled
-  scale?: number | null // ?wxscale: the cloud march held at this size; null or absent: by the frames' times (marchPace.ts)
+  tier?: number | null // ?wxtier: the cloud march held at this tier; null or absent: by the frames' times (marchPace.ts)
   onCloudsFailed?: (note: string) => void // told once, with the words for it, when the cloud pass has failed for good (the Weather menu's choices then do nothing)
 }
 
@@ -311,8 +312,8 @@ export class Weather3D {
   readonly #dwellMs: number
   readonly #demo: number | null
   readonly #onCloudsFailed: (note: string) => void
-  readonly #scale: number | null // ?wxscale: the march's size, held
-  readonly #pace = new MarchPace() // how fine the cloud march is walked, by the frames' times
+  #heldTier: number | null // ?wxtier, or holdTier: the march's tier, held
+  readonly #pace = new MarchPace() // at which tier the cloud march is walked, by the frames' times and the pass's own
   #frameMs = Number.NaN // the last frame's time, for the pace
   #cloudsFailed = false // the cloud pass's failure has been seen and told
   #known = false // a source of clouds has answered: the sky is not a guess
@@ -393,7 +394,7 @@ export class Weather3D {
     this.#getJson = opts.getJson ?? getJson
     this.#at = opts.at ?? null
     this.#onCloudsFailed = opts.onCloudsFailed ?? (() => {})
-    this.#scale = opts.scale ?? null
+    this.#heldTier = opts.tier ?? null
     this.#sky = opts.sky ?? cesiumSky(viewer, () => this.#seeFailed(), opts.broken === true)
     this.#tile = opts.tile ?? ((radar, z, x, y) => radar.get(z, x, y))
     this.#epochMs = opts.epochMs ?? Date.now
@@ -423,9 +424,9 @@ export class Weather3D {
       this.#line = null
       this.#labels.setLayer(LABEL_KEY, LABEL_RANK, [])
       this.#sky.clouds.setAhead(null, this.#aheadShow) // the app gives the way ahead again at the first frame it shows
-      this.#pace.reset() // shown again, the march starts at half size
+      this.#pace.reset() // shown again, the march starts at the first tier
       this.#frameMs = Number.NaN
-      if (this.#sky.clouds.scale !== undefined) this.#sky.clouds.scale = this.#scale ?? this.#pace.scale
+      if (this.#sky.clouds.tier !== undefined) this.#sky.clouds.tier = this.#heldTier ?? this.#pace.tier
       this.#sky.fog.set(null)
       this.#sky.precip.set(null)
       this.#falling = false
@@ -534,6 +535,16 @@ export class Weather3D {
     return this.#cloudsFailed
   }
 
+  /** The tier the cloud march is walked at (marchPace.ts MARCH_TIERS: 0 the finest): the pace's, or the one ?wxtier holds. What the bench's line says. */
+  get tier(): number {
+    return this.#sky.clouds.tier ?? this.#heldTier ?? this.#pace.tier
+  }
+
+  /** The march held at a tier from now on, whatever the frames' times; null: by the pace again, from where it stands (a check aid, as ?wxtier: a check run times each tier in turn). */
+  holdTier(tier: number | null): void {
+    this.#heldTier = tier !== null && MARCH_TIERS[tier] !== undefined ? tier : null
+  }
+
   /** What draws the sky (for checks in the console). */
   get sky(): Sky {
     return this.#sky
@@ -568,10 +579,16 @@ export class Weather3D {
     this.#night = Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0
   }
 
-  /** The sky built again from what it holds, every report's clouds, the radar's and the model's worked out anew (a check aid: after changing a look constant, LOOKS, RADAR_LOOK or MODEL_LOOK, in the console). */
-  rebuildSky(): void {
-    this.#made = new WeakMap()
-    this.#modelMade = null
+  /**
+   * The sky built again from what it holds, every report's clouds, the radar's and the model's worked out anew (a check aid: after
+   * changing a look constant, LOOKS, RADAR_LOOK or MODEL_LOOK, in the console). anew false: the reports' and the model's clouds are
+   * kept, as when the next field is due (a check run times that).
+   */
+  rebuildSky(anew = true): void {
+    if (anew) {
+      this.#made = new WeakMap()
+      this.#modelMade = null
+    }
     this.#builtGen = -1
     this.#refresh()
   }
@@ -585,9 +602,9 @@ export class Weather3D {
     if (!this.#show) return
     this.#fNow = tf.fNow
     this.#relHM = tf.relHM
-    const scale = this.#scale ?? this.#pace.frame(nowMs - this.#frameMs) // (the first frame's time is no number: not counted)
+    const tier = this.#heldTier ?? this.#pace.frame(nowMs - this.#frameMs, this.#sky.clouds.passMs) // (the first frame's time is no number: not counted)
     this.#frameMs = nowMs
-    if (this.#sky.clouds.scale !== undefined && this.#sky.clouds.scale !== scale) this.#sky.clouds.scale = scale
+    if (this.#sky.clouds.tier !== undefined && this.#sky.clouds.tier !== tier) this.#sky.clouds.tier = tier
     if (this.#pending !== null) {
       const t0 = performance.now()
       this.#sky.clouds.draw(this.#pending.clouds, this.#pending.at)

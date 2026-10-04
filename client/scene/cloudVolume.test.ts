@@ -8,6 +8,8 @@ import { noiseAtlas } from './cloudNoise.ts'
 import { BOX_PAD_KM, MARCH_SHADER, MIX_SHADER } from './cloudShaders.ts'
 import { CloudVolume, eyeToLocal, localFrame, localToMap, mapScale, resumeRendering, tileUv } from './cloudVolume.ts'
 import type { FieldBuilder } from './fieldBuilder.ts'
+import { MARCH_TIERS } from './marchPace.ts'
+import type { PassTimer } from './passTimer.ts'
 import { bytesImage, type MakeImage } from './gpuImage.ts'
 import { AHEAD_MIN, aheadPath } from './wxAhead.ts'
 import { edgeBound, hazardEdges, packEdges } from './wxEdges.ts'
@@ -145,7 +147,7 @@ function lateBuilder() {
   return { builder, asks, ended: (): number => ended, answer: (n: number): void => asks[n].done(makeField(asks[n].job)) }
 }
 
-function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage } = {}) {
+function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage; timer?: Pick<PassTimer, 'watch' | 'poll' | 'ms'> } = {}) {
   const added: PostProcessStageComposite[] = []
   const removed: PostProcessStageComposite[] = []
   const stages = { add: (s: PostProcessStageComposite) => (added.push(s), s), remove: (s: PostProcessStageComposite) => (removed.push(s), true) } as unknown as PostProcessStageCollection
@@ -218,23 +220,55 @@ test('CloudVolume: the pass is a composite of two stages on the scene\'s own col
   assert.notEqual(march.name, mix.name)
 })
 
-test('CloudVolume: the march is walked at half the view\'s size until told otherwise (scale): another size is a new pass at it, the same again is not, and a pass made later has it', () => {
+test('CloudVolume: the march is walked at a tier (marchPace.ts MARCH_TIERS: the first until told): the tier\'s step budget and whether it reads the noise\'s finest octave are numbers the march is given, its ground shadows the mix\'s; a tier of another size is a new pass at that size, reading the same images; the same tier again changes nothing, and a pass made later has the tier', () => {
   const r = rig()
   r.vol.show = true
   r.vol.draw([CU], HERE)
-  assert.equal(r.vol.scale, 0.5)
-  r.vol.scale = 0.5
-  assert.equal(r.added.length, 1, 'the same: the pass stands')
-  r.vol.scale = 0.35
-  assert.deepEqual([r.added.length, r.live().length, r.stage(0).textureScale, r.stage(1).textureScale], [2, 1, 0.35, 1], 'the march coarser, the mix at full size still')
+  const given = (): unknown[] => [r.vol.tier, r.call<number>(0, 'u_steps'), r.call<number>(0, 'u_detail'), r.call<number>(1, 'u_shadow'), r.stage(0).textureScale, r.vol.scale]
+  assert.deepEqual(given(), [0, 128, 0, 0.5, 0.5, 0.5])
+  r.vol.tier = 0
+  r.vol.tier = 1
+  assert.deepEqual(given(), [1, MARCH_TIERS[1].steps, 0, 0.5, 0.5, 0.5], 'a smaller step budget')
+  r.vol.tier = 2
+  assert.deepEqual(given(), [2, MARCH_TIERS[2].steps, 1, 0.5, 0.5, 0.5], 'and the finest octave left out')
+  r.vol.tier = 3
+  assert.deepEqual(given(), [3, MARCH_TIERS[3].steps, 1, 0, 0.5, 0.5], 'and no ground shadows')
+  r.vol.frame(TF, 0)
+  assert.equal(r.call<number>(1, 'u_shadow'), 0, 'by day too')
+  assert.equal(r.added.length, 1, 'all on the pass that stands')
+  r.vol.tier = 4
+  assert.deepEqual([r.added.length, r.live().length, r.stage(0).textureScale, r.stage(1).textureScale, r.vol.scale], [2, 1, 0.35, 1, 0.35], 'the march smaller, the mix at full size still')
   assert.deepEqual(r.image('u_field').data, fieldAtlas(r.vol.field!).data, 'with the field it had: the new pass reads the same images')
   r.vol.show = false
-  r.vol.scale = 0.25
+  r.vol.tier = 5
   assert.equal(r.live().length, 0, 'hidden: no pass for it')
   r.vol.show = true
   assert.equal(r.stage(0).textureScale, 0.25)
   r.vol.draw([CU, RAIN], HERE)
   assert.equal(r.stage(0).textureScale, 0.25, 'a draw keeps it')
+  for (const none of [-1, 6, 2.5, Number.NaN]) r.vol.tier = none
+  assert.equal(r.vol.tier, 5, 'what is no tier is not taken')
+  r.vol.tier = 0
+  r.vol.frame(TF, 0)
+  assert.deepEqual(given(), [0, 128, 0, 0.5, 0.5, 0.5], 'and back to the first: everything as it was')
+})
+
+test('CloudVolume: with a timer (passTimer.ts: the graphics card\'s own clock, where the browser has one) the pass\'s two stages are watched, a new pass\'s when it is made and none when there is no pass; the timer is asked every frame, and its time is the volume\'s; with none the time is not known', () => {
+  const timer = { watched: [] as unknown[][], polls: 0, ms: 4.25, watch(stages: readonly unknown[]): void { this.watched.push([...stages]) }, poll(): void { this.polls++ } }
+  const r = rig({ timer })
+  r.vol.show = true
+  r.vol.draw([CU], HERE)
+  assert.deepEqual(timer.watched, [[r.stage(0), r.stage(1)]])
+  r.vol.frame(TF, 0)
+  r.vol.frame(TF, 0)
+  assert.equal(timer.polls, 2)
+  assert.equal(r.vol.passMs, 4.25)
+  r.vol.tier = 4 // a new pass
+  assert.deepEqual(timer.watched.at(-1), [r.stage(0), r.stage(1)])
+  assert.equal(timer.watched.length, 2)
+  r.vol.show = false
+  assert.deepEqual(timer.watched.at(-1), [], 'no pass: nothing to time')
+  assert.ok(Number.isNaN(rig().vol.passMs), 'no timer (no graphics context): not known')
 })
 
 test('CloudVolume: a draw keeps the pass: the new field is written into a second pair of images, which takes the first pair\'s place (the pass asks for its images each frame); the pass is made again only for another size of march', () => {
