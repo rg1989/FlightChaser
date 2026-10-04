@@ -23,6 +23,13 @@ Top-level `*.jsonl` — curated replay fixtures (cruise, arrival, MLAT) promoted
 | `capabilities-cth.xml` | GetCapabilities of the one layer `msg_fes:cth`: its time dimension's default is the newest frame |
 | `no-frame.xml` | the answer to a GetMap at a time the layer has no frame near: a ServiceException, sent with HTTP 200 |
 
+`data/eumetsat/` (not in git, and not in this folder) — two products of EUMETSAT's Data Store as they were downloaded, for the tests of `server/grib2.ts` and `server/eumetsat.ts` that read a real product. The licence does not let the original data be passed on, so they are not committed; those tests skip without them, and the others build small products of their own (`encodeGrib2`). To have them: with your own key (README, Keys), download the cloud mask and the cloud top height of the frame of 2026-10-04 10:30 UTC and save the zips as they come:
+
+| File | Product |
+|---|---|
+| `data/eumetsat/clm-20261004T1030Z.zip` | collection `EO:EUM:DAT:MSG:CLM`, product `MSG3-SEVI-MSGCLMK-0100-0100-20261004103000.000000000Z-NA` (576,812 bytes) |
+| `data/eumetsat/cth-20261004T1030Z.zip` | collection `EO:EUM:DAT:MSG:CTH`, product `MSG3-SEVI-MSGCLTH-0100-0100-20261004103000.000000000Z-NA` (451,108 bytes) |
+
 **Privacy:** aircraft flagged PIA or LADD (`dbFlags & 12`) have their identity replaced with unallocated ICAO addresses `000001`, `000002` and their callsign, registration and type removed. The app hides such aircraft anyway.
 
 **License:** adsb.lol data is © adsb.lol contributors, ODbL 1.0 (https://opendatacommons.org/licenses/odbl/1-0/).

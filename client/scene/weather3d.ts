@@ -57,7 +57,9 @@
 //   and the model's clouds are not drawn (wxGather.ts says the rules). A frame that comes, or stops being usable, builds the sky
 //   again. With no usable frame the sky is as it was before there was a satellite. A frame's pixels (1.3 MB) go to the gatherer
 //   once, handed over, not copied (copied with every ask they held the asking frame 3 to 4 ms more); the asks after bring the frame
-//   without them, and a gatherer that has lost the frame says so and is sent it again;
+//   without them, and a gatherer that has lost the frame says so and is sent it again. By default the source asks the app's own
+//   server first (GET /api/wx/sat: the frame's numbers from EUMETSAT's raw products, where the server has the user's key) and
+//   takes the pictures when the server has none to give: the sky is built the same way from either, and `satellite.raw` says which;
 // Every frame the clouds and the fog are given the relief drawn and the Sun's night (setNight); the rest is looked at
 // once a second, when the clouds' reach is also centred on the aircraft.
 // It also hands the cloud volume the way ahead of the chased aircraft (wxAhead.ts aheadPath, given every frame by app.ts: setAhead)
@@ -87,7 +89,8 @@
 // ?wxbreak=1 is a third (parseWxBreak): the cloud pass is given a shader that does not compile, so that its failure is seen handled
 // on any machine (with ?wxdemo=1 the pass, and so the failure, comes at once). ?wxtier=0 … 5 is a fourth (parseWxTier):
 // the cloud march held at that tier, the frames' times not asked. ?wxsat=0 is a fifth (parseWxSat): no satellite for this load, to
-// compare the sky with what the other sources alone make of it; `satellite` says what frame is held (for checks in the console).
+// compare the sky with what the other sources alone make of it, and ?wxsat=pictures: the satellite's keyless pictures alone, not the
+// server's raw frames, to compare the two routes; `satellite` says what frame is held and by which route it came (for checks in the console).
 import { Cartesian3, ClassificationType, Color, CustomDataSource, Ellipsoid, Math as CesiumMath, StripeMaterialProperty, StripeOrientation, type Cartographic, type Viewer } from 'cesium'
 import { distanceNm } from '../../shared/geo.ts'
 import { geoidN } from '../../shared/geoid.ts'
@@ -107,7 +110,7 @@ import type { LayerLabel, PlaceLabels } from './placeLabels.ts'
 import { Precipitation, cloudBaseM, nearestStation, precipFromDbz, precipFromWx, radarPixel, radarSample, windOf, type Fall } from './precip.ts'
 import { RADAR_INDEX, RADAR_SRC_MAX, RadarSource, type RadarIndex, type SourceTile } from './radar.ts'
 import type { SatGrid } from './satGrid.ts'
-import { SatelliteSource, type SatPictures } from './satellite.ts'
+import { SatelliteSource, satBare, satBuffers, type SatFetch, type SatPictures } from './satellite.ts'
 import { radarCells, tilesAcross } from './radarCells.ts'
 import { gatherer, type GatherJob, type Gathered, type SatInfo } from './wxGather.ts'
 import { hazardsNear, ringCentre, shiftMetars, shiftModel, shiftSigmets, viewBox, wrapLon, type Hazard } from './wxGeo.ts'
@@ -150,9 +153,8 @@ const RADAR_READ_KM = REACH_KM[1] + REBUILD_KM
 /** The browser's worker for the gathering of a sky's clouds (Vite bundles the file named here); none outside a page. */
 const startGatherer = typeof Worker === 'undefined' || typeof document === 'undefined' ? null
   : (): WorkerLike<GatherJob, Gathered> => new Worker(new URL('./wxGather.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike<GatherJob, Gathered>
-const NO_PIXELS = new Uint8ClampedArray(0) // a frame sent to the gatherer without its pixels
-/** What tells one frame's pictures from another's ('' for none): the clouds are built again when it changes. */
-const satKey = (p: SatPictures | null): string => (p === null ? '' : `${p.timeMs}|${p.box.join()}`)
+/** What tells one frame held from another ('' for none; the pictures of a time from the server's numbers of it): the clouds are built again when it changes. */
+const satKey = (p: SatPictures | null): string => (p === null ? '' : `${p.timeMs}|${p.box.join()}|${p.raw === undefined ? 'pictures' : 'numbers'}`)
 /** A hazard area's colour: its edges', its footprint's and its label's. */
 const hazardColor = (h: Hazard): string => sigmetColor(h.sigmet.hazard)
 const PRECIP_OVER_BASE_M = 300 // rain or snow shows round a camera up to this far over its cloud's base,
@@ -224,8 +226,19 @@ export function parseWxDemo(search: string): number | null {
 /** ?wxbreak=1: the cloud pass's shader is made not to compile (a check aid: the failure's handling is then seen on any machine). */
 export const parseWxBreak = (search: string): boolean => new URLSearchParams(search).get('wxbreak') === '1'
 
-/** ?wxsat=0: no weather satellite for this load (a check aid: the sky as the other sources alone make it). */
-export const parseWxSat = (search: string): boolean => new URLSearchParams(search).get('wxsat') !== '0'
+/** Where the satellite's frames come from: the app's server's raw frames first and the keyless pictures when it has none, the pictures alone, or no satellite. */
+export type WxSat = 'server' | 'pictures' | 'none'
+
+/** ?wxsat=0: no weather satellite for this load; ?wxsat=pictures: its keyless pictures alone (check aids: the sky as the other sources alone make it, and the two routes compared). */
+export function parseWxSat(search: string): WxSat {
+  const v = new URLSearchParams(search).get('wxsat')
+  return v === '0' ? 'none' : v === 'pictures' ? 'pictures' : 'server'
+}
+
+/** The satellite's source for a choice: the app's server's route (apiBase's /wx/sat) before the pictures, the pictures alone, or none. fetch: a test's. */
+export function satelliteFor(choice: WxSat, apiBase: string, fetch?: SatFetch): SatelliteSource | null {
+  return choice === 'none' ? null : new SatelliteSource({ fetch, raw: choice === 'server' ? `${apiBase}/wx/sat` : null })
+}
 
 /** What Weather3D.satellite says of the frame held (for checks in the console). */
 export interface SatelliteState {
@@ -233,9 +246,10 @@ export interface SatelliteState {
   time: string // "04:45 UTC"
   used: boolean // the sky last gathered was built with it
   cloudy: number | null // the share of the field's square it sees that is cloud; null until a gathering has read it
-  bytes: number // its two pictures, as sent
+  raw: boolean // it came as numbers from the app's server (EUMETSAT's raw products), not as EUMETView's two pictures
+  bytes: number // its two pictures, or the server's answer, as sent
   fetchMs: number // from asking for them to having their pixels
-  decodeMs: number | null // their colours read, in the gatherer
+  decodeMs: number | null // their colours read, in the gatherer (a frame of numbers has none to read: next to 0)
   gridMs: number | null // and the grid for a field made of them
 }
 
@@ -289,7 +303,7 @@ export interface Weather3DOptions {
   demo?: number | null // ?wxdemo: the km along the demo sky the aircraft starts at; null or absent: the real weather
   broken?: boolean // ?wxbreak=1: the cloud pass's shader is made not to compile, to see the failure handled
   tier?: number | null // ?wxtier: the cloud march held at this tier; null or absent: by the frames' times (marchPace.ts)
-  satellite?: SatelliteSource | null // the weather satellite; null: none (?wxsat=0); absent: EUMETSAT's, fetched by the page
+  satellite?: SatelliteSource | null // the weather satellite; null: none (?wxsat=0); absent: the app's server's raw frames first, else EUMETView's pictures, fetched by the page (satelliteFor)
   onCloudsFailed?: (note: string) => void // told once, with the words for it, when the cloud pass has failed for good (the Weather menu's choices then do nothing)
 }
 
@@ -459,7 +473,7 @@ export class Weather3D {
     this.#onShade = opts.onShade ?? (() => {})
     this.#dwellMs = opts.dwellMs ?? MODEL_DWELL_MS
     this.#demo = opts.demo ?? null
-    this.#sat = opts.satellite === undefined ? new SatelliteSource() : opts.satellite
+    this.#sat = opts.satellite === undefined ? satelliteFor('server', opts.apiBase) : opts.satellite
     this.#look = this.#sky.clouds.look ?? 'severity'
     this.#footprints.show = false
     void viewer.dataSources.add(this.#footprints)
@@ -615,7 +629,7 @@ export class Weather3D {
     const stats = this.#sat!.stats
     const ms = (v: number): number | null => (info !== null && Number.isFinite(v) ? v : null)
     return {
-      timeMs: p.timeMs, time: `${hhmmUtc(p.timeMs)} UTC`, used: this.#satUsed && info !== null, cloudy: info?.cloudy ?? null, bytes: stats?.bytes ?? 0, fetchMs: stats?.fetchMs ?? 0,
+      timeMs: p.timeMs, time: `${hhmmUtc(p.timeMs)} UTC`, used: this.#satUsed && info !== null, cloudy: info?.cloudy ?? null, raw: p.raw !== undefined, bytes: stats?.bytes ?? 0, fetchMs: stats?.fetchMs ?? 0,
       decodeMs: ms(this.#satCost.decodeMs), gridMs: ms(this.#satCost.gridMs),
     }
   }
@@ -946,12 +960,13 @@ export class Weather3D {
     }, at.lat - dLat, wrapLon(at.lon - dLon), this.#shift, RADAR_READ_KM)
     const id = ++this.#gatherAsk
     const sat = this.#pictures(at)
-    // A frame's pixels go to the gatherer once, handed over (1.3 MB: copied, they held this frame 3 to 4 ms); then the frame without them.
-    const pixels = sat !== null && sat.mask.length > 0 && this.#satSent !== satKey(sat)
+    // A frame's pixels (or the server's answer's bytes) go to the gatherer once, handed over (1.3 MB: copied, they held this frame 3 to 4 ms); then the frame without them.
+    const handed = sat === null || this.#satSent === satKey(sat) ? [] : satBuffers(sat)
+    const pixels = sat !== null && handed.length > 0
     const job: GatherJob = {
       id, lat: at.lat, lon: at.lon, metars: this.#metars, metarGen: this.#metarGen, grid: this.#grid(), modelGen: this.#modelGen, tiles,
       shift: { dLat, dLon }, readKm: RADAR_READ_KM, reachKm: REACH_KM[1], anew: this.#anew, epochMs: this.#epochMs(),
-      sat: sat === null || pixels ? sat : { ...sat, mask: NO_PIXELS, tops: NO_PIXELS },
+      sat: sat === null || pixels ? sat : satBare(sat),
     }
     this.#anew = false
     this.#builtRadar = this.#radarGen
@@ -966,16 +981,16 @@ export class Weather3D {
         // pixels at the next look, or, when they went with the worker, fetched again.
         this.#satSent = ''
         this.#builtSat = '?'
-        if (sat.mask.length === 0) this.#sat?.forget(sat)
+        if (satBuffers(sat).length === 0) this.#sat?.forget(sat)
       }
-      if (got.satInfo !== null && got.satInfo.decodeMs > 0) this.#satCost.decodeMs = got.satInfo.decodeMs // (0: the frame was read at a job before; kept also from an answer that is overtaken)
+      if (got.satInfo !== null && got.satInfo.read) this.#satCost.decodeMs = got.satInfo.decodeMs // (not read: the frame was read at a job before; kept also from an answer that is overtaken)
       if (got.id !== this.#gatherAsk) return
       this.#satInfo = got.satInfo
       this.#satUsed = got.sat !== null
       if (got.satInfo !== null) this.#satCost.gridMs = got.satInfo.gridMs
       if (got.sat !== null) this.#known = true // the satellite has said where cloud is
       this.#pending = { clouds: got.clouds, at, sat: got.sat }
-    }, pixels ? [sat.mask.buffer, sat.tops.buffer] : [])
+    }, handed)
   }
 
   /** The satellite's pictures that may be used now for a field round a place of the drawn sky (the pixels are where the weather is: the place less the ?wxat shift); null: none. */

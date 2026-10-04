@@ -8,6 +8,7 @@ import { Cartesian3, Cartographic, ClassificationType, Color, JulianDate, Math a
 import type { CustomDataSource, Entity, Viewer } from 'cesium'
 import { distanceNm } from '../../shared/geo.ts'
 import { geoidN } from '../../shared/geoid.ts'
+import { encodeSatCut } from '../../shared/sat.ts'
 import { MODEL_CLOUD_HPA, MODEL_WIND_HPA, type Cloud, type Metar, type ModelGeo, type ModelGrid, type Sigmet } from '../../shared/wx.ts'
 import type { TerrainFrame } from '../types.ts'
 import { DEFAULT_UNITS, type Units } from '../ui/units.ts'
@@ -23,8 +24,8 @@ import { modelWindAt } from './modelWind.ts'
 import { REACH_KM } from './cloudShaders.ts'
 import type { CloudLook, HazardStyle } from './cloudVolume.ts'
 import { SAT_GRID_N, type SatGrid } from './satGrid.ts'
-import { SAT_CHECK_MS, SAT_KEEP_MS, SAT_LAYER, SatelliteSource, satBox, satCapsUrl, type SatFetch } from './satellite.ts'
-import { HAZARD_KM, HttpError, MODEL_DWELL_MS, Weather3D, echoShade, parseWxAt, parseWxBreak, parseWxDemo, parseWxSat, parseWxTier, statusText3d } from './weather3d.ts'
+import { SAT_CHECK_MS, SAT_KEEP_MS, SAT_LAYER, SAT_N, SatelliteSource, satBox, satCapsUrl, type SatFetch } from './satellite.ts'
+import { HAZARD_KM, HttpError, MODEL_DWELL_MS, Weather3D, echoShade, parseWxAt, parseWxBreak, parseWxDemo, parseWxSat, parseWxTier, satelliteFor, statusText3d } from './weather3d.ts'
 import { aheadPath, type AheadPath } from './wxAhead.ts'
 import { gatherer, type GatherJob, type Gathered } from './wxGather.ts'
 import { demoSky } from './wxDemo.ts'
@@ -2361,10 +2362,11 @@ test('parseWxBreak, parseWxTier: ?wxbreak=1 breaks the cloud pass\'s shader on p
 
 // ---- the weather satellite ------------------------------------------------------------------------------------------------------
 
-test('parseWxSat: ?wxsat=0 turns the satellite off for a load; anything else leaves it on', () => {
-  assert.equal(parseWxSat('?wxsat=0'), false)
-  assert.equal(parseWxSat('?hex=a831b2&wx=1&wxsat=0&chase=1'), false)
-  for (const on of ['', '?wx=1', '?wxsat=1', '?wxsat=', '?wxsat=off']) assert.equal(parseWxSat(on), true, on)
+test('parseWxSat: ?wxsat=0 turns the satellite off for a load; ?wxsat=pictures keeps it to EUMETView\'s pictures; anything else leaves it on, the app\'s server\'s frames first', () => {
+  assert.equal(parseWxSat('?wxsat=0'), 'none')
+  assert.equal(parseWxSat('?hex=a831b2&wx=1&wxsat=0&chase=1'), 'none')
+  assert.equal(parseWxSat('?hex=a831b2&wx=1&wxsat=pictures&chase=1'), 'pictures')
+  for (const on of ['', '?wx=1', '?wxsat=1', '?wxsat=', '?wxsat=off']) assert.equal(parseWxSat(on), 'server', on)
 })
 
 const SAT_T0 = GRID_HOUR_MS + 10 * MIN // the satellite's newest frame: 20 min before the rig's wall clock
@@ -2551,4 +2553,88 @@ test('Weather3D with the satellite: a frame\'s pixels go to the gatherer once, h
   assert.equal(server.asked.length, fetched + 2)
   assert.ok(asks.at(-1)!.pixels > 0 && r.sky.clouds.sats.at(-1) !== null)
   assert.equal(source.down, false)
+})
+
+/** EUMETView and, before it, the app's server's route: its frame is 15 minutes newer than the pictures', cloud (5,120 m) over the box's western half. */
+function appServer() {
+  const s = Object.assign(eumetview(), {
+    status: 200,
+    raw(url: string): Promise<{ status: number; body: ArrayBuffer | null; bytes: number }> {
+      s.asked.push(url)
+      const q = new URL(url, 'http://localhost').searchParams
+      if (s.status !== 200) return Promise.resolve({ status: s.status, body: null, bytes: 0 })
+      if (q.get('have') === String(SAT_T0 + 15 * MIN)) return Promise.resolve({ status: 204, body: null, bytes: 0 })
+      const n = Number(q.get('n'))
+      const west = (p: number): boolean => p % n < n / 2
+      const body = encodeSatCut({
+        timeMs: SAT_T0 + 15 * MIN, box: q.get('bbox')!.split(',').map(Number) as [number, number, number, number], n,
+        cloud: Uint8Array.from({ length: n * n }, (_, p) => (west(p) ? 255 : 0)), seen: new Uint8Array(n * n).fill(1), topM: Uint16Array.from({ length: n * n }, (_, p) => (west(p) ? 5120 : 0)),
+      }).buffer
+      return Promise.resolve({ status: 200, body, bytes: 30_000 })
+    },
+  })
+  return s
+}
+
+test('Weather3D with the satellite through the app\'s server: the frame\'s numbers go to the gatherer once, handed over as the one answer, and then the frame without them; the sky and the line are as with the pictures, and satellite.raw says which route the frame came by', async () => {
+  const asks: { job: GatherJob; transfer: Transferable[] | undefined; bytes: number }[] = []
+  const gather = gatherer()
+  const server = appServer()
+  const r = rig({ satellite: new SatelliteSource({ fetch: server, raw: '/api/wx/sat' }), gather: { ask: (job, done, transfer) => { asks.push({ job, transfer, bytes: job.sat?.raw?.length ?? -1 }); done(gather(job)) }, destroy: () => {} } })
+  r.answers.metar = [metar('LLBG', 32.01, 34.89, { clouds: [layer('BKN', 3000)] })]
+  await open(r)
+  await looks(r, 1000, 3000)
+  assert.deepEqual(server.asked, [`/api/wx/sat?bbox=${satBox(AC.lat, AC.lon).join(',')}&n=${SAT_N}`], 'the server, and nothing of EUMETView')
+  const first = asks.find((a) => a.bytes > 0)!
+  assert.deepEqual([first.bytes, first.job.sat!.mask.length], [48 + 4 * SAT_N * SAT_N, 0])
+  assert.deepEqual(first.transfer, [first.job.sat!.raw!.buffer])
+  const g = r.sky.clouds.sats.at(-1)!
+  assert.ok(g !== null && g.n === SAT_GRID_N && g.timeMs === SAT_T0 + 15 * MIN)
+  assert.ok(r.sky.clouds.draws.at(-1)!.some((c) => c.masked === true))
+  const sat = r.w.satellite!
+  assert.deepEqual([sat.raw, sat.timeMs, sat.time, sat.used, sat.bytes], [true, SAT_T0 + 15 * MIN, '08:25 UTC', true, 30_000])
+  assert.ok(sat.decodeMs !== null && sat.decodeMs >= 0 && sat.decodeMs < 50 && sat.gridMs! > 0, `the numbers took next to nothing to read: ${sat.decodeMs} ms`)
+  assert.ok(sat.cloudy! > 0.3 && sat.cloudy! < 0.7, String(sat.cloudy))
+  assert.equal(r.lines.at(-1), 'Clouds from 1 airport · cloud positions from Meteosat, 08:25 UTC · 0 hazard areas · Weather data by Open-Meteo.com · © EUMETSAT', 'the line does not say the route')
+  r.w.rebuildSky(false)
+  r.w.update(AC, 3016)
+  assert.deepEqual([asks.at(-1)!.bytes, asks.at(-1)!.transfer, asks.at(-1)!.job.sat!.timeMs], [0, [], SAT_T0 + 15 * MIN], 'the frame, without its bytes')
+  assert.ok(r.sky.clouds.sats.at(-1) !== null)
+  // The pictures' route says so.
+  const pictures = rig({ satellite: new SatelliteSource({ fetch: eumetview() }) })
+  await open(pictures)
+  await looks(pictures, 1000, 3000)
+  assert.deepEqual([pictures.w.satellite!.raw, pictures.w.satellite!.timeMs], [false, SAT_T0])
+})
+
+test('Weather3D with the satellite through the app\'s server: a server with no key leaves the sky as the pictures make it', async () => {
+  const server = appServer()
+  server.status = 404
+  const r = rig({ satellite: new SatelliteSource({ fetch: server, raw: '/api/wx/sat' }) })
+  const plain = rig({ satellite: new SatelliteSource({ fetch: eumetview() }) })
+  for (const x of [r, plain]) {
+    x.answers.metar = [metar('LLBG', 32.01, 34.89, { clouds: [layer('BKN', 3000)] })]
+    await open(x)
+    await looks(x, 1000, 3000)
+  }
+  assert.equal(server.asked.length, 4, 'the server once, then the pictures\' three')
+  assert.deepEqual([r.w.satellite!.raw, r.w.satellite!.timeMs], [false, SAT_T0])
+  assert.deepEqual(r.sky.clouds.sats.at(-1), plain.sky.clouds.sats.at(-1))
+  assert.deepEqual(r.sky.clouds.draws.at(-1), plain.sky.clouds.draws.at(-1))
+  assert.equal(r.lines.at(-1), plain.lines.at(-1))
+})
+
+test('satelliteFor: the app\'s server\'s route first by default; ?wxsat=pictures: EUMETView\'s pictures alone; ?wxsat=0: no satellite', async () => {
+  assert.equal(satelliteFor('none', '/api'), null)
+  const server = appServer()
+  const withServer = satelliteFor('server', '/api', server)!
+  const picturesOnly = satelliteFor('pictures', '/api', server)!
+  withServer.look(0, SAT_T0 + 20 * MIN, AC.lat, AC.lon)
+  await flush()
+  assert.deepEqual(server.asked.map((u) => u.split('?')[0]), ['/api/wx/sat'])
+  server.asked.length = 0
+  picturesOnly.look(0, SAT_T0 + 20 * MIN, AC.lat, AC.lon)
+  await flush()
+  assert.equal(server.asked[0], satCapsUrl())
+  assert.ok(server.asked.every((u) => !u.startsWith('/api/')))
 })

@@ -17,6 +17,7 @@ export interface ServerConfig {
   eventsDir: string | null // EVENTS_DIR: the alerts' switch and log (server/alerts.ts); unset = no alerts (make live sets data/events)
   ntfyUrl: string | null // NTFY_URL: each new alert is POSTed to this ntfy topic too, e.g. https://ntfy.sh/<random topic>; unset = none
   alertSquawks: string[] // ALERT_SQUAWKS: comma-separated 4-digit octal codes swept and read as emergencies; default 7700,7600,7500
+  eumetsat: { key: string; secret: string } | null // EUMETSAT_KEY and EUMETSAT_SECRET: the satellite's raw cloud products (server/eumetsat.ts); one alone or neither = none
   port: number // PORT, default 8787
   showPiaLadd: boolean // SHOW_PIA_LADD=1 serves PIA/LADD-flagged aircraft
   routes: boolean // ROUTES=1 looks up flight routes on adsb.lol (only used with ADSB_SOURCE=adsblol); default off
@@ -107,6 +108,8 @@ export function readServerConfig(env: Env): ServerConfig {
   const listed = squawks === '' ? [...EMERGENCY_SQUAWKS] : squawks.split(',').map((c) => c.trim())
   if (listed.some((c) => !/^[0-7]{4}$/.test(c))) throw new Error(`ALERT_SQUAWKS must be 4-digit octal codes, comma-separated, got "${squawks}"`)
   const alertSquawks = [...new Set(listed)] // a code listed twice is kept once, where it first was: a repeat would be swept twice a round
+  // The key and the secret of a EUMETSAT account: only both together are of use. (Never in an error: they are secrets.)
+  const [key, secret] = [str(env, 'EUMETSAT_KEY'), str(env, 'EUMETSAT_SECRET')]
 
   return {
     source: kind,
@@ -121,6 +124,7 @@ export function readServerConfig(env: Env): ServerConfig {
     eventsDir: str(env, 'EVENTS_DIR') || null,
     ntfyUrl,
     alertSquawks,
+    eumetsat: key !== '' && secret !== '' ? { key, secret } : null,
     port: num(env, 'PORT', 8787, (v) => Number.isInteger(v) && v >= 0 && v <= 65535, 'an integer 0..65535'),
     showPiaLadd: flag(env, 'SHOW_PIA_LADD'),
     routes: flag(env, 'ROUTES'),

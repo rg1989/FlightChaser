@@ -72,6 +72,15 @@ A key saved in the guide or in Settings stays in that browser and goes only to i
 **Do not publish a build made with keys in `.env.local`.** Vite writes `VITE_*` values into the JavaScript bundle. For
 a public deployment build without them and let each visitor add their own in Settings.
 
+A third key is for the server, and is optional too: a free EUMETSAT account's consumer key and secret.
+
+| Key | Gives | Without it | Get it |
+|---|---|---|---|
+| `EUMETSAT_KEY` and `EUMETSAT_SECRET` in `.env.local` | The chase's clouds from the weather satellite's raw products: the satellite's own pixels, no number read back from a picture's colour, and the newest frame a few minutes sooner | The same clouds from EUMETSAT's keyless pictures | An account at [eoportal.eumetsat.int](https://eoportal.eumetsat.int/), then the key and the secret at [api.eumetsat.int/api-key](https://api.eumetsat.int/api-key/). Accept the Meteosat data licence in the account |
+
+The server alone uses this pair: it is never sent to the browser, never logged, and is not in the Settings dialog.
+The app works the same without it. [Weather in the chase](docs/weather.md) says what it changes.
+
 ## Commands
 
 | Command | What it does |
@@ -96,6 +105,7 @@ Server settings are environment variables. `npm run server` and `make` read them
 | `READSB_URL`, `READSB_COVERAGE` | | Your receiver's address and its coverage as `lat,lon,nm` |
 | `EVENTS_DIR` | none (`make` sets `data/events`) | Where alerts keep their switch and log. Unset: no alerts |
 | `NTFY_URL` | none | An [ntfy](https://ntfy.sh) topic that each new alert is pushed to. Treat it as a secret |
+| `EUMETSAT_KEY`, `EUMETSAT_SECRET` | none | A EUMETSAT account's key and secret: the weather satellite's raw cloud products ([Keys](#keys-optional)). Secrets |
 
 Useful links into the app: `?hex=<icao>&chase=1` chases an aircraft, `?scenario=<id>` plays a scenario,
 `?hist=<unix seconds>` opens the past, `?tv=1` is the TV kiosk, `?setup=1` opens the setup guide.
@@ -143,7 +153,8 @@ No framework: TypeScript run by Node directly, Vite for the client, `node --test
 - **Weather model:** weather data by [Open-Meteo.com](https://open-meteo.com/),
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), free for non-commercial use.
 - **Cloud positions and cloud tops:** Meteosat's cloud mask and cloud top height, © [EUMETSAT](https://www.eumetsat.int/)
-  2026, read from [EUMETView](https://view.eumetsat.int/) and changed by FlightHopper (moved for parallax and wind).
+  2026, read from [EUMETView](https://view.eumetsat.int/), or with your own EUMETSAT key from EUMETSAT's Data Store, and
+  changed by FlightHopper (moved for parallax and wind).
   Two conditions apply: no commercial or operational use, and no redistribution of the original data.
 - **Places:** OurAirports and [GeoNames](https://www.geonames.org/)
   ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).

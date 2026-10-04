@@ -11,6 +11,16 @@
   satellite, because the satellite sees a high top out of place (13 km for a 10 km top over Israel). The Layers panel's weather line
   then says "cloud positions from Meteosat, 14:45 UTC" and carries the credit "© EUMETSAT". Outside the satellite's view, and when its
   newest frame cannot be had for 45 minutes, the clouds are placed as before: by rule, from the reports, the radar and the forecast.
+- **With a EUMETSAT key** (`EUMETSAT_KEY` and `EUMETSAT_SECRET` in `.env.local`: the README's Keys section) the server fetches the
+  satellite's two products as numbers from EUMETSAT's Data Store, and the page takes the frame from the server. What changes: the
+  cloud stands on the satellite's own pixels (the keyless pictures are the same products laid again on a lattice of 1/24° of
+  latitude and longitude: they stand about 2 km south-east of the pixels, and the edge of a block of one height up to 7 km off);
+  no number is read back from a picture's colour; and the newest frame is in use 14 to 16 minutes after its time, where the
+  pictures' is in use 16 to 31 minutes after (the Data Store has a frame 14 minutes after its time, the pictures 16 to 26, and
+  the page asks its own server every minute, the pictures' service every 5). What does not change: the heights are the same steps
+  of 320 m, the highest 15,040 m, because the product itself holds no finer ones; they are the cloud top's pressure read as a
+  height in the standard atmosphere; and everything listed as estimated below stays estimated. The weather line reads the same
+  by either route. Without the key, or when EUMETSAT's Data Store fails, the page uses the keyless pictures as before.
 - **What is real and what is estimated.** Real: where cloud is, to the satellite's pixel (3 to 5 km), and the height of the top layer
   (in steps of 320 m, in blocks of 9 to 15 km); where it rains (the radar); each airport's cloud amounts and bases. Estimated: a cloud's
   base away from an airport (the forecast's cloudy levels, else a thickness by the top's height); every layer under the top one away
@@ -34,5 +44,6 @@
   pass, the view goes on without it: a toast says "3-D clouds stopped after a drawing error", the Weather menu goes, and the hazard
   areas stay marked on the ground. Check aids: `?wxdemo=1` (a made-up sky, no weather asked for; `?wxdemo=60` starts in its rain,
   `?wxdemo=98` at its storm), `?wxtier=0`…`5` (the clouds held at one tier, 0 the finest), `?wxbreak=1` (the cloud pass fails on purpose),
-  `?wxsat=0` (no satellite for this load: the sky as the reports, the radar and the forecast alone make it; in the console
-  `weather3d.satellite` says which frame is held).
+  `?wxsat=0` (no satellite for this load: the sky as the reports, the radar and the forecast alone make it), `?wxsat=pictures` (the
+  satellite's keyless pictures alone, also on a server that has the key: to compare the two routes). In the console
+  `weather3d.satellite` says which frame is held, and `raw: true` when it came as numbers from the server.

@@ -15,6 +15,10 @@
 //   GET /api/wx/model?lat&lon           Open-Meteo's forecast for a 7 × 7 grid (0.25°) round the 0.5° cell of the place; 503 + Retry-After (and
 //                                       retryAfterS in its body): not asked now (its day's or hour's calls, 20 s since the last, 60 s after a
 //                                       failure) and a place of the grid not held (wx.ts)
+//   GET /api/wx/sat?bbox=s,w,n,e&n      the weather satellite's newest frame over the box, n × n cells, as bytes (shared/sat.ts), cut out of
+//       [&have=<a frame's time, ms>]    EUMETSAT's raw cloud products (eumetsat.ts; Server-Timing says what the decoding and the cut took). 204:
+//                                       it is the frame the client has; 404: no EUMETSAT_KEY and EUMETSAT_SECRET here; 502, or 503 +
+//                                       Retry-After: EUMETSAT failed (the page keeps to the keyless pictures on any of them)
 //   GET /api/history?slot&lat&lon&nm    one past UTC half hour in a circle (adsb.lol's heatmap file: historyStore.ts), each aircraft
 //                                       with its type and category (typeDb.ts). 404: adsb.lol has none (or it is older than the
 //                                       oldest day it keeps); 503 + Retry-After: 15: it cannot be had now
@@ -23,7 +27,7 @@
 //   GET /api/trace?hex&from&to          its legs over a span of up to 48 h (TraceDay; none: no legs); 503 + Retry-After: 15: a file
 //                                       of the span cannot be had now
 //   GET /*                              dist/ (index.html for client routes)
-// JSON over 1 KB is gzipped when the client accepts it. ADSB_SOURCE=adsblol with ROUTES=1 also looks up flight routes;
+// JSON, and a satellite frame's bytes, over 1 KB are gzipped when the client accepts it. ADSB_SOURCE=adsblol with ROUTES=1 also looks up flight routes;
 // any other live source with a CONTACT looks up only the routes of the aircraft selected or recorded (adsbdb.com).
 // The command line also keeps the newest hour of the past in memory for a live source (two heatmap files, refreshed each
 // half hour: rollHistory), and for any source loads the past's aircraft types and finds the oldest day adsb.lol keeps
@@ -46,6 +50,7 @@ import { TokenBucket } from './budget.ts'
 import { readServerConfig, type ServerConfig } from './config.ts'
 import { AdsbdbRoutes } from './adsbdb.ts'
 import { Alerts, ntfyPush } from './alerts.ts'
+import { makeEumetsat } from './eumetsat.ts'
 import { FlightLog } from './flightLog.ts'
 import { HistoryStore } from './historyStore.ts'
 import { InfoStore } from './infoStore.ts'
@@ -151,6 +156,17 @@ async function sendJson(req: IncomingMessage, res: ServerResponse, status: numbe
   res.writeHead(status, { ...headers, 'content-length': bytes }).end(text)
 }
 
+/** Bytes (a satellite frame: shared/sat.ts), gzipped off the event loop when they are over 1 KB and the client accepts gzip: 640 KB go as 34 to 48 KB. */
+async function sendBytes(req: IncomingMessage, res: ServerResponse, bytes: Uint8Array, extra: Record<string, string> = {}): Promise<void> {
+  const headers = { 'content-type': 'application/octet-stream', 'cache-control': 'no-store', vary: 'accept-encoding', ...extra }
+  if (bytes.length > GZIP_MIN_BYTES && acceptsGzip(req.headers['accept-encoding'])) {
+    const gz = await gzipAsync(bytes, { level: GZIP_LEVEL })
+    res.writeHead(200, { ...headers, 'content-encoding': 'gzip', 'content-length': gz.length }).end(gz)
+    return
+  }
+  res.writeHead(200, { ...headers, 'content-length': bytes.length }).end(bytes)
+}
+
 function sendText(res: ServerResponse, status: number, text: string): void {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'content-length': Buffer.byteLength(text) }).end(text)
 }
@@ -231,6 +247,7 @@ async function serveStatic(root: string, pathname: string, range: string | undef
  * deps.nowMs is the server clock for the poller and the budget; it must be the clock the source stamps tRecvMs with
  * (Date.now for live sources, the same injected clock for a replay built with it).
  * deps.routesFetch replaces fetch for the route lookups (tests); routes run only with ADSB_SOURCE=adsblol and ROUTES=1.
+ * deps.wxFetch replaces fetch for the weather (tests): aviationweather.gov, Open-Meteo, and EUMETSAT when cfg.eumetsat has its key.
  * deps.pushFetch replaces fetch for the alerts' ntfy push (tests). A live source with cfg.eventsDir has the alerts; a replay never does.
  * deps.historyFetch replaces fetch for the past (adsb.lol's heatmap and trace files, the type table; tests). deps.rollHistory
  * (default false) keeps the newest two half hours of the past fetched while the server listens: the command line sets it for
@@ -317,6 +334,8 @@ export function createServer(
   let routeTimer: ReturnType<typeof setInterval> | null = null
   const root = resolve(cfg.staticDir)
   const wx = makeWx({ userAgent: userAgent(cfg.contact ?? 'personal use'), fetchFn: deps.wxFetch, nowMs })
+  // The weather satellite's raw products (eumetsat.ts): only with the user's EUMETSAT key; asked for nothing until a page asks.
+  const sat = cfg.eumetsat === null ? null : makeEumetsat({ ...cfg.eumetsat, fetchFn: deps.wxFetch, nowMs })
   // The past (History mode, the flown path): adsb.lol's files, fetched when asked and held in memory only.
   const pastUa = userAgent(cfg.contact ?? 'personal use')
   const history = new HistoryStore({ userAgent: pastUa, fetchFn: deps.historyFetch, nowMs, maxSlots: HISTORY_SLOTS, oldestMs: deps.oldestSlotMs })
@@ -533,6 +552,15 @@ export function createServer(
       if (url.pathname === '/api/wx/metar') body = await wx.metars(url.searchParams.get('bbox'))
       else if (url.pathname === '/api/wx/sigmet') body = await wx.sigmets()
       else if (url.pathname === '/api/wx/model') body = await wx.model(url.searchParams.get('lat'), url.searchParams.get('lon'))
+      else if (url.pathname === '/api/wx/sat') {
+        if (sat === null) [status, body] = [404, { error: 'no satellite products on this server: set EUMETSAT_KEY and EUMETSAT_SECRET (.env.example)' }]
+        else {
+          const q = url.searchParams
+          const a = await sat.cut(q.get('bbox'), q.get('n'), q.get('have'))
+          if (a === null) return void res.writeHead(204, { 'cache-control': 'no-store' }).end() // the frame the client has
+          return sendBytes(req, res, a.bytes, { 'server-timing': `decode;dur=${a.decodeMs.toFixed(1)}, cut;dur=${a.cutMs.toFixed(1)}` })
+        }
+      }
       else if (url.pathname === '/api/view') body = view(url.searchParams)
       else if (url.pathname === '/api/chase') body = chase(url.searchParams)
       else if (url.pathname === '/api/status') body = poller.report()
@@ -669,7 +697,8 @@ if (import.meta.main) {
     const url = await createServer(cfg, commandLineDeps(cfg)).listen(cfg.port)
     const routes = cfg.contact === null || cfg.source === 'replay' ? '' : cfg.routes && cfg.source === 'adsblol' ? ', routes on' : ', routes of selected flights'
     const rec = cfg.flightsDir === null ? '' : `, recording flights to ${cfg.flightsDir}`
-    console.log(`FlightHopper server on ${url} (source ${cfg.source}${routes}${rec})`)
+    const sat = cfg.eumetsat === null ? '' : ', the satellite\'s products with the EUMETSAT key'
+    console.log(`FlightHopper server on ${url} (source ${cfg.source}${routes}${rec}${sat})`)
   } catch (e) {
     console.error(`server: ${(e as Error).message}`)
     process.exit(1)
