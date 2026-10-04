@@ -43,7 +43,9 @@
   desktop do, Safari does not, and there the clouds stay at tier 7). A pass over its budget goes coarser, whatever the frame rate:
   on a laptop the card's time is heat. A tier gives up, one thing more at each, what is seen least: a part of its steps, the finest
   detail of a cloud's edge, the clouds' shadows on the ground, its size (0.35, then 0.25 of the view), the second light sample, and
-  then steps and size again.
+  then steps and size again. With `?bench=1` the overlay's line "clouds tier 7 · march 400×206 px · pass 2.4 ms (1.6 + 0.8)" says
+  which tier is drawn, the march's size and the pass's time on the card (the march's and the mix's in brackets; "no timer" where
+  the browser has none), and "textures" next to the heap counts the WebGL textures alive.
   The sky round the aircraft is worked out off the
   main thread and ahead of the aircraft on its track, so the view does not stop for it. Should the graphics card refuse the cloud
   pass, the view goes on without it: a toast says "3-D clouds stopped after a drawing error", the Weather menu goes, and the hazard

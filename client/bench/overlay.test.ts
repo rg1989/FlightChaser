@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { Viewer } from 'cesium'
-import { BenchRecorder, overlayText, summarizeFrames } from './overlay.ts'
+import { BenchRecorder, countTextures, overlayText, summarizeFrames } from './overlay.ts'
 import type { BenchReport } from './overlay.ts'
 import type { RenderState } from '../types.ts'
 
@@ -100,4 +100,38 @@ test('overlayText: one line per fact; unknowns print n/a', () => {
   assert.match(full, /heap 302 MB/)
   assert.match(full, /no aircraft$/)
   assert.match(overlayText(r, { ...state, onGround: true, altBaroFt: null }), /71bd79 interp ground$/)
+})
+
+test('overlayText: with the chase\'s clouds given, one line more says how they are drawn: the march\'s tier, its size in pixels, and the pass\'s time on the graphics card (the march\'s and the mix\'s in brackets when the timer says; "no timer" when there is none); the textures alive stand with the heap', () => {
+  const r: BenchReport = {
+    label: 'a831b2', frames: 99, fpsP50: 30, fpsP5: 20, frameMsP95: 50, longTasks: 0, longTaskMsMax: 0, wxMsMax: 1, wxOver: 0, minClearanceM: null, clearanceViolations: 0, heapMB: 250,
+  }
+  const line = (clouds: Parameters<typeof overlayText>[3], textures?: number): string[] => overlayText(r, null, { width: 2000, height: 1030 }, clouds, textures).split('\n')
+  const timed = line({ tier: 7, passMs: 2.43, parts: [1.61, 0.82], march: [400, 206], drawn: true }, 2249)
+  assert.equal(timed.length, 8)
+  assert.equal(timed[4], 'clouds tier 7 · march 400×206 px · pass 2.4 ms (1.6 + 0.8)', 'short: the search box covers the overlay\'s right end')
+  assert.equal(timed[3], 'weather max 1.0 ms · over 8 ms 0', 'after the weather\'s own line')
+  assert.equal(timed[6], 'heap 250 MB · textures 2249', 'the textures alive stand with the heap')
+  assert.equal(line({ tier: 7, passMs: 2.43, parts: [], march: [400, 206], drawn: true }, 2249)[4], 'clouds tier 7 · march 400×206 px · pass 2.4 ms')
+  assert.equal(line({ tier: 7, passMs: Number.NaN, parts: [], march: [400, 206], drawn: true }, 2249)[4], 'clouds tier 7 · march 400×206 px · pass: no timer')
+  assert.equal(line({ tier: 3, passMs: 2.43, parts: [1.61, 0.82], march: [1000, 515], drawn: false })[4], 'clouds tier 3 · march 1000×515 px · no pass', 'nothing to draw: no pass in the scene')
+  assert.deepEqual([line(null, 812)[4], line(null, 812)[6]], ['clouds off', 'heap 250 MB · textures 812'], 'the chase\'s weather is not shown')
+  assert.equal(line(null, Number.NaN)[6], 'heap 250 MB · textures n/a', 'not counted')
+  assert.deepEqual([line(undefined).length, line(undefined)[5]], [7, 'heap 250 MB'], 'not given: no such line, and no textures')
+})
+
+test('countTextures: the WebGL textures alive, counted from when it is called: each one made is one more, each deleted one less, once; asked again, the same count goes on; with no WebGL to count in, not a number', () => {
+  const proto = { made: 0, createTexture(): object { this.made++; return {} }, deleteTexture(_t: object | null): void {} }
+  const alive = countTextures([proto])
+  const gl = Object.create(proto) as typeof proto
+  const [, b] = [gl.createTexture(), gl.createTexture(), gl.createTexture()]
+  assert.equal(alive(), 3)
+  gl.deleteTexture(b)
+  gl.deleteTexture(b)
+  gl.deleteTexture(null)
+  assert.equal(alive(), 2)
+  const again = countTextures([proto])
+  gl.createTexture()
+  assert.deepEqual([alive(), again(), gl.made], [3, 3, 4], 'wrapped once: one more is one more')
+  assert.ok(Number.isNaN(countTextures([])()))
 })
