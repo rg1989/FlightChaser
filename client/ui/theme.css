@@ -104,6 +104,18 @@
   color: var(--fh-accent);
 }
 
+/* A button that shows a state (rail.ts setLook): on in the accent colour, off dim, whether its panel is open or not. */
+.fh-ibtn[data-state='on'],
+.fh-ibtn[data-state='on']:hover {
+  color: var(--fh-accent);
+}
+
+.fh-ibtn[data-state='off'],
+.fh-ibtn[data-state='off']:hover,
+.fh-ibtn[data-state='off'][aria-expanded='true'] {
+  color: var(--fh-muted);
+}
+
 .fh-ibtn:focus-visible,
 .fh-switch:focus-visible,
 .fh-field:focus-visible {

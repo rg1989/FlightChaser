@@ -3,8 +3,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
-import { RAIN_PALETTE } from '../scene/radar.ts'
-import { CATEGORY_COLOR, MODEL_CREDIT, SAT_CREDIT } from '../scene/wxText.ts'
 import type { ScenePrefs } from '../types.ts'
 
 // sceneToggles.ts imports its CSS for Vite. Node cannot load CSS, so this test process loads every .css as an empty module.
@@ -104,12 +102,11 @@ const all = (el: El): El[] => [el, ...el.children.flatMap(all)]
 const text = (el: El): string => el.textContent + el.children.map(text).join('')
 /** What is on screen: the tree without its hidden parts. */
 const visible = (el: El): El[] => (el.hidden ? [] : [el, ...el.children.flatMap(visible)])
-/** The panel as it shows: section titles, button groups, switches and the weather's rain scale, legend and line, top to bottom. */
-const PARTS: Record<string, string> = { 'fh-wx-rain': 'rain scale', 'fh-wx-legend': 'weather legend', 'fh-wx-line': 'weather line' }
+/** The panel as it shows: section titles, button groups and switches, top to bottom. */
 const screen = (root: El): string[] => visible(root).flatMap((e) => {
   if (e.className === 'fh-scene-title') return [e.textContent]
   if (e.attrs.role === 'group' || e.attrs.role === 'switch') return [e.attrs['aria-label']]
-  return PARTS[e.className] === undefined ? [] : [PARTS[e.className]]
+  return []
 })
 const MAP = ['Map', 'Base map']
 const SCENE = ['3-D scene', '3-D terrain', 'Sun', 'See-through buildings']
@@ -122,27 +119,24 @@ function mount(prefs: ScenePrefs) {
   const [topo, light, glass] = ['3-D terrain', 'Sun', 'See-through buildings'].map(sw)
   const checked = (): [string, string, string] => [topo.attrs['aria-checked'], light.attrs['aria-checked'], glass.attrs['aria-checked']]
   const spinner = all(root).find((e) => e.className === 'fh-spin')!
-  const [roads, places, wx] = ['Roads', 'Borders & places', 'Weather'].map(sw)
+  const [roads, places] = ['Roads', 'Borders & places'].map(sw)
   const [mapB, satB, lightB, darkB] = all(root).filter((e) => e.className === 'fh-seg-b')
   const theme = all(root).find((e) => e.attrs['aria-label'] === 'Map theme')!
-  const wxLine = all(root).find((e) => e.className === 'fh-wx-line')!
-  const wxMore = all(root).find((e) => e.className === 'fh-wx-more')!
   const view = all(root).find((e) => e.className === 'fh-scene-view')!
-  return { root, topo, light, glass, roads, places, wx, mapB, satB, lightB, darkB, theme, wxLine, wxMore, view, t, changes, checked, spinner }
+  return { root, topo, light, glass, roads, places, mapB, satB, lightB, darkB, theme, view, t, changes, checked, spinner }
 }
 
-test('switch rows: Roads (R), Borders & places (P), Weather (W), 3-D terrain (T), Sun (L), See-through buildings (X), real buttons with a label each', () => {
-  const { root, topo, light, glass, roads, places, wx } = mount({ ...DEFAULT_PREFS, topo: true, light: true, glass: false })
+test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), See-through buildings (X), real buttons with a label each; no Weather row (its switch is the Weather panel\'s)', () => {
+  const { root, topo, light, glass, roads, places } = mount({ ...DEFAULT_PREFS, topo: true, light: true, glass: false })
   const rows = all(root).filter((e) => e.className === 'fh-scene-row')
   assert.deepEqual(rows.map((r) => text(r.children[1])), [
     'RoadsRStreets and highways over the satellite',
     'Borders & placesPCountry lines and city names over the satellite',
-    'WeatherWRain radar, airport weather, hazard areas',
     '3-D terrainTMountains and valleys in relief',
     'SunLReal sun and moon light, day and night',
     'See-through buildingsXBuildings glassy, so they never hide the aircraft',
   ])
-  for (const b of [roads, places, wx, topo, light, glass]) {
+  for (const b of [roads, places, topo, light, glass]) {
     assert.equal(b.tag, 'button')
     assert.equal(b.type, 'button') // never a form submit; Enter and Space work as on any button
     assert.equal(b.className, 'fh-switch')
@@ -152,10 +146,10 @@ test('switch rows: Roads (R), Borders & places (P), Weather (W), 3-D terrain (T)
 
 test('only what applies to the view on screen: top-down or chase, on the map or the satellite', () => {
   const cases: [string, boolean, Partial<ScenePrefs>, string[]][] = [
-    ['top-down, map', false, { mapTop: true }, [...MAP, 'Map theme', 'Weather']],
-    ['top-down, satellite', false, { mapTop: false }, [...MAP, 'Roads', 'Borders & places', 'Weather']],
-    ['chase, map', true, { mapChase: true }, [...MAP, 'Map theme', 'Weather', ...SCENE]],
-    ['chase, satellite', true, { mapChase: false }, [...MAP, 'Roads', 'Borders & places', 'Weather', ...SCENE]],
+    ['top-down, map', false, { mapTop: true }, [...MAP, 'Map theme']],
+    ['top-down, satellite', false, { mapTop: false }, [...MAP, 'Roads', 'Borders & places']],
+    ['chase, map', true, { mapChase: true }, [...MAP, 'Map theme', ...SCENE]],
+    ['chase, satellite', true, { mapChase: false }, [...MAP, 'Roads', 'Borders & places', ...SCENE]],
   ]
   for (const [name, chasing, base, want] of cases) {
     const { root, t } = mount({ ...DEFAULT_PREFS, ...base })
@@ -167,17 +161,17 @@ test('only what applies to the view on screen: top-down or chase, on the map or 
 
 test('the rows follow the base and the view as they change: Satellite, the chase, Map there, and back', () => {
   const { root, satB, t, changes } = mount({ ...DEFAULT_PREFS })
-  assert.deepEqual(screen(root), [...MAP, 'Map theme', 'Weather'])
+  assert.deepEqual(screen(root), [...MAP, 'Map theme'])
   satB.click()
-  assert.deepEqual(screen(root), [...MAP, 'Map theme', 'Weather'], 'not until the app answers')
+  assert.deepEqual(screen(root), [...MAP, 'Map theme'], 'not until the app answers')
   t.update(changes.at(-1)!)
-  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places', 'Weather'])
+  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places'])
   t.setChasing(true) // the chase keeps its own base: the satellite by default
-  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places', 'Weather', ...SCENE])
+  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places', ...SCENE])
   t.update({ ...DEFAULT_PREFS, mapTop: false, mapChase: true })
-  assert.deepEqual(screen(root), [...MAP, 'Map theme', 'Weather', ...SCENE])
+  assert.deepEqual(screen(root), [...MAP, 'Map theme', ...SCENE])
   t.setChasing(false)
-  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places', 'Weather'])
+  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places'])
 })
 
 test('Roads and Borders & places: each switch shows and asks for its own pref', () => {
@@ -314,134 +308,15 @@ test('the map theme, Light or Dark, shows under Map only and sets dark for both 
   assert.equal(theme.hidden, false)
 })
 
-test('weather: its legend shows while on, and setWeather writes the status line', () => {
-  const { wx, wxMore, wxLine, t, changes } = mount({ ...DEFAULT_PREFS })
-  assert.equal(wxMore.hidden, true)
-  wx.click()
-  assert.deepEqual(changes.at(-1), { ...DEFAULT_PREFS, wx: true })
-  t.update({ ...DEFAULT_PREFS, wx: true })
-  assert.equal(wxMore.hidden, false)
-  assert.equal(wxLine.hidden, true)
-  t.setWeather('Radar 12:00 · 3 airports')
-  assert.deepEqual([wxLine.hidden, wxLine.textContent], [false, 'Radar 12:00 · 3 airports'])
-  t.setWeather(null)
-  assert.equal(wxLine.hidden, true)
-})
-
-test('weather: Open-Meteo\'s credit in the line is a link to its site (its licence asks for one) while the credit is in the line; the rest of the line is text', () => {
-  const { wxLine, t } = mount({ ...DEFAULT_PREFS, wx: true })
-  const links = (): El[] => all(wxLine).filter((e) => e.tag === 'a')
-  t.setWeather('Clouds from 3 airports · 2 hazard areas')
-  assert.deepEqual(links(), [], 'no credit, no link')
-  assert.equal(text(wxLine), 'Clouds from 3 airports · 2 hazard areas')
-  const line = `Clouds from the forecast · 1 hazard area · ${MODEL_CREDIT} · some weather unavailable`
-  t.setWeather(line)
-  const [link] = links()
-  assert.equal(links().length, 1)
-  assert.deepEqual([link.href, link.target, link.rel, link.className, link.textContent], ['https://open-meteo.com/', '_blank', 'noopener noreferrer', 'fh-wx-credit', 'Weather data by Open-Meteo.com'])
-  assert.deepEqual(wxLine.children.map((c) => [c.tag, c.textContent]), [['#text', 'Clouds from the forecast · 1 hazard area · '], ['a', 'Weather data by Open-Meteo.com'], ['#text', ' · some weather unavailable']])
-  assert.equal(text(wxLine), line, 'it reads as the one line')
-  t.setWeather(line)
-  assert.equal(links()[0], link, 'the same line again writes nothing')
-  t.setWeather('Clouds from 3 airports · 2 hazard areas · some weather unavailable') // the grid is gone, and its credit
-  assert.deepEqual(links(), [])
-  assert.equal(text(wxLine), 'Clouds from 3 airports · 2 hazard areas · some weather unavailable')
-  t.setWeather(MODEL_CREDIT)
-  assert.deepEqual(links().map((l) => [l.href, l.textContent]), [['https://open-meteo.com/', 'Weather data by Open-Meteo.com']], 'the credit alone is the link')
-  assert.equal(text(wxLine), 'Weather data by Open-Meteo.com')
-  t.setWeather(null)
-  assert.deepEqual(visible(wxLine), [], 'no line: no link on screen')
-})
-
-test('weather: EUMETSAT\'s credit in the line is a link to its site, beside Open-Meteo\'s: each credit its own link, the rest of the line text', () => {
-  const { wxLine, t } = mount({ ...DEFAULT_PREFS, wx: true })
-  const links = (): El[] => all(wxLine).filter((e) => e.tag === 'a')
-  assert.equal(SAT_CREDIT, '© EUMETSAT')
-  const line = `Clouds from 3 airports · cloud positions from Meteosat, 14:45 UTC · 2 hazard areas · ${MODEL_CREDIT} · ${SAT_CREDIT} · some weather unavailable`
-  t.setWeather(line)
-  assert.deepEqual(links().map((l) => [l.href, l.target, l.rel, l.className, l.textContent]), [
-    ['https://open-meteo.com/', '_blank', 'noopener noreferrer', 'fh-wx-credit', 'Weather data by Open-Meteo.com'],
-    ['https://www.eumetsat.int/', '_blank', 'noopener noreferrer', 'fh-wx-credit', '© EUMETSAT'],
-  ])
-  assert.deepEqual(wxLine.children.map((c) => [c.tag, c.textContent]), [
-    ['#text', 'Clouds from 3 airports · cloud positions from Meteosat, 14:45 UTC · 2 hazard areas · '], ['a', 'Weather data by Open-Meteo.com'], ['#text', ' · '], ['a', '© EUMETSAT'], ['#text', ' · some weather unavailable'],
-  ])
-  assert.equal(text(wxLine), line, 'it reads as the one line')
-  t.setWeather(`Cloud positions from Meteosat, 14:45 UTC · 0 hazard areas · ${SAT_CREDIT}`) // no forecast held
-  assert.deepEqual(links().map((l) => l.href), ['https://www.eumetsat.int/'])
-  assert.equal(text(wxLine), 'Cloud positions from Meteosat, 14:45 UTC · 0 hazard areas · © EUMETSAT')
-})
-
-// The class the link carries (checked above) is styled in the panel's CSS, so checked as text, as the [hidden] rule is.
-test('the credit link looks like the rest of the line: its colour, underlined on hover only', () => {
-  const css = readFileSync(new URL('./sceneToggles.css', import.meta.url), 'utf8')
-  assert.match(css, /\.fh-wx-credit \{\s*color: inherit;\s*text-decoration: none;\s*\}/)
-  assert.match(css, /\.fh-wx-credit:hover \{\s*text-decoration: underline;\s*\}/)
-})
-
-test('weather legend: the word Airports, then how the flight rules read, each in its colour', () => {
-  const { root, wxMore } = mount({ ...DEFAULT_PREFS, wx: true })
-  const legend = all(wxMore).find((e) => e.className === 'fh-wx-legend')!
-  assert.deepEqual(legend.children.map((e) => [e.className, e.textContent]), [
-    ['fh-wx-legend-title', 'Airports'], ['fh-wx-cat', 'Good'], ['fh-wx-cat', 'Marginal'], ['fh-wx-cat', 'Poor'], ['fh-wx-cat', 'Very poor'],
-  ])
-  const colors = all(root).filter((e) => e.className === 'fh-wx-cat').map((e) => e.vars['--c'])
-  assert.deepEqual(colors, [CATEGORY_COLOR.VFR, CATEGORY_COLOR.MVFR, CATEGORY_COLOR.IFR, CATEGORY_COLOR.LIFR]) // as the markers' rings
-})
-
-test('weather has a row in both views; its rain scale and airports legend are the top-down map\'s, its status line is both\'s', () => {
+test('the Layers panel has no Weather row and none of what hung under it: the switch, the rain scale, the airports legend and the status line are the Weather panel\'s', () => {
   const { root, t } = mount({ ...DEFAULT_PREFS, wx: true })
-  t.setWeather('Live only')
-  assert.deepEqual(screen(root), [...MAP, 'Map theme', 'Weather', 'rain scale', 'weather legend', 'weather line'])
-  t.setChasing(true) // on the satellite, the chase's default
-  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places', 'Weather', 'weather line', ...SCENE]) // the line stays: the chase's weather writes it
-  t.setWeather('Clouds from 3 airports · 2 hazard areas')
-  assert.equal(all(root).find((e) => e.className === 'fh-wx-line')!.textContent, 'Clouds from 3 airports · 2 hazard areas')
-  t.setWeather(null)
-  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places', 'Weather', ...SCENE])
-  t.setChasing(false)
-  assert.deepEqual(screen(root), [...MAP, 'Map theme', 'Weather', 'rain scale', 'weather legend'])
-})
-
-test('weather off: nothing under its row in either view', () => {
-  const { root, t } = mount({ ...DEFAULT_PREFS, wx: false })
-  t.setWeather('Live only')
-  assert.deepEqual(screen(root), [...MAP, 'Map theme', 'Weather'])
-  t.setChasing(true)
-  assert.deepEqual(screen(root), [...MAP, 'Roads', 'Borders & places', 'Weather', ...SCENE])
-})
-
-test('the weather row\'s hint follows the view: radar and airports top-down, clouds, rain and hazard areas round the aircraft in the chase', () => {
-  const { root, wx, t, changes } = mount({ ...DEFAULT_PREFS })
-  const row = (): El => all(root).filter((e) => e.className === 'fh-scene-row')[2]
-  const hint = (): string => text(row().children[1])
-  assert.equal(hint(), 'WeatherWRain radar, airport weather, hazard areas')
-  t.setChasing(true)
-  assert.equal(hint(), 'WeatherWClouds, rain and hazard areas around the aircraft')
-  assert.equal(row().children.at(-1), wx) // the same switch: nothing was rebuilt, so the focus stays
-  wx.click() // key W and the switch ask for the same pref in the chase as on the map
-  assert.deepEqual(changes.at(-1), { ...DEFAULT_PREFS, wx: true })
-  t.setChasing(false)
-  assert.equal(hint(), 'WeatherWRain radar, airport weather, hazard areas')
-})
-
-test('weather: a rain scale above the airports legend, Light to Heavy, in the radar\'s colours for the map on screen', () => {
-  const { wxMore, t } = mount({ ...DEFAULT_PREFS, wx: true })
-  assert.deepEqual(wxMore.children.map((e) => e.className), ['fh-wx-rain', 'fh-wx-legend', 'fh-wx-line'])
-  const [rain] = wxMore.children
-  assert.deepEqual(rain.children.map((e) => [e.className, e.textContent]), [['fh-wx-rain-end', 'Light'], ['fh-wx-scale', ''], ['fh-wx-rain-end', 'Heavy']])
-  const scale = rain.children[1]
-  const gradient = (theme: 'light' | 'dark'): string => `linear-gradient(90deg, ${RAIN_PALETTE[theme].rain.map(([r, g, b]) => `rgb(${r}, ${g}, ${b})`).join(', ')})`
-  assert.equal(scale.vars['--scale'], gradient('light')) // the light street map
-  t.update({ ...DEFAULT_PREFS, wx: true, dark: true })
-  assert.equal(scale.vars['--scale'], gradient('dark'))
-  t.update({ ...DEFAULT_PREFS, wx: true, mapTop: false })
-  assert.equal(scale.vars['--scale'], gradient('dark'), 'the satellite: dark under the rain')
-  t.update({ ...DEFAULT_PREFS, wx: true })
-  assert.equal(scale.vars['--scale'], gradient('light'))
-  assert.equal(RAIN_PALETTE.light.rain.length, 11)
-  t.setChasing(true) // the chase's base (the satellite) is not the weather's
-  assert.equal(scale.vars['--scale'], gradient('light'))
+  for (const chasing of [false, true]) {
+    t.setChasing(chasing)
+    assert.ok(!screen(root).includes('Weather'), 'no Weather switch')
+    assert.deepEqual(all(root).filter((e) => e.attrs['aria-label'] === 'Weather' || e.className.startsWith('fh-wx-')), [], 'no weather part in the tree')
+    assert.ok(!text(root).includes('Weather'))
+  }
+  assert.equal('setWeather' in t, false)
 })
 
 test('rainTheme: the top-down map\'s base decides (the radar is drawn there only): light over the light street map, else dark', () => {

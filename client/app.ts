@@ -161,6 +161,7 @@ const FRAME_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard)
 const MAP_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard), .fh-playbar, .fh-search-bar'
 const MAP_KEY_COVER = '.fh-mapkey'
 const SAFE_EVERY_MS = 100
+const WEATHER_LABEL = 'clouds, hazard areas, looking ahead' // after the state, in the Weather button's words
 const WX_LOOK_MS = 250 // the chase weather's status line, ahead strip and minute labels follow the aircraft this often
 const WX_MINUTES_KEY = 'ahead' // the track line's minute labels: this layer in the names overlay (placeLabels.ts setLayer) …
 const WX_MINUTES_RANK = 1.6 // … after the seas (1) and the hazard areas' labels (1.5), before every city (2)
@@ -299,21 +300,19 @@ export function sceneKey(e: { key: string; metaKey: boolean; ctrlKey: boolean; a
   return ({ t: 'topo', l: 'light', x: 'glass', m: 'base', r: 'roads', p: 'places', w: 'wx' } as const)[k as 't'] ?? null
 }
 
-/**
- * Which weather the prefs, the view and the time ask for: the top-down map's, the chase's, or none; and whether the panel says
- * "Live only" (the weather is today's: History and a scenario are not).
- */
-export function weatherView(o: { wx: boolean; chasing: boolean; history: boolean; scenario: boolean }): { topDown: boolean; chase: boolean; liveOnly: boolean } {
+/** Which weather the prefs, the view and the time ask for: the top-down map's, the chase's, or none (the weather is today's: History and a scenario draw none). */
+export function weatherView(o: { wx: boolean; chasing: boolean; history: boolean; scenario: boolean }): { topDown: boolean; chase: boolean } {
   const live = !o.history && !o.scenario
-  return { topDown: o.wx && live && !o.chasing, chase: o.wx && live && o.chasing, liveOnly: o.wx && !live }
+  return { topDown: o.wx && live && !o.chasing, chase: o.wx && live && o.chasing }
 }
 
 /**
- * Whether the Weather panel opens by itself: the person has just turned Weather on (the Layers switch, the W key) and the chase's weather
- * is drawn for it. Not when a chase, or a live view after History or a scenario, begins with Weather already on.
+ * The Weather rail button as the pref and the clock show it: a cloud in the accent colour while the weather is on, a crossed-out grey one
+ * when it is off, and in History and a scenario, where none is drawn. Its words say the state first.
  */
-export function weatherMenuOpens(o: { was: boolean; now: boolean; chasing: boolean; history: boolean; scenario: boolean }): boolean {
-  return !o.was && weatherView({ wx: o.now, chasing: o.chasing, history: o.history, scenario: o.scenario }).chase
+export function weatherButton(o: { wx: boolean; live: boolean }): { icon: 'cloud' | 'cloudOff'; state: 'on' | 'off'; label: string } {
+  const on = o.wx && o.live
+  return { icon: on ? 'cloud' : 'cloudOff', state: on ? 'on' : 'off', label: `Weather: ${on ? 'on' : 'off'} · ${WEATHER_LABEL}` }
 }
 
 export interface AppParams {
@@ -683,14 +682,15 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         onBadge: (t) => rail.setBadge('events', t),
       })),
     } },
-    // A square of its own under the rail: map or satellite, roads, weather, and the 3-D scene's switches.
-    { id: 'scene', icon: 'layers', label: 'Layers: map, roads, weather, 3-D scene', short: 'Layers', spot: 'under', panel: {
+    // A square of its own under the rail: map or satellite, roads, and the 3-D scene's switches.
+    { id: 'scene', icon: 'layers', label: 'Layers: map, roads, 3-D scene', short: 'Layers', spot: 'under', panel: {
       title: 'Layers', mount: (b) => (toggles = mountSceneToggles(b, { prefs, onChange: (next) => setPrefs(next) })),
     } },
-    // A square of its own just under Layers, there only while the chase's weather is drawn (applyLayers): the clouds' look, the hazard areas'
-    // style and the looking-ahead aids. It opens by itself when Weather is turned on in a live chase (setPrefs).
-    { id: 'weather', icon: 'cloud', label: 'Weather: clouds, hazard areas, looking ahead', short: 'Weather', spot: 'under', panel: {
-      title: 'Weather', mount: (b) => (wxMenu = mountWxMenu(b, { prefs: wxPrefs, onChange: (next) => setWxPrefs(next) })),
+    // A square of its own just under Layers, always there: the weather's master switch (W), its rain scale, legend and status line, and in the chase
+    // the clouds' look, the hazard areas' style and the looking-ahead aids. The button shows the state (applyLayers: a cloud, or a crossed-out one).
+    // No panel opens by itself.
+    { id: 'weather', icon: 'cloud', label: `Weather: ${WEATHER_LABEL}`, short: 'Weather', spot: 'under', panel: {
+      title: 'Weather', mount: (b) => (wxMenu = mountWxMenu(b, { prefs: wxPrefs, onChange: (next) => setWxPrefs(next), onMaster: (on) => setPrefs({ ...prefs, wx: on }) })),
     } },
     // Chase only (flightFrame.css): the frame's cards, to move, hide and show; an open panel closes to show them.
     // A traffic aircraft's card closes too (it and its brackets would sit over the cards), and none opens while editing.
@@ -837,14 +837,14 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const placesLayer = div('fh-places', root)
   const placeLabels = new PlaceLabels(viewer, placesLayer, { placesUrl, countriesUrl: `${base}map/countries.json`, seasUrl: `${base}map/seas.json` })
   const aircraftDiscs: Discs = { n: 0, d: new Float64Array(0) } // the chased aircraft's outline on screen: no name over it
-  const weather = new Weather(viewer, cfg.apiBase, ui, (text) => toggles.setWeather(text), { units: () => frameUnits, radarIndex: () => map.liftIndex })
+  const weather = new Weather(viewer, cfg.apiBase, ui, (text) => wxMenu.setWeather(text), { units: () => frameUnits, radarIndex: () => map.liftIndex })
   // The chase's weather: round the chased aircraft, its hazard areas' labels through the names overlay. Its overcast greys the sky and
   // dims the Sun's light too (0 when it is hidden). ?wxat=, ?wxdemo=, ?wxbreak=, ?wxtier= and ?wxsat= are check aids: the weather of another place, a made-up sky
   // in place of the real one, a cloud pass that fails on purpose, the cloud march held at one tier, and the sky without the weather satellite (0) or with its keyless pictures alone (pictures). The clouds' look and the other Weather-menu
-  // choices are applied below (applyWxPrefs). Should the cloud pass fail (a drawing error took it out: its choices then do nothing), the Weather
-  // button and its panel go (applyLayers) and one toast says so.
+  // choices are applied below (applyWxPrefs). Should the cloud pass fail (a drawing error took it out: its Clouds choices then do nothing), the Weather
+  // panel's Clouds segment is disabled (applyLayers), its status line carries the note, and one toast says so.
   const weather3d = new Weather3D(viewer, {
-    apiBase: cfg.apiBase, labels: placeLabels, onStatus: (text) => toggles.setWeather(text), units: () => frameUnits, at: parseWxAt(location.search),
+    apiBase: cfg.apiBase, labels: placeLabels, onStatus: (text) => wxMenu.setWeather(text), units: () => frameUnits, at: parseWxAt(location.search),
     demo: parseWxDemo(location.search), broken: parseWxBreak(location.search), tier: parseWxTier(location.search), satellite: satelliteFor(parseWxSat(location.search), cfg.apiBase),
     onShade: (shade) => sun.setOvercast(shade),
     onCloudsFailed: (note) => {
@@ -937,13 +937,16 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     reference.places.show = prefs.places && !onMap
     placeLabels.show = chasing && prefs.places && !onMap
     weather.theme = rainTheme(prefs)
+    const live = hist === null && run === null
     const wx = weatherView({ wx: prefs.wx, chasing, history: hist !== null, scenario: run !== null })
     weather.show = wx.topDown
     weather3d.show = wx.chase
-    rail.setHidden('weather', !weather3d.show || weather3d.cloudsFailed) // the Weather button is there while the chase's weather is drawn (and its cloud pass has not failed: its choices then do nothing); its panel goes with it
+    const look = weatherButton({ wx: prefs.wx, live })
+    rail.setLook('weather', look) // the button says whether the weather is on; its panel is always there
+    wxMenu.setView({ wx: prefs.wx, chasing, live, failed: weather3d.cloudsFailed, theme: rainTheme(prefs) })
     map.lift = weather.show
-    if (wx.liveOnly) toggles.setWeather('Live only')
-    else if (!prefs.wx) toggles.setWeather(null)
+    if (!live) wxMenu.setWeather('Live only') // the master switch is disabled, and the line says why
+    else if (!prefs.wx) wxMenu.setWeather(null)
   }
   applyLayers()
   const fleetLayer = new FleetLayer(viewer)
@@ -1671,7 +1674,6 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   /** Every scene-toggle change, from a button or a key: apply it, store it, show it. */
   function setPrefs(next: ScenePrefs): void {
     if (next.topo !== prefs.topo) topo.set(next.topo, performance.now(), relHFor(chased, groundM, topo.relHM, airports))
-    const wxWas = prefs.wx
     prefs = next
     sun.setEnabled(chasing && next.light)
     buildings.setGlass(next.glass)
@@ -1679,8 +1681,6 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     writeScenePrefs(next, store)
     toggles.update(next)
     settings.setDark(next.dark)
-    // Every call is the person's own (a switch, a key): turning Weather on in a live chase opens its panel, after applyLayers showed its button.
-    if (weatherMenuOpens({ was: wxWas, now: next.wx, chasing, history: hist !== null, scenario: run !== null })) rail.open('weather') // (not when its button is hidden: the rail refuses)
   }
 
   /**

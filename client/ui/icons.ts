@@ -21,6 +21,8 @@ const P: Record<string, string> = {
   hourglass: 'M6.5 3.5h11M6.5 20.5h11M7.5 3.5c0 5 9 5 9 8.5s-9 3.5-9 8.5M16.5 3.5c0 5-9 5-9 8.5s9 3.5 9 8.5',
   // A cloud: the weather.
   cloud: 'M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.5 9.6 4.5 4.5 0 0 0 7 18.5Z',
+  // The cloud, struck through: the weather is off.
+  cloudOff: 'M7 18.5h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.5 9.6 4.5 4.5 0 0 0 7 18.5ZM3.5 3.5l17 17',
   // A road running into the distance: roads.
   road: 'M9.5 3.5 5 20.5M14.5 3.5l4.5 17M12 5v2.5M12 11v2.5M12 17v3',
   // Two peaks: 3-D terrain.

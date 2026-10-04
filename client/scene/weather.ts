@@ -1,5 +1,5 @@
 // client/scene/weather.ts
-// Aviation weather on the top-down map (the Layers panel's Weather switch; in the chase weather3d.ts draws the weather
+// Aviation weather on the top-down map (the Weather panel's switch; in the chase weather3d.ts draws the weather
 // round the aircraft, and this is hidden):
 // - rain radar: RainViewer's newest past frame (keyless tiles, CORS *; its free API serves zoom ≤ 7). Checked 2026-09-30:
 //   https://www.rainviewer.com/api.html. radar.ts draws it smooth to zoom 12, in a palette for the map under it (theme), and

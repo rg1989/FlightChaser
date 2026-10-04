@@ -1,7 +1,7 @@
 // client/scene/radar.ts
 // The rain radar drawn smooth at every zoom, in a palette made for the map under it. RadarSource fetches and decodes a
 // frame's tiles and renderTile draws one output tile; weather.ts puts it on the map (RadarProvider, RadarLayer), spreading
-// the drawing over frames (drawQueue.ts). No Cesium here: the Layers panel takes its palettes from this file.
+// the drawing over frames (drawQueue.ts). No Cesium here: the Weather panel's rain scale takes its palettes from this file.
 //
 // RainViewer's free API serves its newest frame as 256-px tiles up to zoom 7 (deeper ones are a "zoom not supported"
 // picture), in its "Universal Blue" colours: each colour is one whole dBZ, rain and snow apart. A real cell is ~2 × 2 tile

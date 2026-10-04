@@ -8,7 +8,8 @@
 // right, 'bottom' at the bottom centre; 'phone' nowhere (the thing it opens has its own place there, e.g. the search box at
 // the top centre). On phones there is no room for them: every button is a tab in the one bottom strip, in item order (it
 // scrolls sideways when they do not fit). The app can take a button away while what it opens has nothing to show (setHidden):
-// its square on a wide screen, its tab on a phone; its panel closes with it.
+// its square on a wide screen, its tab on a phone; its panel closes with it. A button can show a state of what it opens (setLook):
+// another icon, words that say the state first, and a data-state that theme.css colours (the accent when on, dim when off).
 import { icon, type IconName } from './icons.ts'
 import './rail.css'
 
@@ -32,6 +33,7 @@ export interface RailHandle {
   setBadge(id: string, text: string | null): void
   setBusy(id: string, busy: boolean): void
   setHidden(id: string, hidden: boolean): void // the button gone (its square, its tab); an open panel of it closes
+  setLook(id: string, look: { icon: IconName; label: string; state: string }): void // the button's icon, tooltip and aria-label, and data-state
   setDot(id: string, state: 'live' | 'replay' | 'trouble' | 'wait' | null): void
   destroy(): void
 }
@@ -70,6 +72,7 @@ export function mountRail(root: HTMLElement, items: readonly RailItem[], onOpen?
   const buttons = new Map<string, HTMLButtonElement>()
   const panes = new Map<string, { body: HTMLElement; extras: HTMLElement; item: RailItem }>()
   const badges = new Map<string, HTMLElement>()
+  const glyphs = new Map<string, { name: IconName; svg: SVGSVGElement }>() // each button's icon as drawn now (setLook)
   let openId: string | null = null
   let lastGroup = items[0]?.group ?? 0
   const railKids: HTMLElement[] = [] // the rail's own buttons and dividers, as a wide screen shows them
@@ -88,7 +91,9 @@ export function mountRail(root: HTMLElement, items: readonly RailItem[], onOpen?
     b.setAttribute('aria-label', item.label)
     b.dataset.tip = item.label
     b.dataset.id = item.id
-    b.append(icon(item.icon))
+    const svg = icon(item.icon)
+    glyphs.set(item.id, { name: item.icon, svg })
+    b.append(svg)
     b.append(el('span', 'fh-ibtn-label', item.short)) // shown in the phone tab strip only (rail.css)
     if (item.panel) b.setAttribute('aria-expanded', 'false')
     b.addEventListener('click', () => (item.panel ? api.open(openId === item.id ? null : item.id) : item.action?.()))
@@ -235,6 +240,20 @@ export function mountRail(root: HTMLElement, items: readonly RailItem[], onOpen?
       const own = owned.find((o) => o.b === b)
       if (own) own.square.hidden = hidden // on a phone the square is empty and not shown at all (rail.css)
       if (hidden && openId === id) api.open(null)
+    },
+    setLook(id, look) {
+      const b = api.button(id)
+      const g = glyphs.get(id)!
+      if (g.name !== look.icon) {
+        const svg = icon(look.icon)
+        g.svg.replaceWith(svg)
+        glyphs.set(id, { name: look.icon, svg })
+      }
+      if (b.dataset.tip !== look.label) {
+        b.dataset.tip = look.label
+        b.setAttribute('aria-label', look.label)
+      }
+      if (b.dataset.state !== look.state) b.dataset.state = look.state
     },
     setDot(id, state) {
       const b = api.button(id)

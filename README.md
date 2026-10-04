@@ -34,7 +34,8 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
   glass-cockpit instruments. Nearby traffic is drawn too.
 - **Weather.** Rain radar, airport reports and hazard areas on the map. In the chase, clouds, rain and storms are
   volumes round the aircraft. Over Europe, Africa and the Middle East the clouds stand where the Meteosat weather
-  satellite sees them, with the cloud tops it measures.
+  satellite sees them, with the cloud tops it measures. The Weather panel has the master switch (`W`); its button on the rail
+  shows whether the weather is on.
 - **History.** The map as it was at any time in the last 42 days, on a replay clock.
 - **Recordings.** Record a flight with one button and replay it later.
 - **Scenarios.** Reconstructed flights played back with a timeline and captions from the official record.

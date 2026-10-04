@@ -3,8 +3,11 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
+import { RAIN_PALETTE } from '../scene/radar.ts'
 import { SEV_COLOR } from '../scene/wxAhead.ts'
+import { CATEGORY_COLOR, MODEL_CREDIT, SAT_CREDIT } from '../scene/wxText.ts'
 import type { WxPrefs } from './wxPrefs.ts'
+import type { WxMenuView } from './wxMenu.ts'
 
 // wxMenu.ts imports its CSS for Vite. Node cannot load CSS, so this test process loads every .css as an empty module.
 registerHooks({
@@ -22,6 +25,11 @@ class El {
   className = ''
   #text = ''
   type = ''
+  href = ''
+  target = ''
+  rel = ''
+  hidden = false
+  disabled = false
   vars: Record<string, string> = {}
   style = { setProperty: (k: string, v: string): void => void (this.vars[k] = v) }
   classList = { add: (): void => {} } // icons.ts marks its svg
@@ -35,6 +43,8 @@ class El {
     return this.#text
   }
   set textContent(v: string) {
+    for (const c of this.children) c.parent = null
+    this.children = [] // as in the DOM: the text replaces what the element held
     this.#text = v
   }
   append(...cs: El[]): void {
@@ -42,6 +52,12 @@ class El {
       c.parent = this
       this.children.push(c)
     }
+  }
+  replaceChildren(...cs: (El | string)[]): void {
+    this.#text = ''
+    for (const c of this.children) c.parent = null
+    this.children = []
+    this.append(...cs.map((c) => (typeof c === 'string' ? Object.assign(new El('#text'), { textContent: c }) : c)))
   }
   remove(): void {
     if (!this.parent) return
@@ -56,6 +72,7 @@ class El {
     if (type === 'click') this.listeners.push(f)
   }
   click(e: ClickEvent = { target: this }): void {
+    if (this.disabled) return // as in a page: a disabled button takes no click, and passes none up
     for (const f of this.listeners) f(e)
     this.parent?.click(e)
   }
@@ -67,17 +84,27 @@ Object.assign(globalThis, {
 const all = (el: El): El[] => [el, ...el.children.flatMap(all)]
 const text = (el: El): string => el.textContent + el.children.map(text).join('')
 
-function mount(prefs: WxPrefs = DEFAULT_WX_PREFS) {
+const CHASE: WxMenuView = { wx: true, chasing: true, live: true, failed: false, theme: 'light' } // the Weather switch on, in a live chase: every control in use
+
+function mount(prefs: WxPrefs = DEFAULT_WX_PREFS, view: Partial<WxMenuView> = {}) {
   const root = new El('div')
   const changes: WxPrefs[] = []
-  const menu = mountWxMenu(root as unknown as HTMLElement, { prefs, onChange: (next) => changes.push(next) })
+  const masters: boolean[] = []
+  const menu = mountWxMenu(root as unknown as HTMLElement, { prefs, onChange: (next) => changes.push(next), onMaster: (on) => masters.push(on) })
+  menu.setView({ ...CHASE, ...view })
   const group = (label: string): El => all(root).find((e) => e.attrs.role === 'group' && e.attrs['aria-label'] === label)!
   const button = (label: string, name: string): El => group(label).children.find((b) => b.textContent === name)!
   const sw = (label: string): El => all(root).find((e) => e.attrs.role === 'switch' && e.attrs['aria-label'] === label)!
   const pressed = (label: string): string[] => group(label).children.filter((b) => b.attrs['aria-pressed'] === 'true').map((b) => b.textContent)
   const aids = (): string[] => ['Track line', 'Level slice', 'Ahead strip'].map((l) => sw(l).attrs['aria-checked'])
-  return { root, menu, changes, group, button, sw, pressed, aids }
+  const part = (className: string): El => all(root).find((e) => e.className.split(' ').includes(className))!
+  return { root, menu, changes, masters, group, button, sw, pressed, aids, part }
 }
+
+/** Every control but the master switch: the two segments' buttons and the three aids' switches. */
+const others = (root: El): El[] => all(root).filter((e) => e.className === 'fh-seg-b' || (e.attrs.role === 'switch' && e.attrs['aria-label'] !== 'Weather'))
+/** What is on screen: the tree without its hidden parts. */
+const visible = (el: El): El[] => (el.hidden ? [] : [el, ...el.children.flatMap(visible)])
 
 test('the panel: Clouds with its legend, Hazard areas, Looking ahead with a switch row and a hint each', () => {
   const { root, group } = mount()
@@ -86,12 +113,13 @@ test('the panel: Clouds with its legend, Hazard areas, Looking ahead with a swit
   assert.deepEqual(group('Hazard area style').children.map(text), ['Curtain', 'Fence', 'Box'])
   const rows = all(root).filter((e) => e.className === 'fh-scene-row')
   assert.deepEqual(rows.map((r) => text(r.children[1])), [
+    'WeatherWClouds, rain and hazard areas around the aircraft', // the master switch, first (the chase's hint)
     "Track lineThe next six minutes on this heading",
     "Level sliceThe weather at the aircraft's own altitude",
     'Ahead stripSide view of the next 80 km',
   ])
   const switches = all(root).filter((e) => e.attrs.role === 'switch')
-  assert.deepEqual(switches.map((s) => s.attrs['aria-label']), ['Track line', 'Level slice', 'Ahead strip'])
+  assert.deepEqual(switches.map((s) => s.attrs['aria-label']), ['Weather', 'Track line', 'Level slice', 'Ahead strip'])
   for (const s of switches) {
     assert.equal(s.tag, 'button')
     assert.equal(s.type, 'button') // never a form submit; Enter and Space work as on any button
@@ -118,7 +146,7 @@ test('it is the Layers panel\'s look: its classes for the section heads, button 
   for (const c of ['fh-scene', 'fh-scene-head', 'fh-scene-title', 'fh-seg', 'fh-seg-b', 'fh-scene-row', 'fh-scene-icon', 'fh-scene-text', 'fh-scene-label', 'fh-scene-hint', 'fh-switch']) {
     assert.ok([...classes].some((k) => k.split(' ').includes(c)), c)
   }
-  assert.equal(root.children.length, 3)
+  assert.equal(root.children.length, 4) // the master switch's section, Clouds, Hazard areas, Looking ahead
   assert.ok(root.children.every((s) => s.className === 'fh-scene'))
 })
 
@@ -207,7 +235,7 @@ test('update() writes only what changed (it runs for every choice made)', () => 
 
 test('destroy() takes the panel\'s parts out of its root', () => {
   const { root, menu } = mount()
-  assert.equal(root.children.length, 3)
+  assert.equal(root.children.length, 4)
   menu.destroy()
   assert.equal(root.children.length, 0)
 })
@@ -218,4 +246,192 @@ test('wxMenu.css: a segment\'s buttons are equal shares of the row, each no narr
   const css = readFileSync(new URL('./wxMenu.css', import.meta.url), 'utf8')
   assert.match(css, /\.fh-wxm-seg \.fh-seg-b \{[^}]*flex: 1 1 0;[^}]*min-width: max-content;[^}]*white-space: nowrap;[^}]*\}/)
   assert.match(css, /\.fh-wxm-legend \{[^}]*padding: 0 14px 10px;[^}]*\}/)
+})
+
+test('the master switch: Weather (W), first in the panel; it shows the Weather pref and asks for it toggled, once, from the switch or the row', () => {
+  const on = mount(DEFAULT_WX_PREFS, { wx: true })
+  const master = on.sw('Weather')
+  assert.deepEqual([master.tag, master.type, master.className, master.attrs['aria-checked']], ['button', 'button', 'fh-switch', 'true'])
+  const row = master.parent!
+  assert.equal(row.className, 'fh-scene-row')
+  assert.equal(row.parent, on.root.children[0], 'in the first section, above Clouds')
+  assert.equal(text(row.children[1]), 'WeatherWClouds, rain and hazard areas around the aircraft')
+  master.click()
+  assert.deepEqual(on.masters, [false]) // one ask, though the click rises to its row
+  row.click({ target: row }) // on the row, not on its switch (a finger's)
+  assert.deepEqual(on.masters, [false, false])
+  assert.deepEqual(on.changes, [], 'the Weather prefs (look, hazard, aids) are not touched')
+  const off = mount(DEFAULT_WX_PREFS, { wx: false })
+  assert.equal(off.sw('Weather').attrs['aria-checked'], 'false')
+  off.sw('Weather').click()
+  assert.deepEqual(off.masters, [true])
+  off.menu.setView({ ...CHASE, wx: true }) // the app answers
+  assert.equal(off.sw('Weather').attrs['aria-checked'], 'true')
+})
+
+test('the master row\'s hint follows the view: radar and airports top-down, clouds, rain and hazard areas round the aircraft in the chase', () => {
+  const { menu, sw } = mount(DEFAULT_WX_PREFS, { chasing: false })
+  const hint = (): string => text(sw('Weather').parent!.children[1])
+  assert.equal(hint(), 'WeatherWRain radar, airport weather, hazard areas')
+  menu.setView({ ...CHASE })
+  assert.equal(hint(), 'WeatherWClouds, rain and hazard areas around the aircraft')
+})
+
+test('Weather off: every other control keeps the stored choice but is disabled, and a click on one changes nothing', () => {
+  const p: WxPrefs = { look: 'blocks', hazard: 'fence', track: false, slice: true, strip: false }
+  const { root, menu, button, sw, pressed, aids, group, changes, masters } = mount(p, { wx: false })
+  assert.equal(others(root).length, 9)
+  for (const e of others(root)) assert.equal(e.disabled, true, `${e.attrs['aria-label'] ?? e.textContent} is disabled`)
+  for (const g of [group('Clouds'), group('Hazard area style'), ...['Track line', 'Level slice', 'Ahead strip'].map((l) => sw(l).parent!)]) assert.equal(g.attrs['aria-disabled'], 'true')
+  assert.equal(sw('Weather').disabled, false, 'the master stays in use')
+  assert.deepEqual([pressed('Clouds'), pressed('Hazard area style'), aids()], [['Blocks'], ['Fence'], ['false', 'true', 'false']], 'the stored choices still show')
+  for (const e of others(root)) e.click()
+  for (const l of ['Track line', 'Level slice', 'Ahead strip']) sw(l).parent!.click({ target: sw(l).parent! }) // the rows too
+  button('Clouds', 'Natural').click()
+  assert.deepEqual([changes, masters], [[], []])
+  assert.deepEqual([pressed('Clouds'), pressed('Hazard area style'), aids()], [['Blocks'], ['Fence'], ['false', 'true', 'false']], 'nothing moved')
+  menu.setView({ ...CHASE, wx: true }) // switched on: the same choices, in use
+  for (const e of others(root)) assert.equal(e.disabled, false)
+  assert.equal(group('Clouds').attrs['aria-disabled'], 'false')
+  assert.deepEqual([pressed('Clouds'), pressed('Hazard area style'), aids()], [['Blocks'], ['Fence'], ['false', 'true', 'false']])
+  button('Clouds', 'Natural').click()
+  assert.deepEqual(changes, [{ ...p, look: 'natural' }])
+})
+
+test('top-down: the cloud look, the hazard style and the looking-ahead rows are there, disabled, with one line, "In the chase view"; in the chase the line goes', () => {
+  const { root, menu, part } = mount(DEFAULT_WX_PREFS, { chasing: false })
+  assert.equal(others(root).length, 9)
+  for (const e of others(root)) assert.equal(e.disabled, true)
+  assert.equal(all(root).find((e) => e.attrs.role === 'switch' && e.attrs['aria-label'] === 'Weather')!.disabled, false, 'the master is in use')
+  const note = part('fh-wxm-note')
+  assert.deepEqual([note.textContent, note.hidden], ['In the chase view', false])
+  assert.equal(all(root).filter((e) => e.className.split(' ').includes('fh-wxm-note')).length, 1, 'one line, not one per part')
+  menu.setView({ ...CHASE })
+  for (const e of others(root)) assert.equal(e.disabled, false)
+  assert.equal(note.hidden, true)
+})
+
+test('Live only (History, a scenario): the master switch is disabled, showing its pref', () => {
+  const { sw, masters } = mount(DEFAULT_WX_PREFS, { live: false })
+  const master = sw('Weather')
+  assert.deepEqual([master.disabled, master.parent!.attrs['aria-disabled'], master.attrs['aria-checked']], [true, 'true', 'true'])
+  master.click()
+  master.parent!.click({ target: master.parent! })
+  assert.deepEqual(masters, [])
+  const live = mount(DEFAULT_WX_PREFS)
+  assert.deepEqual([live.sw('Weather').disabled, live.sw('Weather').parent!.attrs['aria-disabled']], [false, 'false'])
+})
+
+test('after a drawing error the Clouds segment is disabled, the hazard style and the aids are not', () => {
+  const { root, menu, group, button, sw, changes } = mount(DEFAULT_WX_PREFS, { failed: true })
+  assert.deepEqual(group('Clouds').children.map((b) => b.disabled), [true, true, true])
+  assert.equal(group('Clouds').attrs['aria-disabled'], 'true')
+  button('Clouds', 'Blocks').click()
+  assert.deepEqual(changes, [])
+  assert.deepEqual(group('Hazard area style').children.map((b) => b.disabled), [false, false, false])
+  assert.deepEqual(['Track line', 'Level slice', 'Ahead strip'].map((l) => sw(l).disabled), [false, false, false])
+  assert.equal(group('Hazard area style').attrs['aria-disabled'], 'false')
+  menu.setView({ ...CHASE, failed: true, wx: false })
+  assert.equal(others(root).every((e) => e.disabled), true)
+})
+
+test('setView() with nothing changed writes nothing', () => {
+  const { root, menu } = mount()
+  const writes = (): number => all(root).reduce((n, e) => n + e.attrWrites, 0)
+  const before = writes()
+  for (let i = 0; i < 50; i++) menu.setView({ ...CHASE })
+  assert.equal(writes(), before)
+  menu.setView({ ...CHASE, wx: false })
+  assert.equal(writes(), before + 1 + 5, 'the master switch, and the five parts that go off (two segments, three rows)')
+})
+
+test('the rain scale and the airports legend are the top-down map\'s, with the switch on; the status line is both views\'', () => {
+  const { root, menu, part } = mount(DEFAULT_WX_PREFS, { chasing: false })
+  const shows = (): string[] => visible(root).flatMap((e) => ['fh-wx-rain', 'fh-wx-legend', 'fh-wx-line'].includes(e.className) ? [e.className] : [])
+  assert.deepEqual(shows(), ['fh-wx-rain', 'fh-wx-legend'])
+  menu.setWeather('Live only')
+  assert.deepEqual(shows(), ['fh-wx-rain', 'fh-wx-legend', 'fh-wx-line'])
+  menu.setView({ ...CHASE }) // the chase
+  assert.deepEqual(shows(), ['fh-wx-line'])
+  menu.setWeather('Clouds from 3 airports · 2 hazard areas')
+  assert.equal(part('fh-wx-line').textContent, 'Clouds from 3 airports · 2 hazard areas')
+  menu.setWeather(null)
+  assert.deepEqual(shows(), [])
+  assert.equal(part('fh-wx-more').hidden, true, 'nothing under the switch: its box goes')
+  menu.setView({ ...CHASE, chasing: false, wx: false }) // switched off: no rain scale, no legend
+  assert.deepEqual(shows(), [])
+  menu.setWeather('Live only') // History: the line says why the switch is disabled, whatever the switch holds
+  assert.deepEqual(shows(), ['fh-wx-line'])
+})
+
+test('weather: a rain scale above the airports legend, Light to Heavy, in the radar\'s colours for the map on screen', () => {
+  const { root, menu } = mount(DEFAULT_WX_PREFS, { chasing: false })
+  const more = all(root).find((e) => e.className === 'fh-wx-more')!
+  assert.deepEqual(more.children.map((e) => e.className), ['fh-wx-rain', 'fh-wx-legend', 'fh-wx-line'])
+  const [rain] = more.children
+  assert.deepEqual(rain.children.map((e) => [e.className, e.textContent]), [['fh-wx-rain-end', 'Light'], ['fh-wx-scale', ''], ['fh-wx-rain-end', 'Heavy']])
+  const scale = rain.children[1]
+  const gradient = (theme: 'light' | 'dark'): string => `linear-gradient(90deg, ${RAIN_PALETTE[theme].rain.map(([r, g, b]) => `rgb(${r}, ${g}, ${b})`).join(', ')})`
+  assert.equal(scale.vars['--scale'], gradient('light')) // the light street map
+  menu.setView({ ...CHASE, chasing: false, theme: 'dark' })
+  assert.equal(scale.vars['--scale'], gradient('dark'))
+  menu.setView({ ...CHASE, chasing: false, theme: 'light' })
+  assert.equal(scale.vars['--scale'], gradient('light'))
+  assert.equal(RAIN_PALETTE.light.rain.length, 11)
+})
+
+test('weather legend: the word Airports, then how the flight rules read, each in its colour', () => {
+  const { root } = mount(DEFAULT_WX_PREFS, { chasing: false })
+  const legend = all(root).find((e) => e.className === 'fh-wx-legend')!
+  assert.deepEqual(legend.children.map((e) => [e.className, e.textContent]), [
+    ['fh-wx-legend-title', 'Airports'], ['fh-wx-cat', 'Good'], ['fh-wx-cat', 'Marginal'], ['fh-wx-cat', 'Poor'], ['fh-wx-cat', 'Very poor'],
+  ])
+  const colors = legend.children.filter((e) => e.className === 'fh-wx-cat').map((e) => e.vars['--c'])
+  assert.deepEqual(colors, [CATEGORY_COLOR.VFR, CATEGORY_COLOR.MVFR, CATEGORY_COLOR.IFR, CATEGORY_COLOR.LIFR]) // as the markers' rings
+})
+
+test('weather: Open-Meteo\'s credit in the line is a link to its site (its licence asks for one) while the credit is in the line; the rest of the line is text', () => {
+  const { part, menu } = mount()
+  const wxLine = part('fh-wx-line')
+  const links = (): El[] => all(wxLine).filter((e) => e.tag === 'a')
+  menu.setWeather('Clouds from 3 airports · 2 hazard areas')
+  assert.deepEqual(links(), [], 'no credit, no link')
+  assert.equal(text(wxLine), 'Clouds from 3 airports · 2 hazard areas')
+  const line = `Clouds from the forecast · 1 hazard area · ${MODEL_CREDIT} · some weather unavailable`
+  menu.setWeather(line)
+  const [link] = links()
+  assert.equal(links().length, 1)
+  assert.deepEqual([link.href, link.target, link.rel, link.className, link.textContent], ['https://open-meteo.com/', '_blank', 'noopener noreferrer', 'fh-wx-credit', 'Weather data by Open-Meteo.com'])
+  assert.deepEqual(wxLine.children.map((c) => [c.tag, c.textContent]), [['#text', 'Clouds from the forecast · 1 hazard area · '], ['a', 'Weather data by Open-Meteo.com'], ['#text', ' · some weather unavailable']])
+  assert.equal(text(wxLine), line, 'it reads as the one line')
+  menu.setWeather(line)
+  assert.equal(links()[0], link, 'the same line again writes nothing')
+  menu.setWeather('Clouds from 3 airports · 2 hazard areas · some weather unavailable') // the grid is gone, and its credit
+  assert.deepEqual(links(), [])
+  menu.setWeather(null)
+  assert.deepEqual(visible(wxLine), [], 'no line: no link on screen')
+})
+
+test('weather: EUMETSAT\'s credit in the line is a link to its site, beside Open-Meteo\'s: each credit its own link, the rest of the line text', () => {
+  const { part, menu } = mount()
+  const wxLine = part('fh-wx-line')
+  const links = (): El[] => all(wxLine).filter((e) => e.tag === 'a')
+  assert.equal(SAT_CREDIT, '© EUMETSAT')
+  const line = `Clouds from 3 airports · cloud positions from Meteosat, 14:45 UTC · 2 hazard areas · ${MODEL_CREDIT} · ${SAT_CREDIT} · some weather unavailable`
+  menu.setWeather(line)
+  assert.deepEqual(links().map((l) => [l.href, l.target, l.rel, l.className, l.textContent]), [
+    ['https://open-meteo.com/', '_blank', 'noopener noreferrer', 'fh-wx-credit', 'Weather data by Open-Meteo.com'],
+    ['https://www.eumetsat.int/', '_blank', 'noopener noreferrer', 'fh-wx-credit', '© EUMETSAT'],
+  ])
+  assert.equal(text(wxLine), line, 'it reads as the one line')
+})
+
+// What the credit link and the disabled controls look like is CSS, so checked as text, as the [hidden] rule is.
+test('the credit link looks like the rest of the line (its colour, underlined on hover only); a disabled control is dimmed and takes no pointer', () => {
+  const layers = readFileSync(new URL('./sceneToggles.css', import.meta.url), 'utf8')
+  assert.match(layers, /\.fh-wx-credit \{\s*color: inherit;\s*text-decoration: none;\s*\}/)
+  assert.match(layers, /\.fh-wx-credit:hover \{\s*text-decoration: underline;\s*\}/)
+  const css = readFileSync(new URL('./wxMenu.css', import.meta.url), 'utf8')
+  assert.match(css, /\.fh-wxm-seg\[aria-disabled='true'\],\s*\.fh-scene-row\[aria-disabled='true'\] \{[^}]*opacity: 0\.4;[^}]*pointer-events: none;[^}]*\}/)
+  assert.match(css, /\.fh-seg-b:disabled \{[^}]*cursor: default;[^}]*\}/)
 })

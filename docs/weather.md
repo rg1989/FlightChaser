@@ -1,6 +1,6 @@
 # The weather in the chase
 
-- **Weather** (the Layers panel's switch, or `W`): in the chase the clouds, rain and storms are volumes round the aircraft, out to 150 km,
+- **Weather** (the master switch at the top of the Weather panel, or `W`): in the chase the clouds, rain and storms are volumes round the aircraft, out to 150 km,
   from airport reports, the rain radar, the weather satellite and the weather model: it flies into them and fades out of sight in thick ones, and rain falls as
   a veil under a raining cloud. A line at the top centre says what is on its heading ("In light rain", "Clear air · a thunderstorm in
   3 min"; "No weather data" until a weather source has answered), a second line names a hazard area on the way, in the area's colour,
@@ -8,7 +8,7 @@
 - **Where the clouds are.** Inside the view of Europe's Meteosat satellite (Europe, Africa, the Middle East: within 65° of the point
   0° N 0° E) the satellite says where cloud is and how high its top is. Its newest frame is 15 to 35 minutes old, so each cloud is
   moved by the forecast wind at its top for the frame's age, 40 km at most. It is also moved back toward the point under the
-  satellite, because the satellite sees a high top out of place (13 km for a 10 km top over Israel). The Layers panel's weather line
+  satellite, because the satellite sees a high top out of place (13 km for a 10 km top over Israel). The Weather panel's status line
   then says "cloud positions from Meteosat, 14:45 UTC" and carries the credit "© EUMETSAT". Outside the satellite's view, and when its
   newest frame cannot be had for 45 minutes, the clouds are placed as before: by rule, from the reports, the radar and the forecast.
 - **With a EUMETSAT key** (`EUMETSAT_KEY` and `EUMETSAT_SECRET` in `.env.local`: the README's Keys section) the server fetches the
@@ -29,8 +29,12 @@
   shower's top where the satellite's is lower; and the fine shape of every cloud, which is noise. The picture is also 15 to 35
   minutes old. In two skies checked, 9 to 12 % of a cloud field's cells changed between cloud and clear in 15 minutes and 14 to 18 %
   in 30 minutes, mostly by cloud that formed or thinned out, which the move by the wind does not follow.
-- **The Weather menu** (a square of its own under Layers, there while the chase's weather is drawn; it opens when you turn Weather on in
-  a live chase, not at load). **Clouds:** natural, severity colours (cloud white, light rain blue, heavy rain amber, thunderstorm red) or
+- **The Weather menu** (a square of its own under Layers, always there; it never opens by itself). The master switch at its top
+  (Weather, `W`) turns the weather on and off; under it, the rain scale and the airports legend (the top-down map's) and the status line.
+  The rail button shows the state: a cloud in the accent colour when the weather is on, a crossed-out grey cloud when it is off (and in
+  History and scenarios, where none is drawn; the switch is then disabled and the line says "Live only"). With the switch off every
+  control below keeps your choice but is disabled; they are the chase's, so top-down they are disabled too ("In the chase view").
+  **Clouds:** natural, severity colours (cloud white, light rain blue, heavy rain amber, thunderstorm red) or
   blocks. **Hazard areas:** their edges as a curtain or a fence (each with the area's striped footprint on the ground) or a box.
   **Looking ahead:** three switches, the track line (the next six minutes on this heading, a label at each minute, coloured where it
   enters weather), the level slice (the weather at the aircraft's own altitude within 60 km, with rings at 10, 20 and 40 km) and the
@@ -41,8 +45,8 @@
   what is seen least: a part of its steps, the finest detail of a cloud's edge, the clouds' shadows on the ground, and then its size
   (0.35, then 0.25 of the view); when the view is cheap again it takes them back. The sky round the aircraft is worked out off the
   main thread and ahead of the aircraft on its track, so the view does not stop for it. Should the graphics card refuse the cloud
-  pass, the view goes on without it: a toast says "3-D clouds stopped after a drawing error", the Weather menu goes, and the hazard
-  areas stay marked on the ground. Check aids: `?wxdemo=1` (a made-up sky, no weather asked for; `?wxdemo=60` starts in its rain,
+  pass, the view goes on without it: a toast says "3-D clouds stopped after a drawing error", the Clouds segment of the Weather menu is
+  disabled and its line carries the note, and the hazard areas stay marked on the ground. Check aids: `?wxdemo=1` (a made-up sky, no weather asked for; `?wxdemo=60` starts in its rain,
   `?wxdemo=98` at its storm), `?wxtier=0`…`5` (the clouds held at one tier, 0 the finest), `?wxbreak=1` (the cloud pass fails on purpose),
   `?wxsat=0` (no satellite for this load: the sky as the reports, the radar and the forecast alone make it), `?wxsat=pictures` (the
   satellite's keyless pictures alone, also on a server that has the key: to compare the two routes). In the console
