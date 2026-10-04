@@ -16,7 +16,9 @@
   base away from an airport (the forecast's cloudy levels, else a thickness by the top's height); every layer under the top one away
   from an airport (the satellite cannot see it); the top where the satellite gives none (thin or broken cloud takes its neighbours'
   top); small cumulus (FEW and SCT below 2 km, which a satellite pixel cannot place: they stand round their airport by rule); a
-  shower's top where the satellite's is lower; and the fine shape of every cloud, which is noise.
+  shower's top where the satellite's is lower; and the fine shape of every cloud, which is noise. The picture is also 15 to 35
+  minutes old. In two skies checked, 9 to 12 % of a cloud field's cells changed between cloud and clear in 15 minutes and 14 to 18 %
+  in 30 minutes, mostly by cloud that formed or thinned out, which the move by the wind does not follow.
 - **The Weather menu** (a square of its own under Layers, there while the chase's weather is drawn; it opens when you turn Weather on in
   a live chase, not at load). **Clouds:** natural, severity colours (cloud white, light rain blue, heavy rain amber, thunderstorm red) or
   blocks. **Hazard areas:** their edges as a curtain or a fence (each with the area's striped footprint on the ground) or a box.
