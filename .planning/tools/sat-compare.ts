@@ -6,7 +6,7 @@
 // It prints how the masks agree (also with the raw grid moved a cell each way: the two services place the pixels half a satellite
 // pixel apart), a table of raw height less picture height over the cells where both have one, and writes four plans as PNGs
 // (raw-mask, raw-tops, view-mask, view-tops: the masks white, green, blue as EUMETView colours them, the tops in the pictures' own
-// colours) and the raw answer (raw.bin), so that the pictures can be asked for later (EUMETView has a frame 8 to 16 minutes after
+// colours) and the raw answer (raw.bin), so that the pictures can be asked for later (EUMETView has a frame 2 to 9 minutes after
 // the Data Store) with the raw answer given as the fifth argument. With a field's middle (sat-probe.js state() says it) the four plans
 // are also written cut to the field's 320 km square, 128 cells a side (-square.png), to lay beside the field's own plans.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
@@ -165,8 +165,19 @@ const count = (f: SatFrame): string => {
   }
   return `seen ${s}, cloud ${c} (${((100 * c) / Math.max(1, s)).toFixed(1)} %), a top in ${t}`
 }
-console.log(`raw:      ${count(raw)}`)
-console.log(`pictures: ${count(view)}`)
+/** How well a route's heights lie on its own mask: the cells that are cloud with no height, and those with a height that are clear. */
+const apartOf = (f: SatFrame): string => {
+  let [bare, over, seen] = [0, 0, 0]
+  for (let i = 0; i < n * n; i++) {
+    if (f.seen[i] === 0) continue
+    seen++
+    if (cloudy(f, i) && f.topM[i] === 0) bare++
+    if (!cloudy(f, i) && f.topM[i] > 0) over++
+  }
+  return `cloud with no height ${bare}, a height where it is clear ${over}: ${((100 * (bare + over)) / Math.max(1, seen)).toFixed(2)} % of the cells seen`
+}
+console.log(`raw:      ${count(raw)}; ${apartOf(raw)}`)
+console.log(`pictures: ${count(view)}; ${apartOf(view)}`)
 console.log(`the masks agree (cloud or clear) on ${(100 * share(0, 0)).toFixed(2)} % of the cells both see`)
 console.log('with the raw grid moved by cells (2.5 km each; columns: 1 west, 0, 1 east; rows: 1 north, 0, 1 south):')
 for (const dy of [-1, 0, 1]) console.log(`  ${[-1, 0, 1].map((dx) => `${(100 * share(dx, dy)).toFixed(2)} %`).join('  ')}`)

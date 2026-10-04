@@ -4,7 +4,9 @@
 // They read window.weather3d (app.ts). Each returns one line of text.
 // - state(): what frame is held and by which route it came (weather3d.satellite), the field's middle, the bench overlay's lines (with ?bench=1: the
 //   frames, and how often the weather held one over 8 ms), and what the page asked of the app's server's route and of EUMETView:
-//   each request's status, its size as sent and how long it took, and the server's own times (Server-Timing: decode, cut).
+//   each request's status, its size as sent and how long it took, and the server's own times (Server-Timing: decode, cut). The
+//   browser keeps 250 requests' timings, and the app makes more than that as it loads: for the asks to be listed, the run's first
+//   entry gives the pages after it room, with the step `preload performance.setResourceTimingBufferSize(4000)`.
 // - plan(): the weather field drawn over the page as two plans of its 320 km square, north up: its cover (white: cloud), and the top
 //   of its highest cloud in the satellite pictures' own colours (320 m … 16,000 m). The next shot is the plans.
 import { SAT_STEP_M, SAT_TOPS } from '/client/scene/satellite.ts'
