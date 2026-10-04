@@ -11,7 +11,8 @@
 //   when it will ask Open-Meteo again (a 503's retryAfterS), then, at most 30 min on: one warning for a whole outage.
 //   A forecast, not an observation: it draws only what nothing else says, and the wind it gives is an estimate. A grid whose hour is
 //   more than 3 h old is not used (its server serves the places it holds when Open-Meteo cannot be asked), and is asked for again.
-//   While one is held the panel's line carries Open-Meteo's credit (CC BY 4.0).
+//   While one is held the panel's line carries Open-Meteo's credit (CC BY 4.0); while the satellite's frame is in use it says so,
+//   with the frame's time, and carries EUMETSAT's credit.
 // It draws the hazard areas that have a top and whose ring passes within 800 km of the aircraft (wxGeo.ts picks them): the cloud
 // volume draws each ring's edge from the area's base (none: the ground) to its top, in the style chosen (hazardStyle: a curtain, a
 // fence or a box), so that the edge sorts with the cloud; under a curtain or a fence the ring's footprint lies on the ground (its
@@ -111,7 +112,7 @@ import { hazardsNear, ringCentre, shiftMetars, shiftModel, shiftSigmets, viewBox
 import { MIN_GS_KT, type AheadPath } from './wxAhead.ts'
 import { demoSky } from './wxDemo.ts'
 import type { WxField } from './wxField.ts'
-import { MODEL_CREDIT, hhmmUtc, sigmetColor, sigmetLabel } from './wxText.ts'
+import { MODEL_CREDIT, SAT_CREDIT, hhmmUtc, sigmetColor, sigmetLabel } from './wxText.ts'
 
 const BOX_DEG = 2 // the METAR box reaches this far from the aircraft each way, rounded out to whole degrees
 const METAR_EVERY_MS = 5 * 60_000
@@ -191,11 +192,19 @@ export function parseWxAt(search: string): WxAt | null {
   return Math.abs(lat) <= 90 && Math.abs(lon) <= 180 ? { lat, lon } : null
 }
 
-/** The panel's one-line summary: "Clouds from 3 airports · 2 hazard areas · Weather data by Open-Meteo.com" (the credit while the forecast model's grid is in use). */
-export function statusText3d(s: { airports: number; areas: number; model: boolean; note: string }): string {
+/**
+ * The panel's one-line summary: "Clouds from 3 airports · cloud positions from Meteosat, 14:45 UTC · 2 hazard areas · Weather data by
+ * Open-Meteo.com · © EUMETSAT": the satellite's part and its credit while its frame is in use (sat: the frame's time), Open-Meteo's
+ * credit while the forecast model's grid is in use.
+ */
+export function statusText3d(s: { airports: number; areas: number; model: boolean; note: string; sat?: number | null }): string {
   const count = (n: number, what: string): string => `${n} ${what}${n === 1 ? '' : 's'}`
-  const from = s.airports === 0 && s.model ? 'the forecast' : count(s.airports, 'airport') // over the sea the forecast draws them all
-  return [`Clouds from ${from}`, count(s.areas, 'hazard area'), ...(s.model ? [MODEL_CREDIT] : []), ...(s.note ? [s.note] : [])].join(' · ')
+  const sat = s.sat ?? null
+  const positions = sat === null ? [] : [`cloud positions from Meteosat, ${hhmmUtc(sat)} UTC`]
+  // Over the sea, with no airport: the forecast draws the clouds, or, in its view, the satellite.
+  const from = s.airports > 0 || !(s.model || sat !== null) ? [`Clouds from ${count(s.airports, 'airport')}`] : sat === null ? ['Clouds from the forecast'] : []
+  const line = [...from, ...positions, count(s.areas, 'hazard area'), ...(s.model ? [MODEL_CREDIT] : []), ...(sat === null ? [] : [SAT_CREDIT]), ...(s.note ? [s.note] : [])].join(' · ')
+  return line[0].toUpperCase() + line.slice(1)
 }
 
 /**
@@ -1152,7 +1161,7 @@ export class Weather3D {
   #status(): void {
     if (!this.#show) return
     const note = [this.#down.size > 0 || this.#sat?.down === true ? NOTE : '', this.#sky.clouds.failed ? NO_CLOUDS : ''].filter((n) => n !== '').join(' · ')
-    const text = statusText3d({ airports: this.#stations, areas: this.#hazards.length, model: this.#grid() !== null, note })
+    const text = statusText3d({ airports: this.#stations, areas: this.#hazards.length, model: this.#grid() !== null, note, sat: this.#satUsed && this.#satInfo !== null ? this.#satInfo.timeMs : null })
     if (text === this.#line) return
     this.#line = text
     this.#onStatus(text)

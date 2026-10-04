@@ -30,7 +30,7 @@ import { gatherer, type GatherJob, type Gathered } from './wxGather.ts'
 import { demoSky } from './wxDemo.ts'
 import { buildField, type WxField } from './wxField.ts'
 import type { Hazard } from './wxGeo.ts'
-import { MODEL_CREDIT, sigmetColor, sigmetLabel } from './wxText.ts'
+import { MODEL_CREDIT, SAT_CREDIT, sigmetColor, sigmetLabel } from './wxText.ts'
 
 type Ring = [number, number][]
 const FT = 0.3048
@@ -68,6 +68,17 @@ test('statusText3d: clouds from the airports held, the hazard areas, the forecas
   assert.equal(statusText3d({ airports: 3, areas: 2, model: true, note: '' }), 'Clouds from 3 airports · 2 hazard areas · Weather data by Open-Meteo.com')
   assert.equal(statusText3d({ airports: 1, areas: 0, model: true, note: 'some weather unavailable' }), 'Clouds from 1 airport · 0 hazard areas · Weather data by Open-Meteo.com · some weather unavailable')
   assert.equal(statusText3d({ airports: 0, areas: 0, model: true, note: '' }), 'Clouds from the forecast · 0 hazard areas · Weather data by Open-Meteo.com', 'over the sea')
+})
+
+test('statusText3d: while the satellite\'s frame is in use the line says so, with the frame\'s time, and carries EUMETSAT\'s credit after Open-Meteo\'s', () => {
+  const sat = Date.UTC(2026, 9, 4, 14, 45)
+  assert.equal(SAT_CREDIT, '© EUMETSAT')
+  assert.equal(statusText3d({ airports: 3, areas: 2, model: true, sat, note: '' }), 'Clouds from 3 airports · cloud positions from Meteosat, 14:45 UTC · 2 hazard areas · Weather data by Open-Meteo.com · © EUMETSAT')
+  assert.equal(statusText3d({ airports: 1, areas: 0, model: false, sat, note: 'some weather unavailable' }), 'Clouds from 1 airport · cloud positions from Meteosat, 14:45 UTC · 0 hazard areas · © EUMETSAT · some weather unavailable')
+  // With no airport near (over the sea) the satellite draws the clouds, not the forecast: the forecast still gives their bases and the winds, so its credit stays.
+  assert.equal(statusText3d({ airports: 0, areas: 1, model: true, sat, note: '' }), 'Cloud positions from Meteosat, 14:45 UTC · 1 hazard area · Weather data by Open-Meteo.com · © EUMETSAT')
+  assert.equal(statusText3d({ airports: 0, areas: 0, model: false, sat, note: '' }), 'Cloud positions from Meteosat, 14:45 UTC · 0 hazard areas · © EUMETSAT')
+  assert.equal(statusText3d({ airports: 3, areas: 2, model: true, sat: null, note: '' }), 'Clouds from 3 airports · 2 hazard areas · Weather data by Open-Meteo.com')
 })
 
 /** The ring a lon/lat box makes, closed as GeoJSON closes it. */
@@ -2406,6 +2417,7 @@ test('Weather3D with the satellite: its newest frame is asked for round the airc
   assert.ok(sat.cloudy! > 0.3 && sat.cloudy! < 0.7, String(sat.cloudy))
   assert.equal(r.w.known, true)
   assert.equal(server.asked.length, 3, 'two pictures for the frame')
+  assert.equal(r.lines.at(-1), 'Clouds from 1 airport · cloud positions from Meteosat, 08:10 UTC · 0 hazard areas · Weather data by Open-Meteo.com · © EUMETSAT')
 })
 
 test('Weather3D with the satellite: the pictures are read where the weather is (?wxat: the aircraft\'s place less the shift), and the job says by how much they are moved', async () => {
@@ -2484,6 +2496,7 @@ test('Weather3D with the satellite: a frame the source has not answered for in 4
     assert.equal(r.sky.clouds.sats.at(-1), null)
     assert.ok(r.sky.clouds.draws.at(-1)!.every((c) => c.masked !== true))
     assert.equal(r.w.satellite!.used, false)
+    assert.equal(r.lines.at(-1), 'Clouds from 1 airport · 0 hazard areas · Weather data by Open-Meteo.com · some weather unavailable', 'no word of the satellite, nor its credit, while its frame is not in use')
   } finally {
     console.warn = warn
   }

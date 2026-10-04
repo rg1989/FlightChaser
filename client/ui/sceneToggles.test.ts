@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
 import { RAIN_PALETTE } from '../scene/radar.ts'
-import { CATEGORY_COLOR, MODEL_CREDIT } from '../scene/wxText.ts'
+import { CATEGORY_COLOR, MODEL_CREDIT, SAT_CREDIT } from '../scene/wxText.ts'
 import type { ScenePrefs } from '../types.ts'
 
 // sceneToggles.ts imports its CSS for Vite. Node cannot load CSS, so this test process loads every .css as an empty module.
@@ -351,6 +351,25 @@ test('weather: Open-Meteo\'s credit in the line is a link to its site (its licen
   assert.equal(text(wxLine), 'Weather data by Open-Meteo.com')
   t.setWeather(null)
   assert.deepEqual(visible(wxLine), [], 'no line: no link on screen')
+})
+
+test('weather: EUMETSAT\'s credit in the line is a link to its site, beside Open-Meteo\'s: each credit its own link, the rest of the line text', () => {
+  const { wxLine, t } = mount({ ...DEFAULT_PREFS, wx: true })
+  const links = (): El[] => all(wxLine).filter((e) => e.tag === 'a')
+  assert.equal(SAT_CREDIT, '© EUMETSAT')
+  const line = `Clouds from 3 airports · cloud positions from Meteosat, 14:45 UTC · 2 hazard areas · ${MODEL_CREDIT} · ${SAT_CREDIT} · some weather unavailable`
+  t.setWeather(line)
+  assert.deepEqual(links().map((l) => [l.href, l.target, l.rel, l.className, l.textContent]), [
+    ['https://open-meteo.com/', '_blank', 'noopener noreferrer', 'fh-wx-credit', 'Weather data by Open-Meteo.com'],
+    ['https://www.eumetsat.int/', '_blank', 'noopener noreferrer', 'fh-wx-credit', '© EUMETSAT'],
+  ])
+  assert.deepEqual(wxLine.children.map((c) => [c.tag, c.textContent]), [
+    ['#text', 'Clouds from 3 airports · cloud positions from Meteosat, 14:45 UTC · 2 hazard areas · '], ['a', 'Weather data by Open-Meteo.com'], ['#text', ' · '], ['a', '© EUMETSAT'], ['#text', ' · some weather unavailable'],
+  ])
+  assert.equal(text(wxLine), line, 'it reads as the one line')
+  t.setWeather(`Cloud positions from Meteosat, 14:45 UTC · 0 hazard areas · ${SAT_CREDIT}`) // no forecast held
+  assert.deepEqual(links().map((l) => l.href), ['https://www.eumetsat.int/'])
+  assert.equal(text(wxLine), 'Cloud positions from Meteosat, 14:45 UTC · 0 hazard areas · © EUMETSAT')
 })
 
 // The class the link carries (checked above) is styled in the panel's CSS, so checked as text, as the [hidden] rule is.

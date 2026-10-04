@@ -125,6 +125,11 @@ export const CATEGORY_COLOR: Record<FlightCategory, string> = { VFR: '#3ddc84', 
 /** What Open-Meteo's licence (CC BY 4.0) asks to be credited with, as it words it, and the link it asks for: the Layers panel's line carries both while a model grid is held. */
 export const MODEL_CREDIT = 'Weather data by Open-Meteo.com'
 export const MODEL_CREDIT_URL = 'https://open-meteo.com/'
+/** EUMETSAT's credit, for the cloud positions and tops read from Meteosat's products (its data policy asks for the attribution), and the link it goes with: on the Layers panel's line while a frame is in use. */
+export const SAT_CREDIT = '© EUMETSAT'
+export const SAT_CREDIT_URL = 'https://www.eumetsat.int/'
+/** The weather line's credits, each with its link, in the order the line carries them. */
+export const WX_CREDITS: readonly (readonly [text: string, url: string])[] = [[MODEL_CREDIT, MODEL_CREDIT_URL], [SAT_CREDIT, SAT_CREDIT_URL]]
 
 const pad2 = (n: number): string => String(n).padStart(2, '0')
 /** Local HH:MM. */

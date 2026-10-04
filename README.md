@@ -33,7 +33,8 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
   night, 3-D buildings, painted runways. Aircraft are type models in airline liveries, with landing gear, lights and
   glass-cockpit instruments. Nearby traffic is drawn too.
 - **Weather.** Rain radar, airport reports and hazard areas on the map. In the chase, clouds, rain and storms are
-  volumes round the aircraft.
+  volumes round the aircraft. Over Europe, Africa and the Middle East the clouds stand where the Meteosat weather
+  satellite sees them, with the cloud tops it measures.
 - **History.** The map as it was at any time in the last 42 days, on a replay clock.
 - **Recordings.** Record a flight with one button and replay it later.
 - **Scenarios.** Reconstructed flights played back with a timeline and captions from the official record.
@@ -141,6 +142,9 @@ No framework: TypeScript run by Node directly, Vite for the client, `node --test
 - **Rain radar:** [RainViewer](https://www.rainviewer.com/api.html).
 - **Weather model:** weather data by [Open-Meteo.com](https://open-meteo.com/),
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), free for non-commercial use.
+- **Cloud positions and cloud tops:** Meteosat's cloud mask and cloud top height, © [EUMETSAT](https://www.eumetsat.int/)
+  2026, read from [EUMETView](https://view.eumetsat.int/) and changed by FlightHopper (moved for parallax and wind).
+  Two conditions apply: no commercial or operational use, and no redistribution of the original data.
 - **Places:** OurAirports and [GeoNames](https://www.geonames.org/)
   ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
 - **Borders and names in the chase:** [Natural Earth](https://www.naturalearthdata.com/) (public domain).
