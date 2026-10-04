@@ -14,3 +14,29 @@
 .fh-wxm-legend {
   padding: 0 14px 10px;
 }
+
+/* A part that is out of use (the switch is off, the view is top-down, the clouds have failed): the stored choice still shows, dimmed, and the pointer goes
+   through it. The buttons inside are disabled as well (native), so the keys skip them. */
+.fh-wxm-seg[aria-disabled='true'],
+.fh-scene-row[aria-disabled='true'] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.fh-seg-b:disabled {
+  cursor: default;
+}
+
+/* The one line for the looks, styles and aids top-down, in the panel's margins. */
+.fh-wxm-note {
+  margin: 0;
+  padding: 2px 14px 10px;
+  color: var(--fh-muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .fh-wxm-note {
+    font-size: 13px;
+  }
+}

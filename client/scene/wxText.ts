@@ -2,7 +2,7 @@
 // The weather layer's words, in plain English: an airport's wind, visibility, cloud, weather, temperature and pressure, and
 // a hazard area's name and heights, as short phrases; and the colours they go with (a flight category's, a hazard's). Speeds
 // and heights follow the flight-data frame's units (units.ts: a second unit in brackets when the frame shows both). Pure, no
-// DOM and no Cesium, so Node tests cover every phrase, and the map, its card (wxCard.ts) and the Layers panel share the colours.
+// DOM and no Cesium, so Node tests cover every phrase, and the map, its card (wxCard.ts) and the Weather panel share the colours.
 // ponytail: English only, as the rest of the app. Upgrade: a phrase table per language when the UI is translated.
 import type { FlightCategory, Metar, Sigmet } from '../../shared/wx.ts'
 import { altIn, altLabel, speedIn, speedLabel, type Units } from '../ui/units.ts'
@@ -119,13 +119,13 @@ export const pressureText = (hpa: number | null): string | null => (hpa === null
 /** The flight category as a condition (VFR is good flying weather, LIFR very poor). */
 export const CONDITION: Record<FlightCategory, string> = { VFR: 'Good', MVFR: 'Marginal', IFR: 'Poor', LIFR: 'Very poor' }
 
-/** A flight category's colour: the marker's ring, the card's dot, the Layers panel's legend. */
+/** A flight category's colour: the marker's ring, the card's dot, the Weather panel's legend. */
 export const CATEGORY_COLOR: Record<FlightCategory, string> = { VFR: '#3ddc84', MVFR: '#4f9dff', IFR: '#ff5a5a', LIFR: '#e05cff' }
 
-/** What Open-Meteo's licence (CC BY 4.0) asks to be credited with, as it words it, and the link it asks for: the Layers panel's line carries both while a model grid is held. */
+/** What Open-Meteo's licence (CC BY 4.0) asks to be credited with, as it words it, and the link it asks for: the Weather panel's line carries both while a model grid is held. */
 export const MODEL_CREDIT = 'Weather data by Open-Meteo.com'
 export const MODEL_CREDIT_URL = 'https://open-meteo.com/'
-/** EUMETSAT's credit, for the cloud positions and tops read from Meteosat's products (its data policy asks for the attribution), and the link it goes with: on the Layers panel's line while a frame is in use. */
+/** EUMETSAT's credit, for the cloud positions and tops read from Meteosat's products (its data policy asks for the attribution), and the link it goes with: on the Weather panel's line while a frame is in use. */
 export const SAT_CREDIT = '© EUMETSAT'
 export const SAT_CREDIT_URL = 'https://www.eumetsat.int/'
 /** The weather line's credits, each with its link, in the order the line carries them. */

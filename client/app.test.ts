@@ -14,7 +14,7 @@ import type { FleetEntry } from './types.ts'
 registerHooks({
   load: (url, context, nextLoad) => (url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : nextLoad(url, context)),
 })
-const { browseCircle, entriesIn, flagOf, lookupFor, placedHeightM, readParams, relHFor, safeArea, scenarioBaseFor, sceneKey, statusShown, viewRadiusNm, weatherMenuOpens, weatherView } =
+const { browseCircle, entriesIn, flagOf, lookupFor, placedHeightM, readParams, relHFor, safeArea, scenarioBaseFor, sceneKey, statusShown, viewRadiusNm, weatherButton, weatherView } =
   await import('./app.ts')
 
 const entry = (hex: string, lat: number, lon: number): FleetEntry => ({
@@ -137,31 +137,24 @@ test('scene keys: T topography and L sun, either case; not with a modifier, on a
   assert.equal(sceneKey(press('t', { target: { tagName: 'BUTTON', isContentEditable: false } })), 'topo') // a focused toggle
 })
 
-test('weatherView: the top-down map\'s weather or the chase\'s, on a live sky only; History and a scenario get "Live only" instead', () => {
+test('weatherView: the top-down map\'s weather or the chase\'s, on a live sky only; History and a scenario draw none', () => {
   const view = (o: Partial<Parameters<typeof weatherView>[0]>): ReturnType<typeof weatherView> =>
     weatherView({ wx: true, chasing: false, history: false, scenario: false, ...o })
-  assert.deepEqual(view({}), { topDown: true, chase: false, liveOnly: false })
-  assert.deepEqual(view({ chasing: true }), { topDown: false, chase: true, liveOnly: false })
+  assert.deepEqual(view({}), { topDown: true, chase: false })
+  assert.deepEqual(view({ chasing: true }), { topDown: false, chase: true })
   for (const chasing of [false, true]) {
     for (const [history, scenario] of [[true, false], [false, true], [true, true]]) {
-      assert.deepEqual(view({ chasing, history, scenario }), { topDown: false, chase: false, liveOnly: true }, `${chasing ? 'chase' : 'top-down'}, history ${history}, scenario ${scenario}`)
-      assert.deepEqual(view({ wx: false, chasing, history, scenario }), { topDown: false, chase: false, liveOnly: false }, 'switched off: none, and nothing to say')
+      assert.deepEqual(view({ chasing, history, scenario }), { topDown: false, chase: false }, `${chasing ? 'chase' : 'top-down'}, history ${history}, scenario ${scenario}`)
     }
-    assert.deepEqual(view({ wx: false, chasing }), { topDown: false, chase: false, liveOnly: false })
+    assert.deepEqual(view({ wx: false, chasing }), { topDown: false, chase: false })
   }
 })
 
-test('weatherMenuOpens: the Weather panel opens when Weather is turned on in a live chase, not when a chase or a live view comes with it already on', () => {
-  const opens = (o: Partial<Parameters<typeof weatherMenuOpens>[0]>): boolean =>
-    weatherMenuOpens({ was: false, now: true, chasing: true, history: false, scenario: false, ...o })
-  assert.equal(opens({}), true, 'switched on in a live chase (the Layers switch or the W key)')
-  assert.equal(opens({ was: true }), false, 'on already: no change to answer')
-  assert.equal(opens({ was: true, now: false }), false, 'switched off')
-  assert.equal(opens({ now: false }), false)
-  assert.equal(opens({ chasing: false }), false, 'top-down: that weather has no panel')
-  assert.equal(opens({ history: true }), false, 'History: the weather is today\'s, none is drawn')
-  assert.equal(opens({ scenario: true }), false)
-  assert.equal(opens({ history: true, scenario: true }), false)
+test('weatherButton: the Weather rail button shows the state: a cloud in the accent colour when the weather is on, a crossed-out grey one when it is off or not drawn (History, a scenario); its words say so first', () => {
+  const rest = 'clouds, hazard areas, looking ahead'
+  assert.deepEqual(weatherButton({ wx: true, live: true }), { icon: 'cloud', state: 'on', label: `Weather: on · ${rest}` })
+  assert.deepEqual(weatherButton({ wx: false, live: true }), { icon: 'cloudOff', state: 'off', label: `Weather: off · ${rest}` })
+  for (const wx of [true, false]) assert.deepEqual(weatherButton({ wx, live: false }), { icon: 'cloudOff', state: 'off', label: `Weather: off · ${rest}` }, 'live only: off')
 })
 
 test('flat plane (design D4): a hero airport within 30 km gives its runway height, else the ground under the aircraft, else the plane stays', () => {

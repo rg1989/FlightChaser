@@ -1,5 +1,5 @@
 // client/scene/weather3d.ts
-// The weather round the chased aircraft, in 3-D (the Layers panel's Weather switch, in the chase). Weather3D keeps what the
+// The weather round the chased aircraft, in 3-D (the Weather panel's switch, in the chase). Weather3D keeps what the
 // aircraft flies through, for the parts that draw it:
 // - the airports' reports (METARs) of the whole-degree box 2° round it, asked again every 5 min and at once when it leaves the box;
 // - the hazard areas (SIGMETs) and RainViewer's newest radar frame (a RadarSource: its tiles are fetched when something
@@ -69,7 +69,7 @@
 // a while, finer again when the view has become cheap, never to and fro.
 // Should the volume's pass fail (cloudVolume.ts: a render error takes it out for good, a shader this graphics card will not compile
 // among them), the rest goes on: the panel's line says "3-D clouds stopped after a drawing error", the app is told once
-// (onCloudsFailed: it takes the Weather menu away and says the note), and the hazard areas, whose edges the pass drew, are marked by
+// (onCloudsFailed: it disables the Weather panel's Clouds segment and says the note), and the hazard areas, whose edges the pass drew, are marked by
 // their footprints on the ground in every style. ?wxbreak=1 is a check aid for this: it makes the pass's shader not compile.
 // `known` says whether any source of clouds has answered yet: until one has, an empty sky is not a clear one (the status line's).
 // ponytail: what a build adds can still appear at once in two cases. While a field is drawn the aircraft goes up to 20 km from its
@@ -290,7 +290,7 @@ const cesiumSky = (viewer: Viewer, onCloudsFailed: () => void, broken: boolean):
 export interface Weather3DOptions {
   apiBase: string // the app's /api
   labels: Pick<PlaceLabels, 'setLayer'> // the names overlay: the hazard areas' labels go through it
-  onStatus?: (text: string | null) => void // the Layers panel's one-line summary
+  onStatus?: (text: string | null) => void // the Weather panel's one-line summary
   units?: () => Units // what heights are worded in (the flight-data frame's); default feet
   at?: WxAt | null // ?wxat
   getJson?: (url: string) => Promise<unknown>
@@ -304,7 +304,7 @@ export interface Weather3DOptions {
   broken?: boolean // ?wxbreak=1: the cloud pass's shader is made not to compile, to see the failure handled
   tier?: number | null // ?wxtier: the cloud march held at this tier; null or absent: by the frames' times (marchPace.ts)
   satellite?: SatelliteSource | null // the weather satellite; null: none (?wxsat=0); absent: the app's server's raw frames first, else EUMETView's pictures, fetched by the page (satelliteFor)
-  onCloudsFailed?: (note: string) => void // told once, with the words for it, when the cloud pass has failed for good (the Weather menu's choices then do nothing)
+  onCloudsFailed?: (note: string) => void // told once, with the words for it, when the cloud pass has failed for good (the Clouds choices of the Weather menu then do nothing)
 }
 
 /** A non-OK answer: its status, and the seconds the server said to wait (a 503's retryAfterS), if it did. */
@@ -1130,7 +1130,7 @@ export class Weather3D {
   /**
    * The cloud pass has failed for good (seen at a look; Cesium's own sky tells at once): its clouds and the hazard areas' edges are
    * gone from the view. The areas are then marked by their footprints in every style, the line says so, and the app is told, once
-   * (it takes the Weather menu away: its choices do nothing now, and says the note). The rest goes on: the field is still built, so
+   * (it disables the Weather menu's Clouds segment: its choices do nothing now, and says the note). The rest goes on: the field is still built, so
    * the status line and the ahead strip still speak.
    */
   #seeFailed(): void {

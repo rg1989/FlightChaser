@@ -50,6 +50,12 @@ class El {
     this.parent?.children.splice(this.parent.children.indexOf(this), 1)
     this.parent = null
   }
+  replaceWith(other: El): void {
+    const at = this.parent!.children.indexOf(this)
+    this.parent!.children[at] = other
+    other.parent = this.parent
+    this.parent = null
+  }
   setAttribute(k: string, v: string): void {
     this.attrs[k] = v
   }
@@ -253,4 +259,38 @@ test('mountRail: the panel of a hidden button does not open (no panel shows with
 test('rail.css: a hidden button and its square really go, in the wide rail and the phone tab bar', () => {
   const css = readFileSync(new URL('./rail.css', import.meta.url), 'utf8')
   assert.match(css, /\.fh-ibtn\[hidden\],\s*\.fh-corner-b\[hidden\] \{\s*display: none !important;\s*\}/)
+})
+
+test('mountRail: setLook shows a button\'s state: its icon, its words (tooltip and aria-label) and a data-state; nothing is rebuilt, and the label and badge stay', () => {
+  const root = new El('div')
+  const rail = mountRail(root as unknown as HTMLElement, [
+    { id: 'weather', icon: 'cloud', label: 'Weather', short: 'Weather', spot: 'under', panel: { title: 'Weather', mount: () => {} } },
+  ])
+  const b = rail.button('weather') as unknown as El
+  const glyph = (): string => find(b, (e) => e.attrs.d !== undefined)[0].attrs.d
+  const first = b.children[0]
+  const cloud = glyph()
+  assert.equal(b.dataset.state, undefined, 'no state until the app says')
+  rail.setLook('weather', { icon: 'cloudOff', label: 'Weather: off · clouds', state: 'off' })
+  assert.notEqual(glyph(), cloud, 'the crossed-out cloud')
+  assert.ok(glyph().startsWith(cloud), 'the same cloud, struck through')
+  assert.deepEqual([b.attrs['aria-label'], b.dataset.tip, b.dataset.state], ['Weather: off · clouds', 'Weather: off · clouds', 'off'])
+  assert.equal(b.children.length, 2, 'the icon and the phone tab\'s label')
+  assert.equal(b.children[1].textContent, 'Weather')
+  const crossed = b.children[0]
+  rail.setLook('weather', { icon: 'cloudOff', label: 'Weather: off · clouds', state: 'off' }) // again: nothing to do
+  assert.equal(b.children[0], crossed)
+  rail.setLook('weather', { icon: 'cloud', label: 'Weather: on · clouds', state: 'on' })
+  assert.equal(glyph(), cloud)
+  assert.deepEqual([b.attrs['aria-label'], b.dataset.state, b.children.length], ['Weather: on · clouds', 'on', 2])
+  assert.notEqual(b.children[0], first, 'a new drawing each time the icon changes')
+  assert.throws(() => rail.setLook('nothing', { icon: 'cloud', label: 'x', state: 'on' }), /no item nothing/)
+  rail.destroy()
+})
+
+// A panel that is open colours its button (.fh-ibtn[aria-expanded]): the weather's state wins there, so an open Weather panel with the weather off still reads as off. CSS, so checked as text.
+test('theme.css: a button with a state is in the accent colour when on, dim when off, open or not, hovered or not', () => {
+  const css = readFileSync(new URL('./theme.css', import.meta.url), 'utf8')
+  assert.match(css, /\.fh-ibtn\[data-state='on'\],\s*\.fh-ibtn\[data-state='on'\]:hover \{\s*color: var\(--fh-accent\);\s*\}/)
+  assert.match(css, /\.fh-ibtn\[data-state='off'\],\s*\.fh-ibtn\[data-state='off'\]:hover,\s*\.fh-ibtn\[data-state='off'\]\[aria-expanded='true'\] \{\s*color: var\(--fh-muted\);\s*\}/)
 })
