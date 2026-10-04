@@ -64,9 +64,10 @@
 // once a second, when the clouds' reach is also centred on the aircraft.
 // It also hands the cloud volume the way ahead of the chased aircraft (wxAhead.ts aheadPath, given every frame by app.ts: setAhead)
 // with which of its two aids show, the track line and the level slice: the volume draws them.
-// Every frame it also gives the frame's time, and the cloud pass's own time on the graphics card where the volume can tell it, to a
-// pace (marchPace.ts), which says at which tier the volume's march is walked: coarser when the pass has made the frames slow for
-// a while, finer again when the view has become cheap, never to and fro.
+// Every frame in which the volume's pass is in the scene it also gives the frame's time, and the pass's own time on the graphics
+// card where the volume can tell it, to a pace (marchPace.ts), which says at which tier the volume's march is walked: a cheap one
+// from the start (the volume is told it when it is made, so no frame is drawn finer), finer only when the pass's own time proves
+// the room, coarser when the pass costs more than its budget, never to and fro.
 // Should the volume's pass fail (cloudVolume.ts: a render error takes it out for good, a shader this graphics card will not compile
 // among them), the rest goes on: the panel's line says "3-D clouds stopped after a drawing error", the app is told once
 // (onCloudsFailed: it takes the Weather menu away and says the note), and the hazard areas, whose edges the pass drew, are marked by
@@ -87,7 +88,7 @@
 // ?wxdemo=<km> is another (parseWxDemo): no weather is asked for at all; the sky is wxDemo.ts's made-up one (cumulus, a rain layer, two
 // storms in a hazard area), laid out once along the aircraft's track from its first place, the aircraft that many km into it.
 // ?wxbreak=1 is a third (parseWxBreak): the cloud pass is given a shader that does not compile, so that its failure is seen handled
-// on any machine (with ?wxdemo=1 the pass, and so the failure, comes at once). ?wxtier=0 … 5 is a fourth (parseWxTier):
+// on any machine (with ?wxdemo=1 the pass, and so the failure, comes at once). ?wxtier=0 … 8 is a fourth (parseWxTier):
 // the cloud march held at that tier, the frames' times not asked. ?wxsat=0 is a fifth (parseWxSat): no satellite for this load, to
 // compare the sky with what the other sources alone make of it, and ?wxsat=pictures: the satellite's keyless pictures alone, not the
 // server's raw frames, to compare the two routes; `satellite` says what frame is held and by which route it came (for checks in the console).
@@ -253,7 +254,7 @@ export interface SatelliteState {
   gridMs: number | null // and the grid for a field made of them
 }
 
-/** ?wxtier=0 … 5: the cloud march held at that tier of marchPace.ts, whatever the frames' times (a check aid); none when absent or no tier. */
+/** ?wxtier=0 … 8: the cloud march held at that tier of marchPace.ts (0 the finest), whatever the pass costs (a check aid); none when absent or no tier. */
 export function parseWxTier(search: string): number | null {
   const tier = new URLSearchParams(search).get('wxtier') ?? ''
   return /^\d+$/.test(tier) && MARCH_TIERS[Number(tier)] !== undefined ? Number(tier) : null
@@ -264,7 +265,7 @@ type Feed = 'metar' | 'sigmet' | 'radar' | 'model'
 
 /** What draws the sky round the aircraft: Cesium's parts in the app (cesiumSky), fakes in tests. */
 export interface Sky {
-  clouds: Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'> & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'tier' | 'scale' | 'passMs' | 'madeMs'>>
+  clouds: Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'> & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'tier' | 'scale' | 'passMs' | 'passParts' | 'drawn' | 'marchSize' | 'madeMs'>>
   fog: Pick<GroundFog, 'set' | 'frame' | 'destroy'>
   precip: Pick<Precipitation, 'set' | 'aim' | 'destroy'>
 }
@@ -302,7 +303,7 @@ export interface Weather3DOptions {
   dwellMs?: number // how long the aircraft stays before the model is asked for; default MODEL_DWELL_MS
   demo?: number | null // ?wxdemo: the km along the demo sky the aircraft starts at; null or absent: the real weather
   broken?: boolean // ?wxbreak=1: the cloud pass's shader is made not to compile, to see the failure handled
-  tier?: number | null // ?wxtier: the cloud march held at this tier; null or absent: by the frames' times (marchPace.ts)
+  tier?: number | null // ?wxtier: the cloud march held at this tier; null or absent: by the pace (marchPace.ts)
   satellite?: SatelliteSource | null // the weather satellite; null: none (?wxsat=0); absent: the app's server's raw frames first, else EUMETView's pictures, fetched by the page (satelliteFor)
   onCloudsFailed?: (note: string) => void // told once, with the words for it, when the cloud pass has failed for good (the Weather menu's choices then do nothing)
 }
@@ -377,7 +378,7 @@ export class Weather3D {
   readonly #demo: number | null
   readonly #onCloudsFailed: (note: string) => void
   #heldTier: number | null // ?wxtier, or holdTier: the march's tier, held
-  readonly #pace = new MarchPace() // at which tier the cloud march is walked, by the frames' times and the pass's own
+  readonly #pace = new MarchPace() // at which tier the cloud march is walked, by the pass's own time on the graphics card and the frames'
   #frameMs = Number.NaN // the last frame's time, for the pace
   #cloudsFailed = false // the cloud pass's failure has been seen and told
   #known = false // a source of clouds has answered: the sky is not a guess
@@ -475,6 +476,7 @@ export class Weather3D {
     this.#demo = opts.demo ?? null
     this.#sat = opts.satellite === undefined ? satelliteFor('server', opts.apiBase) : opts.satellite
     this.#look = this.#sky.clouds.look ?? 'severity'
+    if (this.#sky.clouds.tier !== undefined) this.#sky.clouds.tier = this.#heldTier ?? this.#pace.tier // before anything is drawn: no frame at a finer tier than the pace's start
     this.#footprints.show = false
     void viewer.dataSources.add(this.#footprints)
   }
@@ -497,7 +499,7 @@ export class Weather3D {
       this.#line = null
       this.#labels.setLayer(LABEL_KEY, LABEL_RANK, [])
       this.#sky.clouds.setAhead(null, this.#aheadShow) // the app gives the way ahead again at the first frame it shows
-      this.#pace.reset() // shown again, the march starts at the first tier
+      this.#pace.reset() // shown again, the march starts at the pace's start tier
       this.#frameMs = Number.NaN
       if (this.#sky.clouds.tier !== undefined) this.#sky.clouds.tier = this.#heldTier ?? this.#pace.tier
       this.#sky.fog.set(null)
@@ -608,12 +610,12 @@ export class Weather3D {
     return this.#cloudsFailed
   }
 
-  /** The tier the cloud march is walked at (marchPace.ts MARCH_TIERS: 0 the finest): the pace's, or the one ?wxtier holds. What the bench's line says. */
+  /** The tier the cloud march is walked at (marchPace.ts MARCH_TIERS: 0 the finest): the pace's, or the one ?wxtier holds. What the bench's lines say. */
   get tier(): number {
     return this.#sky.clouds.tier ?? this.#heldTier ?? this.#pace.tier
   }
 
-  /** The march held at a tier from now on, whatever the frames' times; null: by the pace again, from where it stands (a check aid, as ?wxtier: a check run times each tier in turn). */
+  /** The march held at a tier from now on, whatever the pass costs; null: by the pace again, from where it stands (a check aid, as ?wxtier: a check run times each tier in turn). */
   holdTier(tier: number | null): void {
     this.#heldTier = tier !== null && MARCH_TIERS[tier] !== undefined ? tier : null
   }
@@ -688,7 +690,8 @@ export class Weather3D {
     if (!this.#show) return
     this.#fNow = tf.fNow
     this.#relHM = tf.relHM
-    const tier = this.#heldTier ?? this.#pace.frame(nowMs - this.#frameMs, this.#sky.clouds.passMs) // (the first frame's time is no number: not counted)
+    // (the first frame's time is no number: not counted; and while the volume has no pass in the scene, nothing to draw, the pace is not asked: there is no time of it)
+    const tier = this.#heldTier ?? (this.#sky.clouds.drawn === false ? this.#pace.tier : this.#pace.frame(nowMs - this.#frameMs, this.#sky.clouds.passMs))
     this.#frameMs = nowMs
     if (this.#sky.clouds.tier !== undefined && this.#sky.clouds.tier !== tier) this.#sky.clouds.tier = tier
     if (this.#pending !== null) {

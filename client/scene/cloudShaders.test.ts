@@ -31,6 +31,11 @@ test('the march\'s tier (marchPace.ts): a ray\'s step budget is a number it is g
   assert.ok(!MIX_SHADER.includes('u_steps') && !MIX_SHADER.includes('u_detail'))
 })
 
+test('the cheap tiers (marchPace.ts): the samples toward the Sun that shade a cloud are a number the march is given: two, or one that weighs as much as the two, half-way between them; the mix is the same at every tier: the volumes from the nine march pixels round a pixel', () => {
+  for (const text of ['uniform float u_shade;', 'u_shade > 1.5 ? exp(-(body(p + sun * 0.45, nr) * 1.1 + body(p + sun * 1.3, nr) * 1.6)) : exp(-body(p + sun * 0.9, nr) * 2.7)']) assert.ok(MARCH_SHADER.includes(text), text)
+  assert.ok(MIX_SHADER.includes('bool even = u_look < 1.5;') && !MIX_SHADER.includes('u_shade'))
+})
+
 test('the march: a ray is clipped to the box the cover stands in, not to the whole field; a sample whose height no band near holds is not read from the field (nor the fine warp\'s noise for it); the edges are read only by a ray that passes the circle they stand in', () => {
   assert.ok(MARCH_SHADER.includes('uniform vec4 u_box;') && MARCH_SHADER.includes('(u_box.xy - ro.xy) / dir, tb = (u_box.zw - ro.xy) / dir'))
   assert.ok(!/\bBOX\b/.test(MARCH_SHADER.replace(/\/\/.*$/gm, '')), 'no other clip')

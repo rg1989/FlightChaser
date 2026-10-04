@@ -37,13 +37,18 @@
   ahead strip (a side view of the next 80 km: the weather's cells, the hazard areas, the aircraft's way; not in a window under 480 px
   high). A choice applies at once and is kept in this browser; `?wxlook=natural|severity|blocks`, `?wxhaz=curtain|fence|box` and
   `?wxtrack`, `?wxslice`, `?wxstrip` (`=0` or `=1`) set them for one load, and are not kept.
-- The clouds are drawn at half the view's size. When the cloud pass makes the frames slow for a while it gives up, a tier at a time,
-  what is seen least: a part of its steps, the finest detail of a cloud's edge, the clouds' shadows on the ground, and then its size
-  (0.35, then 0.25 of the view); when the view is cheap again it takes them back. The sky round the aircraft is worked out off the
+- The clouds are drawn at one of nine tiers, 0 the finest (half the view's size, 128 steps a ray) and 8 the cheapest (a sixth of
+  the view's size, 32 steps). The app starts at tier 7, a cheap one, and goes finer only when the graphics card's own time for the
+  cloud pass proves the room (a budget of 4 ms a frame; the browser must have the timer for it: Chrome, Edge and Firefox on a
+  desktop do, Safari does not, and there the clouds stay at tier 7). A pass over its budget goes coarser, whatever the frame rate:
+  on a laptop the card's time is heat. A tier gives up, one thing more at each, what is seen least: a part of its steps, the finest
+  detail of a cloud's edge, the clouds' shadows on the ground, its size (0.35, then 0.25 of the view), the second light sample, and
+  then steps and size again.
+  The sky round the aircraft is worked out off the
   main thread and ahead of the aircraft on its track, so the view does not stop for it. Should the graphics card refuse the cloud
   pass, the view goes on without it: a toast says "3-D clouds stopped after a drawing error", the Weather menu goes, and the hazard
   areas stay marked on the ground. Check aids: `?wxdemo=1` (a made-up sky, no weather asked for; `?wxdemo=60` starts in its rain,
-  `?wxdemo=98` at its storm), `?wxtier=0`…`5` (the clouds held at one tier, 0 the finest), `?wxbreak=1` (the cloud pass fails on purpose),
+  `?wxdemo=98` at its storm), `?wxtier=0`…`8` (the clouds held at one tier, 0 the finest), `?wxbreak=1` (the cloud pass fails on purpose),
   `?wxsat=0` (no satellite for this load: the sky as the reports, the radar and the forecast alone make it), `?wxsat=pictures` (the
   satellite's keyless pictures alone, also on a server that has the key: to compare the two routes). In the console
   `weather3d.satellite` says which frame is held, and `raw: true` when it came as numbers from the server.

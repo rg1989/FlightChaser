@@ -23,6 +23,7 @@ import { radarCells } from './radarCells.ts'
 import { modelWindAt } from './modelWind.ts'
 import { REACH_KM } from './cloudShaders.ts'
 import type { CloudLook, HazardStyle } from './cloudVolume.ts'
+import { MARCH_TIERS, START_TIER } from './marchPace.ts'
 import { SAT_GRID_N, type SatGrid } from './satGrid.ts'
 import { SAT_CHECK_MS, SAT_KEEP_MS, SAT_LAYER, SAT_N, SatelliteSource, satBox, satCapsUrl, type SatFetch } from './satellite.ts'
 import { HAZARD_KM, HttpError, MODEL_DWELL_MS, Weather3D, echoShade, parseWxAt, parseWxBreak, parseWxDemo, parseWxSat, parseWxTier, satelliteFor, statusText3d } from './weather3d.ts'
@@ -110,7 +111,7 @@ function fakeSky() {
   return {
     clouds: {
       show: false, draws: [] as CloudSpec[][], ats: [] as { lat: number; lon: number }[], sats: [] as (SatGrid | null)[], frames: [] as [TerrainFrame, number][], fades: [] as Cartesian3[], destroyed: false,
-      look: 'severity' as CloudLook, field: null as WxField | null, failed: false, tier: 0, passMs: Number.NaN,
+      look: 'severity' as CloudLook, field: null as WxField | null, failed: false, tier: 0, passMs: Number.NaN, drawn: true,
       hazardSets: [] as { hazards: Hazard[]; style: HazardStyle; color: (h: Hazard) => string }[], aheads: [] as { path: AheadPath | null; show: { track: boolean; slice: boolean } }[],
       draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }, sat: SatGrid | null = null) { this.draws.push([...specs]); this.ats.push({ ...at }); this.sats.push(sat) },
       setHazards(hazards: readonly Hazard[], style: HazardStyle, color: (h: Hazard) => string) { this.hazardSets.push({ hazards: [...hazards], style, color }) },
@@ -2306,58 +2307,66 @@ test('Weather3D: the sky is known once a source of clouds has answered (the repo
   }
 })
 
-test('Weather3D: the frames\' times, and the cloud pass\'s own time where the volume can tell it, set the tier the cloud march is walked at (marchPace.ts): frames the pass makes slow for a while make it coarser; with no word of the pass\'s time, a descent that does not make the frames quicker is taken back and left; hidden and shown again, it starts over at the first tier', async () => {
+test('Weather3D: the cloud march is walked at the tier the pace says (marchPace.ts): the start tier from the first, a cheap one; with no word of the pass\'s time it stays there whatever the frames\' times; with it, a cheap pass and quick frames take it finer and a dear pass coarser; while the volume has no pass in the scene the pace is not asked; hidden and shown again, it starts over', async () => {
+  const LAST = MARCH_TIERS.length - 1
   const r = rig({ demo: 0 })
+  assert.equal(r.sky.clouds.tier, START_TIER, 'the volume is told at once: no frame is drawn at the first tier')
   await open(r)
-  assert.deepEqual([r.sky.clouds.tier, r.w.tier], [0, 0])
-  const seen = [0]
+  assert.deepEqual([r.sky.clouds.tier, r.w.tier], [START_TIER, START_TIER])
   let t = 0
-  const frames = (ms: number, seconds: number): void => {
+  const frames = (on: typeof r, ms: number, seconds: number): void => {
     for (const end = t + seconds * 1000; t < end;) {
       t += ms
-      r.w.update(AC, t)
-      if (r.sky.clouds.tier !== seen.at(-1)) seen.push(r.sky.clouds.tier)
+      on.w.update(AC, t)
     }
   }
-  frames(16.7, 20)
-  assert.deepEqual(seen, [0], 'quick frames: the first tier')
-  frames(33, 7)
-  assert.deepEqual(seen, [0, 1], 'slow for a while: coarser')
-  frames(33, 30)
-  assert.deepEqual(seen, [0, 1, 2, 3, 4, 0], 'no quicker at the march\'s first smaller size: back, the slowness is not the march\'s')
-  frames(33, 60)
-  assert.deepEqual(seen, [0, 1, 2, 3, 4, 0], 'and left there')
-  r.w.show = false
-  r.w.show = true
-  t += 60_000 // the gap while hidden is not a frame
-  frames(40, 14)
-  assert.equal(r.sky.clouds.tier, 1, 'shown again: it tries again (after the eight seconds a start is given)')
-  r.w.show = false
-  assert.equal(r.sky.clouds.tier, 0, 'hidden: back to the first tier for the next time')
-  // the pass's own time, when the volume has it: 20 of the frame's 33 ms are the pass's, so the pass is what is slow, and a coarser tier is kept though this stand-in's frames get no quicker
+  frames(r, 16.7, 60)
+  assert.equal(r.sky.clouds.tier, START_TIER, 'quick frames, no word of the pass: nothing is proven')
+  frames(r, 33, 120)
+  assert.equal(r.sky.clouds.tier, START_TIER, 'nor do slow ones say that the march is what is slow')
+  // the pass's own time, when the volume has it
   const timed = rig({ demo: 0 })
-  timed.sky.clouds.passMs = 20
+  timed.sky.clouds.passMs = 0.3
   await open(timed)
-  for (let ms = 33; ms < 60_000; ms += 33) timed.w.update(AC, ms)
-  assert.deepEqual([timed.sky.clouds.tier, timed.w.tier], [5, 5], 'down to the last tier, and no further')
+  t = 0
+  frames(timed, 12, 20)
+  assert.deepEqual([timed.sky.clouds.tier, timed.w.tier], [0, 0], 'a pass of 0.3 ms at the start tier: the first tier fits the budget')
+  timed.sky.clouds.passMs = 20
+  frames(timed, 12, 9)
+  assert.equal(timed.sky.clouds.tier, 1, 'a dear pass: coarser')
+  timed.sky.clouds.drawn = false // the sky has cleared: the volume has no pass in the scene, and its time is nobody's
+  frames(timed, 12, 60)
+  assert.equal(timed.sky.clouds.tier, 1, 'no pass: the pace is not asked')
+  timed.sky.clouds.drawn = true
+  frames(timed, 12, 120)
+  assert.deepEqual([timed.sky.clouds.tier, timed.w.tier], [LAST, LAST], 'down to the last tier, and no further')
+  timed.w.show = false
+  assert.equal(timed.sky.clouds.tier, START_TIER, 'hidden: back to the start tier for the next time')
+  timed.w.show = true
+  t += 60_000 // the gap while hidden is not a frame
+  frames(timed, 12, 7)
+  assert.equal(timed.sky.clouds.tier, START_TIER, 'shown again: the eight seconds a start is given')
+  frames(timed, 12, 7)
+  assert.equal(timed.sky.clouds.tier, START_TIER + 1, 'and then it is looked at again')
   // ?wxtier holds a tier, whatever the frames' times
   const held = rig({ demo: 0, tier: 4 })
+  assert.equal(held.sky.clouds.tier, 4, 'from the first')
   await open(held)
   for (let ms = 40; ms < 30_000; ms += 40) held.w.update(AC, ms)
   assert.deepEqual([held.sky.clouds.tier, held.w.tier], [4, 4])
   held.w.holdTier(2) // and so does holdTier, from the console, until it lets go
   held.w.update(AC, 30_040)
   assert.equal(held.sky.clouds.tier, 2)
-  held.w.holdTier(9)
+  held.w.holdTier(MARCH_TIERS.length)
   held.w.update(AC, 30_080)
-  assert.equal(held.sky.clouds.tier, 0, 'no such tier: the pace\'s again, which stands at the first')
+  assert.equal(held.sky.clouds.tier, START_TIER, 'no such tier: the pace\'s again, which stands at the start tier')
 })
 
-test('parseWxBreak, parseWxTier: ?wxbreak=1 breaks the cloud pass\'s shader on purpose; ?wxtier holds the march at one of its six tiers; anything else is neither', () => {
+test('parseWxBreak, parseWxTier: ?wxbreak=1 breaks the cloud pass\'s shader on purpose; ?wxtier holds the march at one of its tiers; anything else is neither', () => {
   assert.equal(parseWxBreak('?hex=a831b2&wxbreak=1'), true)
   for (const off of ['', '?wxbreak=0', '?wxbreak=', '?wxbreak=true', '?wx=1']) assert.equal(parseWxBreak(off), false, off)
-  assert.deepEqual(['?wxtier=0', '?wxtier=3', '?wx=1&wxtier=5'].map(parseWxTier), [0, 3, 5])
-  for (const off of ['', '?wxtier=', '?wxtier=6', '?wxtier=-1', '?wxtier=1.5', '?wxtier=half', '?wxscale=0.5']) assert.equal(parseWxTier(off), null, off)
+  assert.deepEqual(['?wxtier=0', '?wxtier=3', '?wx=1&wxtier=5', `?wxtier=${MARCH_TIERS.length - 1}`].map(parseWxTier), [0, 3, 5, MARCH_TIERS.length - 1])
+  for (const off of ['', '?wxtier=', `?wxtier=${MARCH_TIERS.length}`, '?wxtier=-1', '?wxtier=1.5', '?wxtier=half', '?wxscale=0.5']) assert.equal(parseWxTier(off), null, off)
 })
 
 // ---- the weather satellite ------------------------------------------------------------------------------------------------------
