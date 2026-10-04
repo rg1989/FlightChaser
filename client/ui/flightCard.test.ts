@@ -139,6 +139,25 @@ test('cardView of a traffic aircraft (entryState): the chased card\'s texts from
   assert.equal(cardView('4691c4', entryState({ ...ENTRY, ageS: 14 }), null, INFO, LIVE, GR, 30, false).status, 'Signal lost 14 s ago')
 })
 
+// What the app's model picker would say (modelFor.ts placeholderWords): nothing for an A320, words for anything else.
+const WORDS = (type: string | null, category: string | null): string | null =>
+  type === 'A320' ? null : type === null ? 'Placeholder model: type unknown' : `Shown as an Airbus A321: no ${type} model yet (${category})`
+
+test('cardView: the model line says in words when the aircraft is not drawn on its own model, from its type and category', () => {
+  assert.equal(cardView('4691c4', S, RAW, INFO, LIVE, GR, 1).model, null, 'no picker (no manifest): no line')
+  assert.equal(cardView('4691c4', S, RAW, INFO, LIVE, GR, 1, true, null, null, WORDS).model, null, 'its own model: no line')
+  const b752 = { ...INFO, typeCode: 'B752', category: 'A4' }
+  assert.equal(cardView('4691c4', S, RAW, b752, LIVE, GR, 1, true, null, null, WORDS).model, 'Shown as an Airbus A321: no B752 model yet (A4)')
+  assert.equal(cardView('4691c4', S, RAW, b752, LIVE, GR, 1, true, null, null, WORDS).type, 'B752', 'the type stays the aircraft\'s own')
+  const unknown = { ...INFO, typeCode: null, category: 'A1' }
+  assert.equal(cardView('4691c4', { ...S, typeCode: null }, null, unknown, LIVE, GR, 1, true, null, null, WORDS).model, 'Placeholder model: type unknown')
+  // A traffic aircraft's card (its fleet entry) says it the same way.
+  const traffic = cardView('4691c4', entryState({ ...ENTRY, info: b752 }), null, b752, LIVE, GR, 1, false, { distM: 900, from: 'UAL2478' }, null, WORDS)
+  assert.equal(traffic.model, 'Shown as an Airbus A321: no B752 model yet (A4)')
+  assert.equal(cardView('4691c4', null, null, b752, LIVE, GR, 1, true, null, null, WORDS).model, null, 'no position yet: nothing is drawn, no line')
+  assert.equal(cardView(null, null, null, null, LIVE, NONE, 1, true, null, null, WORDS).model, null, 'no aircraft: no line')
+})
+
 // ---------- mountFlightCard on a minimal fake DOM (only what flightCard.ts and icons.ts use) ----------
 
 class FakeEl {
@@ -250,6 +269,7 @@ function setup(photoGate?: Promise<void>, photoStatus = 200, traffic = false, re
     onClose: () => closed++,
     onChase: (on) => chases.push(on),
     onRecord: record ? async () => null : undefined, // the server records flights: the Record button may show
+    modelWords: WORDS,
     photos: new PhotoCache(fetchFn),
     lookup: (hex, callsign) => {
       lookups.push(`${hex}/${callsign}`)
@@ -414,6 +434,26 @@ test('mountFlightCard: the chased card has no range line and keeps its own label
   c.update('4691c4', S, RAW, INFO, LIVE, true)
   assert.deepEqual([card.props['aria-label'], card.has('fh-tcard'), byClass(card, 'fh-card-range').hidden], ['Selected aircraft', false, true])
   c.destroy()
+}))
+
+test('mountFlightCard: the model line shows under the header (collapsed too) only for an aircraft not on its own model; the traffic card likewise', () => withClock(() => {
+  const { card, c } = setup()
+  const line = byClass(card, 'fh-card-model')
+  assert.equal(card.children.indexOf(line), card.children.indexOf(byClass(card, 'fh-card-head')) + 1, 'right under the header')
+  c.update('4691c4', S, RAW, INFO, LIVE, true)
+  assert.equal(line.hidden, true, 'an A320 on the A320 model')
+  mock.timers.tick(300)
+  c.update('4691c4', S, RAW, { ...INFO, typeCode: 'B752', category: 'A4' }, LIVE, true)
+  assert.deepEqual([line.hidden, byClass(line, 'fh-card-model-t').textContent, line.title], [false, 'Shown as an Airbus A321: no B752 model yet (A4)', 'Shown as an Airbus A321: no B752 model yet (A4)'])
+  assert.equal(byClass(card, 'fh-card-type').textContent, 'B752')
+  mock.timers.tick(300)
+  c.update('4691c4', S, RAW, INFO, LIVE, true)
+  assert.equal(line.hidden, true, 'its type known after all: its own model')
+  c.destroy()
+  const t = setup(undefined, 200, true)
+  t.c.update('4691c4', entryState(ENTRY), null, { ...INFO, typeCode: 'B752', category: 'A4' }, LIVE, false, { distM: 900, from: 'UAL2478' })
+  assert.equal(byClass(t.card, 'fh-card-model-t').textContent, 'Shown as an Airbus A321: no B752 model yet (A4)')
+  t.c.destroy()
 }))
 
 test('mountFlightCard: the photo sits above the stats, collapsed or not, asked for once per selection; credit links to its page', async () => {

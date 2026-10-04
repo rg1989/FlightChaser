@@ -66,7 +66,7 @@ import {
 import { tracePath, traceSamples } from './history/trace.ts'
 import { liveryCode, liveryFromSpec, liveryOf, type Livery } from './scene/livery.ts'
 import { ChaseModel } from './scene/model.ts'
-import { ModelPicker } from './scene/modelFor.ts'
+import { ModelPicker, placeholderWords } from './scene/modelFor.ts'
 import { asPlaceholder, parseGhost, setPlaceholderAid } from './scene/placeholder.ts'
 import { BOX_HALF, Traffic, minScale, trafficRangeNm } from './scene/traffic.ts'
 import { AircraftLights } from './scene/aircraftLights.ts'
@@ -738,6 +738,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     onPick: (item) => goTo(item),
   })
   const photos = new PhotoCache() // shared: a traffic aircraft's photo is there when it is chased
+  // What the chase draws an aircraft on when it has no model of its own, in words, for the cards.
+  const modelWords = (type: string | null, category: string | null): string | null => (pick === null ? null : placeholderWords(pick.pick(type, category), type))
   const card = mountFlightCard(ui, {
     onClose: () => {
       byHand()
@@ -749,11 +751,12 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     },
     photos, lookup: lookupFor,
     onRecord: (hex, on) => api.record(hex, on).then((r) => r.rec),
+    modelWords: (type, category) => (chasing ? modelWords(type, category) : null), // the map draws no model
   })
   // A click in a traffic aircraft's brackets opens its card: live from the fleet, its full object asked for as a focused
   // aircraft's is (poll). Its Chase chases it instead (select: a chase stays a chase, on the new aircraft).
   const trafficCard = mountFlightCard(ui, {
-    traffic: true, onClose: () => traffic?.close(), onChase: () => chaseTraffic(), photos, lookup: lookupFor,
+    traffic: true, onClose: () => traffic?.close(), onChase: () => chaseTraffic(), photos, lookup: lookupFor, modelWords,
   })
   let trafficRaw: ReadsbAircraft | null = null // the open traffic aircraft's newest full upstream object
   let trafficAsked: { hex: string; ms: number } | null = null
