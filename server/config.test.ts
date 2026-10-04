@@ -23,6 +23,7 @@ test('defaults: replay at 1 req/s on port 8787, no recording, no alerts, PIA/LAD
     eventsDir: null,
     ntfyUrl: null,
     alertSquawks: ['7700', '7600', '7500'],
+    eumetsat: null,
     port: 8787,
     showPiaLadd: false,
     routes: false,
@@ -214,4 +215,12 @@ test('invalid values throw a message that names the variable', () => {
 test('accepts process.env as it is', () => {
   const cfg = readServerConfig({ ...process.env, ADSB_SOURCE: 'replay', REPLAY_FILES: FILE, PORT: '0', MAX_RPS: '', REPLAY_SPEED: '', SHOW_PIA_LADD: '' })
   assert.equal(cfg.source, 'replay')
+})
+
+test('EUMETSAT_KEY and EUMETSAT_SECRET: both set = the satellite\'s raw products; one alone or neither = none (the server runs as it does without them)', () => {
+  assert.equal(readServerConfig({ REPLAY_FILES: FILE }).eumetsat, null)
+  assert.deepEqual(readServerConfig({ REPLAY_FILES: FILE, EUMETSAT_KEY: ' a-key ', EUMETSAT_SECRET: 'a-secret' }).eumetsat, { key: 'a-key', secret: 'a-secret' })
+  assert.equal(readServerConfig({ REPLAY_FILES: FILE, EUMETSAT_KEY: '', EUMETSAT_SECRET: 'a-secret' }).eumetsat, null, 'the key taken away')
+  assert.equal(readServerConfig({ REPLAY_FILES: FILE, EUMETSAT_KEY: 'a-key', EUMETSAT_SECRET: ' ' }).eumetsat, null)
+  assert.equal(readServerConfig({ REPLAY_FILES: FILE, EUMETSAT_KEY: 'a-key' }).eumetsat, null)
 })

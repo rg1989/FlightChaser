@@ -1,15 +1,20 @@
 // server/main.wx.test.ts
-// The weather over HTTP: /api/wx/model on the real server (port 0), Open-Meteo from a fake fetch: nothing here reaches it.
+// The weather over HTTP: /api/wx/model and /api/wx/sat on the real server (port 0), Open-Meteo and EUMETSAT from a fake fetch:
+// nothing here reaches them.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { decodeSatCut } from '../shared/sat.ts'
 import type { ModelGrid } from '../shared/wx.ts'
 import { readServerConfig } from './config.ts'
+import { SAT_PRODUCTS } from './eumetsat.ts'
+import { encodeGrib2, type GribSpaceView } from './grib2.ts'
 import { createServer } from './main.ts'
 import { makeReplay } from './sources/replay.ts'
+import { encodeZip } from './typeDb.ts'
 import { modelGeo, modelPlaces, modelUrl } from './wx.ts'
 
 const FILE = fileURLToPath(new URL('../data/fixtures/golden/recording-sample.jsonl', import.meta.url))
@@ -68,4 +73,65 @@ test('GET /api/wx/model?lat&lon: the model grid of the cell as JSON, shared by t
   assert.match(again.body.error ?? '', /failed/)
   assert.equal(asked.length, 2, 'Open-Meteo was not asked again')
   assert.equal((await get('?lat=32.1&lon=34.9')).status, 200, 'a cell held is still served')
+})
+
+test('GET /api/wx/sat?bbox&n: the satellite\'s frame over the box as bytes (gzipped for a client that takes it), 204 for the frame the client has, 400 for a bad box, 502 then 503 with Retry-After when EUMETSAT fails; 404 on a server with no key', async (t) => {
+  const T = Date.UTC(2026, 9, 4, 10, 30)
+  // The two products, as small as SEVIRI's grids allow: every pixel cloud, every block's height the number 10 (3,200 m).
+  const view = (side: number, mid: number): GribSpaceView => ({ nx: side, ny: side, subLat: 0, subLon: 0, dx: side, dy: side, xp: mid, yp: mid, scan: 0xc0, nr: 6.6107 })
+  const zips = {
+    [SAT_PRODUCTS.mask]: encodeZip([{ name: 'clm.grb', data: encodeGrib2({ discipline: 3, timeMs: T, grid: view(3712, 1856), fields: [{ category: 0, parameter: 7, bits: 2, packed: new Uint8Array(3712 * 3712).fill(2) }] }), method: 8 }]),
+    [SAT_PRODUCTS.top]: encodeZip([{ name: 'cth.grb', data: encodeGrib2({ discipline: 3, timeMs: T, grid: view(1237, 619), fields: [{ category: 1, parameter: 2, bits: 6, binScale: 5, decScale: -1, packed: new Uint8Array(1237 * 1237).fill(10) }] }), method: 8 }]),
+  }
+  const asked: string[] = []
+  let down = false
+  const wxFetch = (async (url: string) => {
+    asked.push(url)
+    const u = new URL(url)
+    if (down) return new Response('{}', { status: 500 })
+    if (u.pathname === '/token') return new Response(JSON.stringify({ access_token: 't', expires_in: 3200 }))
+    if (u.pathname.includes('/search-products/')) return new Response(JSON.stringify({ features: [{ id: `product-${u.searchParams.get('pi') === SAT_PRODUCTS.mask ? 'mask' : 'top'}`, properties: { date: '2026-10-04T10:30:00Z/2026-10-04T10:30:00Z' } }] }))
+    return new Response(zips[decodeURIComponent(u.pathname.split('/')[5]) as keyof typeof zips])
+  }) as unknown as typeof fetch
+  const base = { ...readServerConfig({ REPLAY_FILES: FILE }), staticDir: join(mkdtempSync(join(tmpdir(), 'fh-sat-')), 'dist') }
+  let now = T + 20 * 60_000
+  const serve = async (cfg: typeof base): Promise<string> => {
+    const app = createServer(cfg, { source: makeReplay({ files: cfg.replayFiles, nowMs: () => now }), nowMs: () => now, wxFetch })
+    t.after(() => app.close())
+    return app.listen(0)
+  }
+  const warned = t.mock.method(console, 'warn', () => {})
+
+  const none = await fetch(`${await serve(base)}/api/wx/sat?bbox=27.7533,29.4534,36.7467,40.0466&n=400`)
+  assert.equal(none.status, 404)
+  assert.match(((await none.json()) as { error: string }).error, /EUMETSAT_KEY and EUMETSAT_SECRET/)
+  assert.equal(asked.length, 0, 'with no key, EUMETSAT is asked for nothing')
+
+  const url = `${await serve({ ...base, eumetsat: { key: 'a-key', secret: 'a-secret' } })}/api/wx/sat`
+  const res = await fetch(`${url}?bbox=27.7533,29.4534,36.7467,40.0466&n=400`) // (fetch takes gzip, and gives the bytes unzipped)
+  assert.equal(res.status, 200)
+  assert.deepEqual([res.headers.get('content-type'), res.headers.get('content-encoding'), res.headers.get('cache-control')], ['application/octet-stream', 'gzip', 'no-store'])
+  assert.match(res.headers.get('server-timing') ?? '', /^decode;dur=[\d.]+, cut;dur=[\d.]+$/)
+  assert.ok(Number(res.headers.get('content-length')) < 20_000, 'a sky all of one kind zips small')
+  const cut = decodeSatCut(await res.arrayBuffer())!
+  assert.deepEqual([cut.timeMs, cut.n, cut.box, cut.cloud[80_200], cut.seen[80_200], cut.topM[80_200]], [T, 400, [27.7533, 29.4534, 36.7467, 40.0466], 255, 1, 3200])
+  assert.equal(asked.length, 5)
+
+  const plain = await fetch(`${url}?bbox=27.7533,29.4534,36.7467,40.0466&n=16`, { headers: { 'accept-encoding': 'identity' } })
+  assert.deepEqual([plain.status, plain.headers.get('content-encoding'), plain.headers.get('content-length')], [200, null, String(48 + 4 * 16 * 16)])
+  const same = await fetch(`${url}?bbox=27.7533,29.4534,36.7467,40.0466&n=400&have=${T}`)
+  assert.deepEqual([same.status, (await same.arrayBuffer()).byteLength], [204, 0])
+  for (const q of ['', '?bbox=1,2,3&n=400', '?bbox=0,0,5,5', '?bbox=0,0,5,5&n=4000', '?bbox=0,0,5,5&n=16&have=x']) assert.equal((await fetch(`${url}${q}`)).status, 400, q)
+  assert.equal(asked.length, 5, 'the frame held answered them all')
+
+  down = true
+  now = T + 30 * 60_000 // the next frame can be there: EUMETSAT is asked, and fails
+  const failed = await fetch(`${url}?bbox=27.7533,29.4534,36.7467,40.0466&n=400&have=${T}`)
+  assert.equal(failed.status, 502)
+  assert.match(((await failed.json()) as { error: string }).error, /api\.eumetsat\.int: HTTP 500/)
+  now += 15_000
+  const waiting = await fetch(`${url}?bbox=27.7533,29.4534,36.7467,40.0466&n=400&have=${T}`)
+  assert.deepEqual([waiting.status, waiting.headers.get('retry-after'), ((await waiting.json()) as { retryAfterS: number }).retryAfterS], [503, '45', 45])
+  assert.equal(warned.mock.callCount(), 1, 'one warning')
+  assert.doesNotMatch(String(warned.mock.calls[0].arguments[0]), /a-key|a-secret/)
 })
