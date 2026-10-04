@@ -45,13 +45,17 @@ export function bodyAt(mesh: SculptMesh | null, field: WxField | null, lat: numb
   const u = (wrapLon(lon - mesh.lon) * KM_PER_DEG * Math.max(0.01, Math.cos(mesh.lat * RAD)) + FIELD_KM / 2) / TEXEL_KM - 0.5
   const v = ((lat - mesh.lat) * KM_PER_DEG + FIELD_KM / 2) / TEXEL_KM - 0.5
   if (!(u >= 0 && u <= N - 1 && v >= 0 && v <= N - 1)) return out
-  const [i, j] = [Math.min(N - 2, Math.floor(u)), Math.min(N - 2, Math.floor(v))]
-  const [fx, fy] = [u - i, v - j]
+  const i = Math.min(N - 2, Math.floor(u)) // (plain numbers: this is asked some forty times a frame)
+  const j = Math.min(N - 2, Math.floor(v))
+  const fx = u - i
+  const fy = v - j
   const o = j * N + i
   for (const band of mesh.bands) {
     const { roof, floor } = band
     // The thickness between the four texels, an outside texel being none; the underside by the texels that have a body.
-    let [thick, base, w] = [0, 0, 0]
+    let thick = 0
+    let base = 0
+    let w = 0
     for (let c = 0; c < 4; c++) {
       const q = o + (c & 1) + (c >> 1) * N
       const share = ((c & 1) === 1 ? fx : 1 - fx) * (c >> 1 === 1 ? fy : 1 - fy)
@@ -85,7 +89,8 @@ export function cloudBetween(mesh: SculptMesh | null, field: WxField | null, a: 
   const north = (b.lat - a.lat) * KM_PER_DEG
   const east = wrapLon(b.lon - a.lon) * KM_PER_DEG * Math.cos(a.lat * RAD)
   const km = Math.hypot(north, east, (b.altM - a.altM) / 1000)
-  let [sum, sev] = [0, 0]
+  let sum = 0
+  let sev = 0
   for (let k = 0; k < samples; k++) {
     const t = (k + 0.5) / samples
     bodyAt(mesh, field, a.lat + (b.lat - a.lat) * t, a.lon + wrapLon(b.lon - a.lon) * t, a.altM + (b.altM - a.altM) * t, at)
@@ -103,7 +108,8 @@ export function cloudBetween(mesh: SculptMesh | null, field: WxField | null, a: 
  */
 export function trackSeverities(mesh: SculptMesh | null, field: WxField | null, places: readonly Place[], out: Float32Array): Float32Array {
   for (let k = 0; k + 1 < places.length && k < out.length; k++) {
-    const [a, b] = [places[k], places[k + 1]]
+    const a = places[k]
+    const b = places[k + 1]
     bodyAt(mesh, field, (a.lat + b.lat) / 2, a.lon + wrapLon(b.lon - a.lon) / 2, (a.altM + b.altM) / 2, at)
     out[k] = at.depth > IN_BODY ? at.sev : -1
   }

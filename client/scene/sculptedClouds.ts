@@ -303,8 +303,10 @@ export class SculptedClouds {
     this.#way.length = this.#wayWC.length = n
     if (this.#waySev.length !== n - 1) this.#waySev = new Float32Array(n - 1)
     for (let k = 0; k < n; k++) {
-      const [a, b] = [points[Math.min(points.length - 2, Math.floor(k / TRACK_PIECES))], points[Math.min(points.length - 1, Math.floor(k / TRACK_PIECES) + 1)]]
-      const t = k / TRACK_PIECES - Math.min(points.length - 2, Math.floor(k / TRACK_PIECES))
+      const minute = Math.min(points.length - 2, Math.floor(k / TRACK_PIECES))
+      const a = points[minute]
+      const b = points[minute + 1]
+      const t = k / TRACK_PIECES - minute
       const p = this.#way[k]
       p.lat = a.lat + (b.lat - a.lat) * t
       p.lon = a.lon + wrapLon(b.lon - a.lon) * t
@@ -401,6 +403,7 @@ export class SculptedClouds {
   #lay(): void {
     if (this.#veil === null) return
     const opacity = Math.round(this.#deep * VEIL_MAX * 200) / 200
+    if (opacity === 0 && this.#veilWritten === '') return // (the usual frame: outside every body, and the veil knows)
     const css = `rgb(${this.#tint.color.map((v) => Math.round(v * 255)).join(' ')})`
     const told = opacity === 0 ? '' : `${css} ${opacity}`
     if (told === this.#veilWritten) return

@@ -670,7 +670,7 @@ function normals(v: Float32Array, indices: Uint32Array): void {
 }
 
 export const SHADOW_N = 256 // the shadow image's side: 1.25 km a pixel
-export const SHADOW_ALPHA = 0.2 // under the middle of a body the ground is tinted by this: faint, the map stays readable
+export const SHADOW_ALPHA = 0.14 // under the middle of a body the ground is tinted by this: faint, the map stays readable (at 0.2 a shadow on the dark sea read as a body of its own)
 export const SHADOW_RGB: readonly [number, number, number] = [10, 16, 28]
 export const SHADOW_SHIFT_KM = 2 // a shadow is moved away from the light by its body's height over the light's slope, at most this far: it stays by its body
 const SHADOW_SOFT = 1 // its edge is softened over this many pixels each way, twice
