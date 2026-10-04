@@ -225,7 +225,6 @@ uniform vec3 u_aircraft; // the aircraft in the frame, km: the level slice is at
 uniform vec2 u_aids; // 1 where it shows: x the track line (the mix draws it), y the level slice
 uniform float u_steps; // a ray's step budget: ${STEPS} at the first tier, fewer when the frames are slow (marchPace.ts)
 uniform float u_detail; // 0: the noise's four octaves; 1: without the finest
-uniform float u_shade; // the samples toward the Sun that shade a cloud: 2, or 1 that weighs as much (marchPace.ts: the cheap tiers)
 in vec2 v_textureCoordinates;
 ${SHARED}
 const vec3 HAZE = vec3(0.66, 0.76, 0.88); // the air's colour over a long way
@@ -665,9 +664,11 @@ void main() {
         float d = clamp((dm - n * ${glsl(ERODE)}) / (1.0 - n * ${glsl(ERODE)}), 0.0, 1.0);
         if (d <= 0.01) ds = min(ds, small * stretch); // eaten away by the noise here: steps that still find where it is not
         else {
-          // thin cloud hides little in a step, and a ray through a long veil of it has many to take: longer ones, up to four small ones
-          ds = max(ds, min(${glsl(THIN_STEP)} / (sigma(sev) * d), 4.0 * small) * stretch);
-          float sh = u_shade > 1.5 ? exp(-(body(p + sun * 0.45, nr) * 1.1 + body(p + sun * 1.3, nr) * 1.6)) : exp(-body(p + sun * 0.9, nr) * 2.7);
+          // thin cloud hides little in a step, and a ray through a long veil of it has many to take: longer ones, up to four small
+          // ones. Dense cloud is walked in steps that a smaller budget does not lengthen: the veil's cap ends that walk after a
+          // few of them, and each gives the cloud's colour a sample (one long step gave it one: flat patches at the cheap tiers).
+          ds = max(ds / lean, min(${glsl(THIN_STEP)} / (sigma(sev) * d), 4.0 * small) * stretch);
+          float sh = exp(-(body(p + sun * 0.45, nr) * 1.1 + body(p + sun * 1.3, nr) * 1.6));
           vec3 c = mix(vec3(0.36, 0.42, 0.52), vec3(1.0, 0.98, 0.95), sh);
           c *= sev < 1.5 ? mix(1.0, 0.86, sev) : mix(0.8, 0.6, clamp(sev - 2.0, 0.0, 1.0));
           if (u_look > 0.5) c = mix(c, sevCol(sev) * (0.7 + 0.3 * sh), 0.62 * smoothstep(0.3, 0.7, sev));

@@ -227,7 +227,6 @@ test('CloudVolume: the march is walked at a tier (marchPace.ts MARCH_TIERS: the 
   const given = (): unknown[] => [r.vol.tier, r.call<number>(0, 'u_steps'), r.call<number>(0, 'u_detail'), r.call<number>(1, 'u_shadow'), r.stage(0).textureScale, r.vol.scale]
   r.vol.tier = 0
   assert.deepEqual(given(), [0, 128, 0, 0.3, 0.5, 0.5])
-  assert.equal(r.call<number>(0, 'u_shade'), 2, 'two samples toward the Sun')
   r.vol.tier = 1
   assert.deepEqual(given(), [1, MARCH_TIERS[1].steps, 0, 0.3, 0.5, 0.5], 'a smaller step budget')
   r.vol.tier = 2
@@ -249,10 +248,9 @@ test('CloudVolume: the march is walked at a tier (marchPace.ts MARCH_TIERS: the 
   assert.equal(r.stage(0).textureScale, 0.25, 'a draw keeps it')
   for (const none of [-1, MARCH_TIERS.length, 2.5, Number.NaN]) r.vol.tier = none
   assert.equal(r.vol.tier, 5, 'what is no tier is not taken')
-  assert.equal(r.call<number>(0, 'u_shade'), 2)
   const last = MARCH_TIERS.length - 1
   r.vol.tier = last
-  assert.deepEqual([...given(), r.call<number>(0, 'u_shade')], [last, MARCH_TIERS[last].steps, 1, 0, MARCH_TIERS[last].scale, MARCH_TIERS[last].scale, 1], 'the last tier: one sample toward the Sun')
+  assert.deepEqual(given(), [last, MARCH_TIERS[last].steps, 1, 0, MARCH_TIERS[last].scale, MARCH_TIERS[last].scale], 'the last tier')
   r.vol.tier = 0
   r.vol.frame(TF, 0)
   assert.deepEqual(given(), [0, 128, 0, 0.3, 0.5, 0.5], 'and back to the first: everything as it was')

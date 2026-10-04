@@ -41,12 +41,12 @@
   the roads and the names stay readable under it, and the aircraft in thick cloud is veiled, not gone. A cloud's edge and its lit
   and shadowed sides still show; a block's edge lines stay firm; the shadows on the ground are light.
 - The clouds are drawn at one of nine tiers, 0 the finest (half the view's size, 128 steps a ray) and 8 the cheapest (a sixth of
-  the view's size, 32 steps). The app starts at tier 7, a cheap one, and goes finer only when the graphics card's own time for the
-  cloud pass proves the room (a budget of 4 ms a frame; the browser must have the timer for it: Chrome, Edge and Firefox on a
-  desktop do, Safari does not, and there the clouds stay at tier 7). A pass over its budget goes coarser, whatever the frame rate:
-  on a laptop the card's time is heat. A tier gives up, one thing more at each, what is seen least: a part of its steps, the finest
-  detail of a cloud's edge, the clouds' shadows on the ground, its size (0.35, then 0.25 of the view), the second light sample, and
-  then steps and size again. With `?bench=1` the overlay's line "clouds tier 7 · march 400×206 px · pass 2.4 ms (1.6 + 0.8)" says
+  the view's size, 40 steps). The app starts at tier 6, a cheap one (a quarter of the view's size, 56 steps), and goes finer only
+  when the graphics card's own time for the cloud pass proves the room (a budget of 4 ms a frame; the browser must have the timer
+  for it: Chrome, Edge and Firefox on a desktop do, Safari does not, and there the clouds stay at tier 6). A pass over its budget
+  goes coarser, whatever the frame rate: on a laptop the card's time is heat. A tier gives up, one thing more at each, what is seen
+  least: a part of its steps, the finest detail of a cloud's edge, the clouds' shadows on the ground, its size (0.35, then 0.25 of
+  the view), and then steps and size again. With `?bench=1` the overlay's line "clouds tier 6 · march 500×258 px · pass 2.4 ms (1.6 + 0.8)" says
   which tier is drawn, the march's size and the pass's time on the card (the march's and the mix's in brackets; "no timer" where
   the browser has none), and "textures" next to the heap counts the WebGL textures alive.
   The sky round the aircraft is worked out off the

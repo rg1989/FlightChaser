@@ -10,10 +10,9 @@
 // their shaders and says what each draws (the clouds in three looks, the rain, the shadows; the hazard areas' edges and the level
 // slice, sorted with the cloud; the track line). This file makes the pass and gives the shaders their numbers.
 // The march is walked at a tier (tier: marchPace.ts MARCH_TIERS, the first until told; Weather3D tells it the pace's start tier at
-// once): its step budget, whether it reads the noise's finest octave, whether the ground has the clouds' shadows, its size, and how
-// many samples toward the Sun shade a cloud. The pace that picks the tier judges by the pass's own time on the graphics card,
-// which the volume measures where the browser can (passMs, passParts: passTimer.ts), and is asked only while the pass is in the
-// scene (drawn).
+// once): its step budget, whether it reads the noise's finest octave, whether the ground has the clouds' shadows, and its size.
+// The pace that picks the tier judges by the pass's own time on the graphics card, which the volume measures where the browser
+// can (passMs, passParts: passTimer.ts), and is asked only while the pass is in the scene (drawn).
 // The shader works in a frame of its own, so that it holds no large number: km east, north and up from the field's middle at sea level
 // (localFrame; JS gives it u_eyeToLocal each frame, worked out in doubles). A point's height over the sea is z + (x² + y²) / 2R, and
 // its place on the field's flat map follows from x and y (localToMap, the shader's toMap: to 40 m within 150 km, 100 m in the corners).
@@ -565,7 +564,7 @@ export class CloudVolume {
       uniforms: {
         ...shared, u_noise: () => (this.#noiseImage ?? this.#shown!.near).texture, u_near: () => this.#shown!.near.texture, u_noiseFrame: () => this.#noiseFrame,
         u_floor: () => this.#floor, u_top: () => this.#top, u_light: () => this.#light, u_box: () => this.#box,
-        u_steps: () => MARCH_TIERS[this.#tier].steps, u_detail: () => MARCH_TIERS[this.#tier].detail, u_shade: () => MARCH_TIERS[this.#tier].light,
+        u_steps: () => MARCH_TIERS[this.#tier].steps, u_detail: () => MARCH_TIERS[this.#tier].detail,
         u_edges: () => this.#edgeImage!.texture, u_edgeCount: () => this.#edgeCount, u_edgeBound: () => this.#edgeBound, u_hazard: () => HAZARD[this.#style] ?? HAZARD.box, u_aircraft: () => this.#aircraft,
       },
     })

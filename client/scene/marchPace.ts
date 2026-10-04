@@ -3,11 +3,11 @@
 // DOM), so Node tests cover it.
 // The tiers give up, one thing more at each, what is seen least first: the step budget (with fewer steps every step is longer by
 // as much: a cloud is found and read a little more coarsely), the noise's finest octave (a cloud's edge near the camera is
-// smoother), the ground shadows, the march's size (0.35, then 0.25 of the view's width and height), then the second of the two
-// samples toward the Sun that shade a cloud, and then steps and size again. The first tier is the look as designed. TIER_COST
-// is what each costs on the check machine, as a share of the first.
-// (The mix stays as it is at every tier: laid from the four nearest march pixels instead of the nine round a pixel it showed the
-// march's 2 × 2 starts as a screen of dots, and it saved nothing that could be measured.)
+// smoother), the ground shadows, the march's size (0.35, then 0.25 of the view's width and height), and then steps and size
+// again. The first tier is the look as designed. TIER_COST is what each costs on the check machine, as a share of the first.
+// (Two things tried for the cheap tiers and taken out again: the mix laid from the four nearest march pixels instead of the nine
+// round a pixel showed the march's 2 × 2 starts as a screen of dots; and one sample toward the Sun in place of two shaded a cloud
+// in flat patches. Neither saved anything that could be measured.)
 // The march starts at a cheap tier (START_TIER), not at the first: what the first costs is not known until it has been drawn, and
 // on a laptop's graphics card it is most of a frame, at once and for as long as the weather shows (the card's time is the laptop's
 // heat: a fanless one slows itself down under it within minutes). It goes finer only with proof of room, and the proof is the
@@ -36,31 +36,30 @@ export interface MarchTier {
   detail: number // 0: all four octaves of the noise; 1: the finest one left out
   shadows: boolean // the clouds' shadows on the ground
   scale: number // the share of the view's width and height its rays are walked at
-  light: number // the samples toward the Sun that shade a cloud: 2, or 1 (as heavy as the two, half-way between them)
 }
 
 /** The tiers, the finest first. */
 export const MARCH_TIERS: readonly MarchTier[] = [
-  { steps: 128, detail: 0, shadows: true, scale: 0.5, light: 2 },
-  { steps: 80, detail: 0, shadows: true, scale: 0.5, light: 2 },
-  { steps: 80, detail: 1, shadows: true, scale: 0.5, light: 2 },
-  { steps: 80, detail: 1, shadows: false, scale: 0.5, light: 2 },
-  { steps: 80, detail: 1, shadows: false, scale: 0.35, light: 2 },
-  { steps: 80, detail: 1, shadows: false, scale: 0.25, light: 2 },
-  { steps: 56, detail: 1, shadows: false, scale: 0.25, light: 1 },
-  { steps: 40, detail: 1, shadows: false, scale: 0.2, light: 1 },
-  { steps: 32, detail: 1, shadows: false, scale: 0.16, light: 1 },
+  { steps: 128, detail: 0, shadows: true, scale: 0.5 },
+  { steps: 80, detail: 0, shadows: true, scale: 0.5 },
+  { steps: 80, detail: 1, shadows: true, scale: 0.5 },
+  { steps: 80, detail: 1, shadows: false, scale: 0.5 },
+  { steps: 80, detail: 1, shadows: false, scale: 0.35 },
+  { steps: 80, detail: 1, shadows: false, scale: 0.25 },
+  { steps: 56, detail: 1, shadows: false, scale: 0.25 },
+  { steps: 56, detail: 1, shadows: false, scale: 0.2 },
+  { steps: 40, detail: 1, shadows: false, scale: 0.16 },
 ]
 /**
  * What each tier's pass costs on the graphics card, as a share of the first tier's: the check machine (RTX 4090, kept busy so
- * that it runs at full clock), 2000 × 1030, the chase camera in a rain layer, the view in which the march is most of the pass
- * (0.70 ms at the first tier, 0.18 ms at the start tier; a pass's two stages cost 0.07 ms each there whatever they draw, so the
- * cheap tiers' shares are larger where there is less to march). A step to a finer tier is priced by these until it has been
- * timed on the card in use; they are the smallest shares of the views timed, so the price is not too low.
+ * that it runs at full clock), 2000 × 1030, the chase camera over a real overcast, the view in which the march is most of the
+ * pass (0.96 ms at the first tier, 0.29 ms at the start tier; the mix costs 0.07 ms there at every tier, whatever it draws, so
+ * the cheap tiers' shares are larger where there is less to march). A step to a finer tier is priced by these until it has
+ * been timed on the card in use; they are the smallest shares of the views timed, so the price is not too low.
  */
-export const TIER_COST: readonly number[] = [1, 0.77, 0.74, 0.7, 0.51, 0.39, 0.31, 0.26, 0.23]
+export const TIER_COST: readonly number[] = [1, 0.74, 0.73, 0.7, 0.48, 0.34, 0.3, 0.23, 0.18]
 /** The tier the march starts at. */
-export const START_TIER = 7
+export const START_TIER = 6
 /** What the pass may cost on the graphics card, ms: a quarter of a display's frame. */
 export const BUDGET_MS = 4
 const LAST = MARCH_TIERS.length - 1

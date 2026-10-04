@@ -30,14 +30,14 @@ const START = START_TIER
 /** The finest tier whose pass, by the shares, fits in `ms` on a card whose first tier takes at0. */
 const fits = (at0: number, ms: number): number => TIER_COST.findIndex((c) => at0 * c <= ms)
 
-test('the tiers: the first is the look as designed; each one after gives up something more and takes nothing back (steps, the noise\'s finest octave, the ground shadows, size, the light\'s second sample); each is cheaper than the one before', () => {
-  assert.deepEqual(MARCH_TIERS[0], { steps: 128, detail: 0, shadows: true, scale: 0.5, light: 2 }, 'the first tier is the look as it was')
+test('the tiers: the first is the look as designed; each one after gives up something more and takes nothing back (steps, the noise\'s finest octave, the ground shadows, size); each is cheaper than the one before', () => {
+  assert.deepEqual(MARCH_TIERS[0], { steps: 128, detail: 0, shadows: true, scale: 0.5 }, 'the first tier is the look as it was')
   for (let k = 1; k < MARCH_TIERS.length; k++) {
     const [b, t] = [MARCH_TIERS[k - 1], MARCH_TIERS[k]]
-    assert.ok(t.steps <= b.steps && t.detail >= b.detail && (b.shadows || !t.shadows) && t.scale <= b.scale && t.light <= b.light, `tier ${k} takes nothing back`)
-    assert.ok(t.steps < b.steps || t.detail > b.detail || (b.shadows && !t.shadows) || t.scale < b.scale || t.light < b.light, `tier ${k} gives something up`)
+    assert.ok(t.steps <= b.steps && t.detail >= b.detail && (b.shadows || !t.shadows) && t.scale <= b.scale, `tier ${k} takes nothing back`)
+    assert.ok(t.steps < b.steps || t.detail > b.detail || (b.shadows && !t.shadows) || t.scale < b.scale, `tier ${k} gives something up`)
   }
-  for (const t of MARCH_TIERS) assert.ok(t.steps >= 24 && t.steps <= 128 && Number.isInteger(t.steps) && [0, 1].includes(t.detail) && [1, 2].includes(t.light) && t.scale > 0 && t.scale <= 0.5)
+  for (const t of MARCH_TIERS) assert.ok(t.steps >= 24 && t.steps <= 128 && Number.isInteger(t.steps) && [0, 1].includes(t.detail) && t.scale > 0 && t.scale <= 0.5)
   assert.equal(TIER_COST.length, MARCH_TIERS.length)
   assert.equal(TIER_COST[0], 1)
   for (let k = 1; k < TIER_COST.length; k++) assert.ok(TIER_COST[k] < TIER_COST[k - 1] && TIER_COST[k] > 0, `tier ${k} is cheaper than tier ${k - 1}`)
