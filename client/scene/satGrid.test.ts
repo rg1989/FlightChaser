@@ -149,7 +149,7 @@ test('satBase: the nearest airport\'s highest layer under the top, within 60 km'
   assert.ok(Math.abs(satBase(1200, 0, 0, from).baseM - 600) < 1) // (the 1,500 m layer is not under this top)
   assert.equal(satBase(2500, 0, 0, from).topM, 2500)
   // 80 km away it says nothing: the thickness of a 2,500 m top
-  assert.ok(Math.abs(satBase(2500, 0.92, 0, from).baseM - 1700) < 1)
+  assert.ok(Math.abs(satBase(2500, 0.92, 0, from).baseM - 1600) < 1)
   // A sky hidden is a base too.
   assert.ok(Math.abs(satBase(1500, 0, 0, baseSources([metar(0.1, 0, 50, [], { vertVisFt: 300 })], null)).baseM - 141.44) < 1)
 })
@@ -172,7 +172,7 @@ test('satBase: a layer more than SAT_DEEP_M under the top is another cloud\'s: t
 test('satBase: the thickness is thin for high cloud and thicker for low and middle cloud; a base stays over the ground, and the cloud 300 m thick', () => {
   const none = baseSources([], null)
   const thick = (top: number): number => top - satBase(top, 0, 0, none).baseM
-  assert.deepEqual([thick(2500), thick(5000), thick(8000), thick(10_000), thick(14_000)], [800, 1500, 1500, 1000, 800])
+  assert.deepEqual([thick(1000), thick(2500), thick(5000), thick(8000), thick(10_000), thick(14_000)], [600, 900, 1500, 1500, 1000, 800])
   assert.ok(thick(6000) > thick(2500) && thick(6000) > thick(12_000))
   assert.equal(SAT_THICK.length, 6)
   const high = baseSources([], model(0, 0, [], undefined, 1800)) // the model's ground at 1,800 m
@@ -223,4 +223,15 @@ test('satGrid: a frame far larger than the field gives the same grid as its part
   let worst = 0
   for (let o = 0; o < large.cover.length; o++) worst = Math.max(worst, Math.abs(large.cover[o] - small.cover[o]))
   assert.ok(worst < 0.02, `the covers differ by ${worst} at most`)
+})
+
+test('satGrid: inside a cloud whose top slopes the cover stays whole (the pixels are pulled apart where a higher top is moved farther: the cover is their cloud\'s share of what lands in a cell, not its sum)', () => {
+  // Over Israel: a deck whose top climbs from 2 km to 12 km over 100 km southward. Its pixels land up to 13 km apart from where they lay side by side.
+  const g = satGrid(frame(32, 35, (_east, north) => ({ cloud: 255, top: 320 * Math.round((2000 + 100 * Math.min(100, Math.max(0, 40 - north))) / 320) })), job(32, 35))
+  let [least, most] = [1, 0]
+  for (let north = -110; north <= 90; north += CELL_KM) for (const east of [-60, 0, 60]) {
+    least = Math.min(least, g.cover[cellAt(g, east, north)])
+    most = Math.max(most, g.cover[cellAt(g, east, north)])
+  }
+  assert.ok(least > 0.97 && most <= 1, `the cover inside the deck: ${least} … ${most}`)
 })

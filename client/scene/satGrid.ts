@@ -13,8 +13,9 @@
 //   by its own a higher block would part from a lower one beside it and leave a strip of clear air that is not there (a real sky,
 //   the Gulf of Lion on 2026-10-04, came out striped). A deck's own edge toward clear air is still moved by its whole height.
 //   The moves are worked out at a few places of the frame and read between them;
-// - it lands on the grid as its share of the four cells round its place, and the grid's cover is softened over a cell each way
-//   (a few km), so a field's edge is no staircase of pixels.
+// - every pixel the satellite sees, cloud or clear, lands on the grid as its share of the four cells round its place; a cell's
+//   cover is the cloud's share of what landed on it (so the cover stays whole inside a cloud whose sloping top pulls its pixels
+//   apart), softened over a cell each way (a few km), so a field's edge is no staircase of pixels.
 // The satellite cannot see a cloud's base, nor any layer under the top one. A cell's base is taken, in this order (satBase):
 // the nearest airport within SAT_STATION_KM that reports a layer under the top: its highest such layer; the forecast model's
 // cloudy levels under the top at the place: the lowest of the run of them just under it; else the top less a thickness by its
@@ -42,12 +43,13 @@ export const SAT_FILL_KM = 40
 /** With none so near, and no model: this top (an estimate: cloud the product gives no height for is mostly low). */
 export const SAT_NO_TOP_M = 2500
 /** A cloud's thickness by its top's height, m, in proportion between (estimates): thin for high cloud, thicker for low and middle cloud. */
-export const SAT_THICK: readonly (readonly [topM: number, thickM: number])[] = [[1000, 400], [2500, 800], [5000, 1500], [8000, 1500], [10_000, 1000], [13_000, 800]]
+export const SAT_THICK: readonly (readonly [topM: number, thickM: number])[] = [[1000, 600], [2500, 900], [5000, 1500], [8000, 1500], [10_000, 1000], [13_000, 800]]
 /** A report's layer or a model's level more than this under a top is another cloud's base. */
 export const SAT_DEEP_M = 3000
 const THIN_M = 300 // a cloud is at least this thick
 const OVER_GROUND_M = 50 // and its base at least this far over the ground
 const MODEL_CLOUDY = 20 // % of cover at a model's level that is cloud (cloudField.ts MODEL_LOOK.minCover)
+const LANDED_MIN = 0.3 // a cell's cover is its cloud's share of the pixels that landed on it, counted as this much of a cell at least
 const NODES = 5 // the moves are worked out at this many places a side of the frame, and read between them
 const PARALLAX_AT_M = 8000 // the parallax is worked out for this height, and taken in proportion to a pixel's (it is so to 1 % up to 16 km)
 const SMOOTH_PX = 3 // the height a pixel is moved by is that of the cloud this many pixels round it (twice over: about 15 km each way)
@@ -247,7 +249,8 @@ function cropFrame(f: SatFrame, i0: number, j0: number, m: number): SatFrame {
 
 /**
  * The tops smoothed over the cloud round each pixel (a box of SMOOTH_PX each way, twice, by the pixels' cloud; clear pixels give
- * and take nothing): the height a pixel is moved by. 0 where there is no cloud.
+ * nothing): the height a pixel is moved by. A clear pixel within the boxes' reach of a cloud has that cloud's height (it is moved
+ * with the cloud's edge); 0 where no cloud is near.
  */
 function smoothTops(tops: Uint16Array, cloud: Uint8Array, n: number): Float32Array {
   let h = new Float32Array(n * n) // cloud × top
@@ -279,7 +282,7 @@ function smoothTops(tops: Uint16Array, cloud: Uint8Array, n: number): Float32Arr
   }
   ;[h2, c2] = [h, c]
   const out = new Float32Array(n * n)
-  for (let p = 0; p < n * n; p++) if (tops[p] > 0 && c2[p] > 1e-6) out[p] = h2[p] / c2[p]
+  for (let p = 0; p < n * n; p++) if (c2[p] > 1e-6) out[p] = h2[p] / c2[p]
   return out
 }
 
@@ -354,9 +357,13 @@ export function satGrid(whole: SatFrame, job: SatGridJob): SatGrid {
     return m
   }
 
+  // Every pixel the satellite sees, cloud or clear, is moved and lands on the four cells round its place, by its size in cells. A
+  // cell's cover is then the cloud's share of what landed on it: where a sloping top pulls the pixels apart (a higher one is moved
+  // farther) less lands, of cloud and of all alike, and the cover stays whole.
   const cover = new Float32Array(N * N)
+  const landed = new Float32Array(N * N) // of cloud and clear alike
   const weighed = new Float32Array(N * N) // cover × top, for the cells' tops
-  const area = (dLonPx * kx * dLatPx * KM_PER_DEG) / (CELL_KM * CELL_KM) // a pixel's size, in cells: its cloud is shared out by it
+  const area = (dLonPx * kx * dLatPx * KM_PER_DEG) / (CELL_KM * CELL_KM) // a pixel's size, in cells
   for (let j = 0; j < n; j++) {
     const lat = north - (j + 0.5) * dLatPx + dLat
     const y0 = (lat - job.lat) * KM_PER_DEG
@@ -365,7 +372,7 @@ export function satGrid(whole: SatFrame, job: SatGridJob): SatGrid {
     const tb = nb - b0
     for (let i = 0; i < n; i++) {
       const p = j * n + i
-      if (f.cloud[p] === 0 || f.seen[p] === 0) continue
+      if (f.seen[p] === 0) continue
       const top = tops[p]
       const by = moved[p] // the height it is moved by, m
       const d = (drifts[Math.min(LEVELS, Math.max(1, Math.round(by / SAT_STEP_M)))] ??= driftOf(Math.min(LEVELS, Math.max(1, Math.round(by / SAT_STEP_M)))))
@@ -384,22 +391,24 @@ export function satGrid(whole: SatFrame, job: SatGridJob): SatGrid {
       if (!(u > -1 && u < N && v > -1 && v < N)) continue
       const [ci, cj] = [Math.floor(u), Math.floor(v)]
       const [fu, fv] = [u - ci, v - cj]
-      const share = (f.cloud[p] / 255) * area
+      const share = f.cloud[p] / 255
       for (let c = 0; c < 4; c++) {
         const [x, y] = [ci + (c & 1), cj + (c >> 1)]
         if (x < 0 || x >= N || y < 0 || y >= N) continue
-        const w = share * ((c & 1) === 1 ? fu : 1 - fu) * ((c >> 1) === 1 ? fv : 1 - fv)
-        cover[y * N + x] += w
-        weighed[y * N + x] += w * top
+        const w = area * ((c & 1) === 1 ? fu : 1 - fu) * ((c >> 1) === 1 ? fv : 1 - fv)
+        landed[y * N + x] += w
+        cover[y * N + x] += w * share
+        weighed[y * N + x] += w * share * top
       }
     }
   }
-  // A cell's top is its cloud's own (before the softening mixes neighbours in), then spread with the cover.
+  // A cell's cover: the cloud's share of what landed (of at least LANDED_MIN of a cell: a cell that little reached is not made
+  // whole by a wisp). Its top is its cloud's own (before the softening mixes neighbours in), then spread with the cover.
   for (let o = 0; o < N * N; o++) {
-    if (cover[o] > 1) {
-      weighed[o] /= cover[o]
-      cover[o] = 1
-    }
+    if (cover[o] === 0) continue
+    const of = Math.max(landed[o], LANDED_MIN, cover[o])
+    weighed[o] /= of
+    cover[o] /= of
   }
   const tmp = new Float32Array(N * N)
   soften(cover, N, tmp)
