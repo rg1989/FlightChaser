@@ -29,9 +29,14 @@
 // old; then the weather is drawn as it was without a satellite. A failed ask is made again at the next check.
 // The raw route, first: where the app's own server has the user's EUMETSAT key it serves the same frame as numbers, cut out of the
 // satellite's raw products (GET /api/wx/sat: server/eumetsat.ts, shared/sat.ts), and a source given that route asks it before the
-// pictures: nothing is read back from a colour, and the frame is there 8 to 16 minutes sooner (the Data Store has it 14 minutes after
-// its time). The server is asked for the same box, with the time of the frame held; every minute while it answers (it asks EUMETSAT
-// only when a newer frame can be there, so the minute costs EUMETSAT nothing). Its answer is held in the pictures' place (`raw`: the
+// pictures. What the numbers have that the pictures have not (checked on 2026-10-04: server/geos.ts): they are the satellite's own
+// pixels, where EUMETView's pictures are the products laid again on a lattice of 1/24° of latitude and longitude (the heights in
+// blocks of 1/8°), which stands about 2 km south-east of the pixels and puts a height block's edge up to 7 km off; nothing is read
+// back from a colour; and the frame is there sooner (the Data Store has a frame 14 minutes after its time, EUMETView 16 to 23). The
+// heights are the same steps of 320 m by either route: the product holds no finer ones. The server is asked for the same box,
+// with the time of the frame held; every minute while it answers (it asks EUMETSAT only when a newer frame can be there, so the
+// minute costs EUMETSAT nothing: a frame is in use a minute or two after it is published, where the pictures' check every 5
+// minutes adds up to 5). Its answer is held in the pictures' place (`raw`: the
 // bytes as they came; the gatherer reads the planes where they lie). A server with no key (404) is asked again in half an hour; one
 // that fails (EUMETSAT down, the server not answering, an answer that is no frame) at the next check, with one warning for the outage;
 // either way the look goes on to the pictures at once, so nothing is worse than without the route. A frame held is never given up
@@ -315,7 +320,10 @@ const browserFetch: SatFetch = {
   },
   async raw(url) {
     const r = await fetch(url) // (the app's own server)
-    if (r.status !== 200) return { status: r.status, body: null, bytes: 0 }
+    if (r.status !== 200) {
+      void r.body?.cancel() // (an answer's words are not read: the request is let go)
+      return { status: r.status, body: null, bytes: 0 }
+    }
     const body = await r.arrayBuffer() // read off the main thread, unzipped by the browser: 640 KB that cost a frame nothing
     return { status: 200, body, bytes: Number(r.headers.get('content-length')) || body.byteLength }
   },

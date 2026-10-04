@@ -58,7 +58,8 @@ export interface SatInfo {
   bad: boolean // its pictures' colours are not the ones known (or its bytes are not the frame's numbers): it is not used, and should be dropped
   missing: boolean // it came without its pixels, and the gatherer has not read it: it is not used, and should be sent again with them
   cloudy: number // the share of the field's square it sees that is cloud (0 when it sees none of it)
-  decodeMs: number // how long the pictures' colours took to read (a frame of numbers: next to nothing); 0 when the frame was kept from a job before
+  read: boolean // the frame was read at this job (its pixels or numbers came with it); false: it was kept from a job before, or is missing
+  decodeMs: number // how long the pictures' colours took to read (a frame of numbers: next to nothing); 0 when the frame was not read at this job
   gridMs: number // and the grid to make
 }
 
@@ -123,13 +124,14 @@ export function gatherer(): (job: GatherJob) => Gathered {
     if (p !== null) {
       const key = `${p.timeMs}|${p.n}|${p.box.join()}|${p.raw === undefined ? 'pictures' : 'numbers'}`
       let decodeMs = 0
-      if ((frame === null || frame.key !== key) && pixels) {
+      const reads = (frame === null || frame.key !== key) && pixels
+      if (reads) {
         const t0 = performance.now()
         frame = { key, frame: p.raw === undefined ? decodeFrame(p) : rawFrame(p) }
-        decodeMs = Math.max(performance.now() - t0, Number.MIN_VALUE) // (never 0 for a frame read now: 0 says "kept")
+        decodeMs = performance.now() - t0
       }
       const read = frame !== null && frame.key === key ? frame : null
-      satInfo = { timeMs: p.timeMs, bad: read !== null && read.frame === null, missing: read === null, cloudy: 0, decodeMs, gridMs: 0 }
+      satInfo = { timeMs: p.timeMs, bad: read !== null && read.frame === null, missing: read === null, cloudy: 0, read: reads, decodeMs, gridMs: 0 }
       if (read !== null && read.frame !== null) {
         const t0 = performance.now()
         const g = satGrid(read.frame, { lat: job.lat, lon: job.lon, shift: job.shift, epochMs: job.epochMs ?? p.timeMs, metars, model: job.grid })

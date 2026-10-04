@@ -2593,6 +2593,7 @@ test('Weather3D with the satellite through the app\'s server: the frame\'s numbe
   assert.ok(r.sky.clouds.draws.at(-1)!.some((c) => c.masked === true))
   const sat = r.w.satellite!
   assert.deepEqual([sat.raw, sat.timeMs, sat.time, sat.used, sat.bytes], [true, SAT_T0 + 15 * MIN, '08:25 UTC', true, 30_000])
+  assert.ok(sat.decodeMs !== null && sat.decodeMs >= 0 && sat.decodeMs < 50 && sat.gridMs! > 0, `the numbers took next to nothing to read: ${sat.decodeMs} ms`)
   assert.ok(sat.cloudy! > 0.3 && sat.cloudy! < 0.7, String(sat.cloudy))
   assert.equal(r.lines.at(-1), 'Clouds from 1 airport · cloud positions from Meteosat, 08:25 UTC · 0 hazard areas · Weather data by Open-Meteo.com · © EUMETSAT', 'the line does not say the route')
   r.w.rebuildSky(false)

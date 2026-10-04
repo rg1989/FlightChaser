@@ -214,8 +214,10 @@ test('gatherer with the satellite\'s pictures: pictures in colours it does not k
 test('gatherer with the satellite\'s pictures: a frame\'s colours are read once, and kept for the jobs that bring the same frame (as new objects, from a worker\'s job); another frame is read', () => {
   const gather = gatherer()
   const p = pictures(() => BLUE)
-  assert.ok(gather(satJob(p)).satInfo!.decodeMs > 0)
-  assert.equal(gather(structuredClone(satJob(p, { id: 2 }))).satInfo!.decodeMs, 0)
+  const first = gather(satJob(p)).satInfo!
+  assert.ok(first.read && first.decodeMs > 0)
+  const kept = gather(structuredClone(satJob(p, { id: 2 }))).satInfo!
+  assert.deepEqual([kept.read, kept.decodeMs], [false, 0])
   assert.ok(gather(satJob({ ...p, timeMs: T0 + 15 * 60_000 }, { id: 3 })).satInfo!.decodeMs > 0)
   assert.ok(gather(satJob(p, { id: 4, anew: true })).satInfo!.decodeMs > 0)
 })
@@ -288,7 +290,7 @@ test('gatherer with the satellite\'s frame as numbers: read once and kept, as th
   const gather = gatherer()
   const first = gather(satJob(p, { grid: null }))
   const again = gather(structuredClone(satJob(bare, { id: 2, grid: null })))
-  assert.deepEqual([again.satInfo!.missing, again.satInfo!.bad, again.satInfo!.decodeMs], [false, false, 0])
+  assert.deepEqual([first.satInfo!.read, again.satInfo!.read, again.satInfo!.missing, again.satInfo!.bad, again.satInfo!.decodeMs], [true, false, false, false, 0])
   assert.deepEqual(again.sat!.cover, first.sat!.cover)
   const crossed = structuredClone(satJob(p, { id: 3, grid: null }), { transfer: satBuffers(p) }) // as it goes to a worker: the answer's bytes handed over
   assert.equal(p.raw!.length, 0, 'handed over')

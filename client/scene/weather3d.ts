@@ -249,7 +249,7 @@ export interface SatelliteState {
   raw: boolean // it came as numbers from the app's server (EUMETSAT's raw products), not as EUMETView's two pictures
   bytes: number // its two pictures, or the server's answer, as sent
   fetchMs: number // from asking for them to having their pixels
-  decodeMs: number | null // their colours read, in the gatherer
+  decodeMs: number | null // their colours read, in the gatherer (a frame of numbers has none to read: next to 0)
   gridMs: number | null // and the grid for a field made of them
 }
 
@@ -983,7 +983,7 @@ export class Weather3D {
         this.#builtSat = '?'
         if (satBuffers(sat).length === 0) this.#sat?.forget(sat)
       }
-      if (got.satInfo !== null && got.satInfo.decodeMs > 0) this.#satCost.decodeMs = got.satInfo.decodeMs // (0: the frame was read at a job before; kept also from an answer that is overtaken)
+      if (got.satInfo !== null && got.satInfo.read) this.#satCost.decodeMs = got.satInfo.decodeMs // (not read: the frame was read at a job before; kept also from an answer that is overtaken)
       if (got.id !== this.#gatherAsk) return
       this.#satInfo = got.satInfo
       this.#satUsed = got.sat !== null
