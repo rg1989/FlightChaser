@@ -1,8 +1,8 @@
 // client/scene/cloudVolume.ts
 // The chase's weather as volumes: one post-process pass that walks every pixel's ray through the weather field (wxField.ts), so a cloud
-// is a body with a near side and a far side. The aircraft flies into it, fades in it and is gone in thick cloud (nothing is cleared round
-// it), and the terrain, the buildings and the aircraft hide the cloud behind them and are hidden by the cloud in front, as the depth
-// buffer says. Weather3D hands it the cloud specs of every source at once (draw), with the weather satellite's cloud over the same
+// is a body with a near side and a far side. The aircraft flies into it and is veiled in it (nothing is cleared round it; a cloud
+// hides a little over half of what is behind it and no more: cloudShaders.ts VEIL), and the terrain, the buildings and the aircraft
+// hide the cloud behind them and are veiled by the cloud in front, as the depth buffer says. Weather3D hands it the cloud specs of every source at once (draw), with the weather satellite's cloud over the same
 // square when a frame is in use (satGrid.ts: the field takes it as cover directly), and it has the field of them made round the place
 // given: by its builder (fieldBuilder.ts), in the app a worker, so that the frames do not wait for it. Until the builder answers, the
 // field made last is drawn, and asked by the HUD; then the new one is taken (the field, its two images, and with the first the noise).
@@ -65,7 +65,7 @@ const HAZARD: Record<HazardStyle, number> = { curtain: 0, fence: 1, box: 2 } // 
 const KM_PER_DEG = 111.195 // of latitude on the sphere the heights curve over (R_KM): the field's map
 const RAD = Math.PI / 180
 const TEXEL_KM = FIELD_KM / FIELD_N
-const SHADOW = 0.5 // the ground under full cover is darkened by this, by day
+const SHADOW = 0.3 // the ground under full cover is darkened by this, by day: a see-through cloud's shadow, light enough to read the map in (it was 0.5)
 const NO_TOP_KM = -10 // the highest top given to the march when there is no cloud: under any ground, so no ray is walked
 const BANDS_A_FRAME = 1 // of a coming field, written to the graphics card in one frame (a band's tile is 1 MB)
 

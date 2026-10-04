@@ -1,7 +1,7 @@
 // client/scene/cloudShaders.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BOX_PAD_KM, MARCH_SHADER, MIX_SHADER, REACH_KM } from './cloudShaders.ts'
+import { BOX_PAD_KM, MARCH_SHADER, MIX_SHADER, REACH_KM, VEIL, veiled } from './cloudShaders.ts'
 import { EDGE_TOP_KM, POST_KM } from './wxEdges.ts'
 import { FIELD_KM } from './wxField.ts'
 
@@ -44,4 +44,25 @@ test('the march: a ray is clipped to the box the cover stands in, not to the who
   assert.ok(MARCH_SHADER.includes('vec3 warp(vec3 p, vec3 q) { return warpFine(warpWide(p, q), q); }'), 'the two warps together are the warp there was')
   assert.ok(MARCH_SHADER.includes('if (dot(off, off) <= u_edgeBound.z * u_edgeBound.z) hazards(ro, rd, tO, pix);'))
   assert.ok(Math.abs(BOX_PAD_KM - 8.1) < 1e-9, 'the clear-air map\'s margin (3.1 km) and the room for the map\'s bend (5 km)')
+})
+
+test('the clouds are see-through: a ray\'s weather hides no more than VEIL of what is behind it (a little over half: the ground, the roads and the names stay readable through a cloud, and the aircraft in thick cloud is veiled, not gone), in all three looks, and the march ends when it has hidden that much', () => {
+  assert.ok(VEIL >= 0.55 && VEIL <= 0.6, `${VEIL}`)
+  // the rule, as the shader has it: a part adds what it would, or what is left under the cap
+  assert.equal(veiled(0.2, 0), 0.2, 'under the cap: as it is')
+  assert.ok(Math.abs(veiled(0.9, 0) - VEIL) < 1e-12, 'a thick cloud at once: the cap')
+  assert.equal(veiled(0.5, VEIL), 0, 'at the cap: nothing more')
+  assert.equal(veiled(0.5, 0.9), 0, 'over it (a hazard area\'s line was laid first): nothing more')
+  let hidden = 0
+  for (const part of [0.1, 0.3, 0.05, 0.6, 0.9, 0.2]) hidden += (1 - hidden) * veiled(part, hidden)
+  assert.ok(Math.abs(hidden - VEIL) < 1e-12, `part after part, a ray hides ${hidden}`)
+  for (const text of [
+    `const float VEIL = ${VEIL};`,
+    'float veiled(float a, float A) { return min(a, max(0.0, (VEIL - A) / max(1.0 - A, 1.0e-4))); }',
+    'if (t >= tEnd || A >= VEIL - 0.002 || float(used) >= u_steps) break;', // the volumes' walk ends at the cap
+    'fogA = min(VEIL, 1.0 - exp(-sigma(mistSev) * mist));', // from inside a block: its mist veils
+    'float fa = max(veiled(VEIL, 1.0 - (1.0 - fogA) * (1.0 - A)), FIRM * line);', // a block\'s face veils, its edge lines stay firm
+  ]) assert.ok(MARCH_SHADER.includes(text), text)
+  assert.equal(MARCH_SHADER.split('a = veiled(a, A);').length - 1, 3, 'the cloud\'s part and the rain\'s, in the volumes and in the blocks')
+  assert.ok(!MARCH_SHADER.includes('0.985') && !MARCH_SHADER.includes('A = 1.0;'), 'nothing is solid any more')
 })

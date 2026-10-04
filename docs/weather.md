@@ -37,6 +37,9 @@
   ahead strip (a side view of the next 80 km: the weather's cells, the hazard areas, the aircraft's way; not in a window under 480 px
   high). A choice applies at once and is kept in this browser; `?wxlook=natural|severity|blocks`, `?wxhaz=curtain|fence|box` and
   `?wxtrack`, `?wxslice`, `?wxstrip` (`=0` or `=1`) set them for one load, and are not kept.
+- The clouds are see-through, in all three looks: a cloud hides a little over half of what is behind it and no more, so the ground,
+  the roads and the names stay readable under it, and the aircraft in thick cloud is veiled, not gone. A cloud's edge and its lit
+  and shadowed sides still show; a block's edge lines stay firm; the shadows on the ground are light.
 - The clouds are drawn at one of nine tiers, 0 the finest (half the view's size, 128 steps a ray) and 8 the cheapest (a sixth of
   the view's size, 32 steps). The app starts at tier 7, a cheap one, and goes finer only when the graphics card's own time for the
   cloud pass proves the room (a budget of 4 ms a frame; the browser must have the timer for it: Chrome, Edge and Firefox on a

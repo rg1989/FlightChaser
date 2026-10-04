@@ -226,12 +226,12 @@ test('CloudVolume: the march is walked at a tier (marchPace.ts MARCH_TIERS: the 
   r.vol.draw([CU], HERE)
   const given = (): unknown[] => [r.vol.tier, r.call<number>(0, 'u_steps'), r.call<number>(0, 'u_detail'), r.call<number>(1, 'u_shadow'), r.stage(0).textureScale, r.vol.scale]
   r.vol.tier = 0
-  assert.deepEqual(given(), [0, 128, 0, 0.5, 0.5, 0.5])
+  assert.deepEqual(given(), [0, 128, 0, 0.3, 0.5, 0.5])
   assert.equal(r.call<number>(0, 'u_shade'), 2, 'two samples toward the Sun')
   r.vol.tier = 1
-  assert.deepEqual(given(), [1, MARCH_TIERS[1].steps, 0, 0.5, 0.5, 0.5], 'a smaller step budget')
+  assert.deepEqual(given(), [1, MARCH_TIERS[1].steps, 0, 0.3, 0.5, 0.5], 'a smaller step budget')
   r.vol.tier = 2
-  assert.deepEqual(given(), [2, MARCH_TIERS[2].steps, 1, 0.5, 0.5, 0.5], 'and the finest octave left out')
+  assert.deepEqual(given(), [2, MARCH_TIERS[2].steps, 1, 0.3, 0.5, 0.5], 'and the finest octave left out')
   r.vol.tier = 3
   assert.deepEqual(given(), [3, MARCH_TIERS[3].steps, 1, 0, 0.5, 0.5], 'and no ground shadows')
   r.vol.frame(TF, 0)
@@ -255,7 +255,7 @@ test('CloudVolume: the march is walked at a tier (marchPace.ts MARCH_TIERS: the 
   assert.deepEqual([...given(), r.call<number>(0, 'u_shade')], [last, MARCH_TIERS[last].steps, 1, 0, MARCH_TIERS[last].scale, MARCH_TIERS[last].scale, 1], 'the last tier: one sample toward the Sun')
   r.vol.tier = 0
   r.vol.frame(TF, 0)
-  assert.deepEqual(given(), [0, 128, 0, 0.5, 0.5, 0.5], 'and back to the first: everything as it was')
+  assert.deepEqual(given(), [0, 128, 0, 0.3, 0.5, 0.5], 'and back to the first: everything as it was')
 })
 
 test('CloudVolume: with a timer (passTimer.ts: the graphics card\'s own clock, where the browser has one) the pass\'s two stages are watched, a new pass\'s when it is made and none when there is no pass; the timer is asked every frame, and its time is the volume\'s; with none the time is not known', () => {
@@ -514,10 +514,10 @@ test('CloudVolume: the look as a number (0 natural, 1 severity colours, 2 blocks
   assert.equal(look(), 2)
   const tf = { fSampled: 1, fNow: 1, relHM: 0 }
   assert.equal(r.call<number>(0, 'u_light'), 1)
-  assert.equal(r.call<number>(1, 'u_shadow'), 0.5)
+  assert.equal(r.call<number>(1, 'u_shadow'), 0.3, 'a see-through cloud\'s shadow: light enough to read the map in')
   r.vol.frame(tf, 0.5)
   assert.equal(r.call<number>(0, 'u_light'), sunBrightness(0.5))
-  assert.equal(r.call<number>(1, 'u_shadow'), 0.25)
+  assert.equal(r.call<number>(1, 'u_shadow'), 0.15)
   r.vol.frame(tf, 1)
   assert.deepEqual([r.call<number>(0, 'u_light'), r.call<number>(1, 'u_shadow')], [sunBrightness(1), 0])
   r.vol.frame(tf, Number.NaN)
