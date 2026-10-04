@@ -50,7 +50,7 @@ import { NO_DISCS, outlineDiscs, type Discs } from './scene/modelOutline.ts'
 import { PlaceLabels, type LayerLabel } from './scene/placeLabels.ts'
 import { Weather } from './scene/weather.ts'
 import { Weather3D, parseWxAt, parseWxBreak, parseWxDemo, parseWxScale, type Aircraft as WxAircraft } from './scene/weather3d.ts'
-import { aheadPath, aheadProfile, aheadStatus, hazardWords } from './scene/wxAhead.ts'
+import { aheadPath, aheadStatus, hazardWords, keepProfile, type KeptProfile } from './scene/wxAhead.ts'
 import { makePendingLayer } from './scene/pendingLayer.ts'
 import { RouteLine, type PathPoint } from './scene/routeLine.ts'
 import { dayState, legSpans, type DayState } from './history/aircraftDay.ts'
@@ -838,7 +838,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   })
   // What is ahead on this heading (scene/wxAhead.ts): the way the chased aircraft goes if it keeps its track, speed and climb is worked out
   // every frame, for the 3-D view's track line and level slice (Weather3D.setAhead); a few times a second (WX_LOOK_MS) the status line,
-  // the ahead strip (ui/wxHud.ts) and the track line's minute labels follow from it. Hidden with the weather: nothing is worked out.
+  // the ahead strip (ui/wxHud.ts) and the track line's minute labels follow from it; the strip's profile (8,000 cells of the field) is
+  // made again only when it would show something else. Hidden with the weather: nothing is worked out.
   // Until a source of clouds has answered (weather3d.known) the status line says "No weather data" and the strip has no cells.
   // wxAids are the Looking ahead choices of the Weather menu (wxPrefs: the track line, the level slice, the ahead strip).
   // ponytail: the minute labels are placed with the names (placeLabels.ts), a few times a second, so they trail the track line by up to
@@ -848,6 +849,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const wxAids = { track: wxPrefs.track, slice: wxPrefs.slice, strip: wxPrefs.strip }
   let wxLookMs = -Infinity
   let wxHudUp = false // the HUD shows something
+  let wxKept: KeptProfile | null = null // the ahead strip's profile, kept while it would show the same (scene/wxAhead.ts keepProfile)
   let wxMinutesUp = false // the names overlay holds the minute labels
   let wxHudRects: readonly Rect[] = NO_RECTS // the HUD's chips and strip on the canvas: no name of the 3-D view (a hazard area's label is one) goes under them
   const lookAhead = (s: RenderState | null, now: number): void => {
@@ -866,7 +868,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const hazards = weather3d.hazards
     const known = weather3d.known // no source has answered yet: the field (none, or an empty one) says nothing of the sky
     const field = known ? weather3d.field : null
-    wxHud.set(aheadStatus(path, field, hazards, (h) => hazardWords(h.sigmet, units), known), wxAids.strip ? aheadProfile(path, field, hazards) : null, path, units)
+    if (wxAids.strip) wxKept = keepProfile(wxKept, path, field, hazards)
+    wxHud.set(aheadStatus(path, field, hazards, (h) => hazardWords(h.sigmet, units), known), wxAids.strip ? wxKept!.profile : null, path, units)
     wxHudUp = true
     wxHudRects = measureRoom('.fh-wxhud-chip, .fh-wxhud-strip').covers.filter((r) => r.w > 0 && r.h > 0)
     if (weather3d.aheadShow.track || wxMinutesUp) {

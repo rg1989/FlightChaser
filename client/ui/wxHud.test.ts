@@ -217,6 +217,36 @@ test('the strip is drawn at the width it is laid out at, as sharp as the screen 
   assert.deepEqual([n.canvas.width, n.canvas.height], [400, 112])
 })
 
+test('the strip is painted again only when it would show something else: another profile, other units, another size, or a way ahead that has moved a pixel; the same again is not painted (the app looks four times a second, and a profile lasts a second or more)', () => {
+  const m = mount()
+  m.canvas.clientWidth = 400
+  const p = profile([[20, 10, 0.9, 2]])
+  const painted = (): number => m.canvas.ctx.calls.filter((c) => c.op === 'clearRect').length
+  m.hud.set(status(), p, PATH, DEFAULT_UNITS)
+  assert.equal(painted(), 1)
+  m.hud.set(status({ sev: 2, inMin: 3 }), p, PATH, DEFAULT_UNITS)
+  m.hud.set(status(), p, aheadPath({ lat: 32.0005, lon: 34.9, altM: 3010 }, 0, 360.5, 0)!, DEFAULT_UNITS)
+  assert.equal(painted(), 1, 'the same profile; the aircraft 10 m higher and half a knot faster: not a pixel')
+  m.hud.set(status(), p, aheadPath({ lat: 32, lon: 34.9, altM: 3400 }, 0, 360, 0)!, DEFAULT_UNITS)
+  assert.equal(painted(), 2, '400 m higher: its line is 3 pixels up')
+  m.hud.set(status(), p, aheadPath({ lat: 32, lon: 34.9, altM: 3400 }, 0, 360, -1500)!, DEFAULT_UNITS)
+  assert.equal(painted(), 3, 'descending: the line\'s far end is lower')
+  m.hud.set(status(), p, aheadPath({ lat: 32, lon: 34.9, altM: 3400 }, 0, 300, -1500 * (300 / 360))!, DEFAULT_UNITS)
+  assert.equal(painted(), 4, 'slower: the minutes stand closer')
+  m.hud.set(status(), { ...p }, aheadPath({ lat: 32, lon: 34.9, altM: 3400 }, 0, 300, -1500 * (300 / 360))!, DEFAULT_UNITS)
+  assert.equal(painted(), 5, 'another profile (wxAhead.ts keepProfile gives a new object when it has made it again)')
+  const last = { ...p }
+  m.hud.set(status(), last, PATH, DEFAULT_UNITS)
+  m.hud.set(status(), last, PATH, { ...DEFAULT_UNITS, alt: 'm' })
+  assert.equal(painted(), 7, 'other units: other labels')
+  m.canvas.clientWidth = 320
+  m.hud.set(status(), last, PATH, { ...DEFAULT_UNITS, alt: 'm' })
+  assert.equal(painted(), 8, 'another width')
+  m.hud.setStrip(false)
+  m.hud.setStrip(true)
+  assert.equal(painted(), 8, 'hidden and shown with nothing new: the canvas has kept its picture')
+})
+
 test('what has not changed is not written again: the line says the same thing most of the time', () => {
   const m = mount()
   const s = status({ sev: 1, inMin: 5 }, { inside: false, inMin: 3, text: 'icing' })

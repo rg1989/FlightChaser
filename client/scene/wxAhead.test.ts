@@ -6,7 +6,7 @@ import { DEFAULT_UNITS } from '../ui/units.ts'
 import { PUFF_FILL, type CloudSpec } from './cloudField.ts'
 import {
   AHEAD_KM, AHEAD_MIN, IN_COVER, PROFILE_COLS, PROFILE_ROWS, PROFILE_TOP_M, SEV_COLOR, SEV_NAME, aheadPath, aheadProfile, aheadStatus, hazardWords,
-  pathPointAt, sevOf, statusWords, type AheadPath, type AheadPoint, type AheadStatus,
+  keepProfile, pathPointAt, sevOf, statusWords, type AheadPath, type AheadPoint, type AheadStatus,
 } from './wxAhead.ts'
 import type { Hazard } from './wxGeo.ts'
 import { buildField, sampleField } from './wxField.ts'
@@ -306,6 +306,44 @@ test('aheadProfile: a hazard area is a run along the path, from its first column
 
 const status = (cloud: Partial<AheadStatus['cloud']>, hazardPart: Omit<NonNullable<AheadStatus['hazard']>, 'color'> | null = null, known = true): AheadStatus =>
   ({ known, cloud: { inside: false, sev: 0, inMin: null, ...cloud }, hazard: hazardPart === null ? null : { color: '#ff5a5a', ...hazardPart } })
+
+test('aheadProfile: given a profile made before, it fills that one\'s arrays (8,000 numbers each are not made anew four times a second); the profile it gives is a new object with the same numbers as one made from nothing', () => {
+  const f = buildField([puff(2000, 4000, { northKm: 30, sev: 2 }), puff(5000, 9000, { northKm: 55, wide: 9000, sev: 3, tower: 0 })], LAT, LON)
+  const hz = [hazard(band(40, 60), 1000, 9000)]
+  const before = aheadProfile(path({ track: 40 }), f, [])
+  assert.ok(before.cover.every((v) => v === 0), 'that path misses the cloud')
+  const again = aheadProfile(path(), f, hz, before)
+  assert.notEqual(again, before)
+  assert.ok(again.cover === before.cover && again.sev === before.sev, 'the same arrays')
+  const fresh = aheadProfile(path(), f, hz)
+  assert.deepEqual(again, fresh)
+  assert.ok(fresh.cover.some((v) => v > 0.9))
+  const cleared = aheadProfile(path(), null, [], again)
+  assert.ok(cleared.cover === before.cover && cleared.cover.every((v) => v === 0) && cleared.sev.every((v) => v === 0), 'no field: the arrays are emptied')
+})
+
+test('keepProfile: the strip\'s profile is made again only when it would show something else: another field, other hazard areas, or a path whose first place or whose place 80 km on has moved half a cell (0.25 km); else the one kept is given back', () => {
+  const f = buildField([puff(2000, 4000, { northKm: 30, sev: 2 })], LAT, LON)
+  const hz = [hazard(band(40, 60), 1000, 9000)]
+  const from = (northKm: number, o: { track?: number; alt?: number; gs?: number } = {}): AheadPath => aheadPath({ ...at(0, northKm), altM: o.alt ?? 3000 }, o.track ?? 0, o.gs ?? GS, 0)!
+  const first = keepProfile(null, from(0), f, hz)
+  assert.deepEqual(first.profile, aheadProfile(from(0), f, hz))
+  assert.equal(keepProfile(first, from(0.2), f, hz), first, '200 m on: kept')
+  assert.equal(keepProfile(first, from(0.2, { alt: 5000, gs: 200 }), f, hz), first, 'another height or speed moves no cell (the strip draws the way and its minutes from the path itself)')
+  const moved = keepProfile(first, from(0.3), f, hz)
+  assert.notEqual(moved, first)
+  assert.notEqual(moved.profile, first.profile)
+  assert.equal(moved.profile.cover, first.profile.cover, 'made again in the same arrays')
+  assert.deepEqual(moved.profile, aheadProfile(from(0.3), f, hz))
+  assert.equal(keepProfile(moved, from(0.5), f, hz), moved, 'and counted from where it was made last')
+  const turned = keepProfile(moved, from(0.3, { track: 0.3 }), f, hz)
+  assert.notEqual(turned, moved, 'a turn of 0.3° moves the far end 0.4 km')
+  assert.equal(keepProfile(turned, from(0.3, { track: 0.35 }), f, hz), turned, '0.05° more: 70 m')
+  const g = buildField([puff(2000, 4000, { northKm: 30, sev: 2 })], LAT, LON)
+  assert.notEqual(keepProfile(turned, from(0.3, { track: 0.3 }), g, hz), turned, 'another field')
+  assert.notEqual(keepProfile(turned, from(0.3, { track: 0.3 }), f, [...hz]), turned, 'another list of hazard areas')
+  assert.notEqual(keepProfile(turned, from(0.3, { track: 0.3 }), null, hz), turned)
+})
 
 test('the severity scale: cloud, light rain, heavy rain, a thunderstorm, with the colours of the plan; a number rounds and stays within it', () => {
   assert.deepEqual([...SEV_COLOR], ['#f2f5f8', '#58a6ff', '#ffbe3d', '#ff4d3d'])

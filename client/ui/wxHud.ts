@@ -9,7 +9,9 @@
 //   areas dashed, each in its colour, the aircraft's way as a dashed line with a tick each minute, the heights in the frame's units).
 //   A window under 480 px high has no room for it (wxHud.css): it is not drawn there.
 // The app gives it what to say a few times a second (set) and whether the strip shows (setStrip: the Weather menu's choice). Nothing
-// here is computed: set(null …) hides it all, and so does the app while the weather is hidden. It publishes its height as
+// here is computed: set(null …) hides it all, and so does the app while the weather is hidden. The strip is painted again only when
+// it would show something else (another profile, other units, another size, a way ahead that has moved a pixel): a profile lasts a
+// second or more (wxAhead.ts keepProfile), and its up to 8,000 cells are not drawn four times a second. It publishes its height as
 // --fh-wxhud-h on its root, which wxHud.css uses to stand the alert toasts under it.
 // ponytail: the strip is not one of the flight-data frame's movable cards: it has a fixed place, and the frame keeps off it as it does off
 // the search box (app.ts FRAME_COVERS). Upgrade: a block of the flight-data frame.
@@ -182,6 +184,7 @@ export function mountWxHud(root: HTMLElement): WxHudHandle {
   let stripOn = true
   let last: { status: AheadStatus | null; profile: AheadProfile | null; path: AheadPath | null; units: Units } | null = null
   let published = 0
+  let painted: (string | number | AheadProfile)[] = [] // what the strip's picture was painted from (paintStrip)
   let dotColor = ''
   let hazardColor = ''
   const family = (): string => (typeof getComputedStyle === 'function' ? getComputedStyle(canvas).fontFamily : '') || FALLBACK_FONT
@@ -201,6 +204,13 @@ export function mountWxHud(root: HTMLElement): WxHudHandle {
     const w = Math.max(220, Math.round(canvas.clientWidth || STRIP_W)) // laid out: the strip is shown, so it has a width
     const hh = Math.round(w * STRIP_RATIO)
     const r = Math.min(2, (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1) || 1)
+    // What the picture depends on: the profile, the units, the size, and the way ahead to the pixel (its height now, half-way and at
+    // the far end, which give its line, and a minute's length, which gives the ticks). The same again: the picture stands.
+    const { x0, y0, x1, y1 } = stripPlot(w, hh, units)
+    const row = (km: number): number => Math.round(((y1 - y0) * Math.min(pathPointAt(path, km).altM, profile.topM)) / profile.topM)
+    const now = [profile, units.alt, w, hh, r, row(0), row(profile.kmAhead / 2), row(profile.kmAhead), Math.round(((x1 - x0) * path.kmPerMin) / profile.kmAhead)]
+    if (now.length === painted.length && now.every((v, k) => v === painted[k])) return
+    painted = now
     if (canvas.width !== Math.round(w * r) || canvas.height !== Math.round(hh * r)) {
       canvas.width = Math.round(w * r)
       canvas.height = Math.round(hh * r)

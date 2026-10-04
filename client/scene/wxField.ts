@@ -180,21 +180,34 @@ export interface Cover {
   sev: number
 }
 
-// coverAt's scratch: the four texels round a place and their weights. Reused, so a call allocates nothing (the HUD asks thousands a frame).
+/**
+ * The field at one place, for every height (columnAt): the bands that have cover there, in the bands' order, each with its cover,
+ * base, top and severity as a shader's texture() mixes them from the four texels round the place.
+ */
+export interface FieldColumn {
+  n: number // the bands with cover at the place: the first n of each array
+  cover: Float64Array
+  base: Float64Array
+  top: Float64Array
+  sev: Float64Array
+}
+
+/** A column to give columnAt. */
+export const fieldColumn = (): FieldColumn => ({ n: 0, cover: new Float64Array(BANDS), base: new Float64Array(BANDS), top: new Float64Array(BANDS), sev: new Float64Array(BANDS) })
+
+// columnAt's scratch: the four texels round a place and their weights. Reused, so a call allocates nothing (the HUD asks thousands a second).
 const cell = new Int32Array(4)
 const share = new Float64Array(4)
 const mix = (a: Float32Array): number => share[0] * a[cell[0]] + share[1] * a[cell[1]] + share[2] * a[cell[2]] + share[3] * a[cell[3]]
 
 /**
- * How much cloud there is at lat, lon, altM (metres above sea level), and how severe: for each band whose heights reach altM, the
- * four texels round the place mixed plainly (cover, base, top and severity each on its own, as a shader's texture() mixes the image),
- * the cover times the profile at altM; the highest wins and brings its band's severity. Nothing for no field, outside its square, or
- * at a height no band reaches. The answer is written into `out` (both numbers, always), which is returned: no allocation.
+ * The field at lat, lon, written into `out` (which is returned): for each band with cover there, the four texels round the place
+ * mixed plainly (cover, base, top and severity each on its own, as a shader's texture() mixes the image). Nothing for no field, an
+ * empty one, or a place outside its square. What every height of the place is then asked of (coverIn): the texels are read once.
  */
-export function coverAt(f: WxField | null, lat: number, lon: number, altM: number, out: Cover): Cover {
+export function columnAt(f: WxField | null, lat: number, lon: number, out: FieldColumn): FieldColumn {
   const N = FIELD_N
-  out.cover = 0
-  out.sev = 0
+  out.n = 0
   if (f === null || f.empty) return out
   const u = (wrapLon(lon - f.lon) * kmPerLon(f.lat) + HALF_KM) / TEXEL_KM - 0.5
   const v = ((lat - f.lat) * KM_PER_DEG + HALF_KM) / TEXEL_KM - 0.5
@@ -211,16 +224,46 @@ export function coverAt(f: WxField | null, lat: number, lon: number, altM: numbe
   share[2] = (1 - fx) * fy
   share[3] = fx * fy
   for (let b = 0; b < BANDS; b++) {
-    if (altM < f.lo[b] || altM > f.hi[b]) continue // (nothing is lost: wherever a band has cover, the mixed base and top lie inside its lo … hi)
+    if (f.lo[b] > f.hi[b]) continue // an empty band
     const cover = mix(f.cov[b])
     if (cover <= 0) continue
-    const c = cover * profile(altM, mix(f.base[b]), mix(f.top[b]))
+    const k = out.n++
+    out.cover[k] = cover
+    out.base[k] = mix(f.base[b])
+    out.top[k] = mix(f.top[b])
+    out.sev[k] = mix(f.sev[b])
+  }
+  return out
+}
+
+/**
+ * How much cloud a column has at altM (metres above sea level), and how severe: each band's cover times the profile at altM; the
+ * highest wins and brings its band's severity. Written into `out` (both numbers, always), which is returned.
+ */
+export function coverIn(col: FieldColumn, altM: number, out: Cover): Cover {
+  out.cover = 0
+  out.sev = 0
+  for (let k = 0; k < col.n; k++) {
+    if (!(altM > col.base[k] && altM < col.top[k])) continue // (the profile is nothing there)
+    const c = col.cover[k] * profile(altM, col.base[k], col.top[k])
     if (c > out.cover) {
       out.cover = c
-      out.sev = mix(f.sev[b])
+      out.sev = col.sev[k]
     }
   }
   return out
+}
+
+const column = fieldColumn() // coverAt's own
+
+/**
+ * How much cloud there is at lat, lon, altM (metres above sea level), and how severe: for each band that has cover at the place, the
+ * four texels round it mixed plainly (columnAt), the cover times the profile at altM; the highest wins and brings its band's
+ * severity (coverIn). Nothing for no field, outside its square, or at a height no band reaches. The answer is written into `out`
+ * (both numbers, always), which is returned: no allocation.
+ */
+export function coverAt(f: WxField | null, lat: number, lon: number, altM: number, out: Cover): Cover {
+  return coverIn(columnAt(f, lat, lon, column), altM, out)
 }
 
 /** coverAt, as an object of its own: for a place or two. A loop over many places gives coverAt one object to write into. */
