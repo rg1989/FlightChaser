@@ -1,6 +1,6 @@
 // client/ui/wxPrefs.ts
 /**
- * The Weather menu's choices (ui/wxMenu.ts): the clouds' look, the hazard areas' style and the three looking-ahead aids. The URL aids (?wxlook=natural|severity|blocks,
+ * The Weather menu's choices (ui/wxMenu.ts): the clouds' look, the hazard areas' style and the three looking-ahead aids. The URL aids (?wxlook=natural|severity|blocks|sculpted,
  * ?wxhaz=curtain|fence|box, ?wxtrack, ?wxslice, ?wxstrip = 0|1) win over localStorage['fh.wx3d.v1'], which wins over the defaults (severity colours, curtains,
  * the track line and the ahead strip on, the level slice off). A URL aid is for the load it comes with: what is saved is kept apart from what is in force, and a choice
  * made in the menu saves that choice alone (savedAfter). Pure: the app passes location.search, the stored string and the storage, so Node tests need no DOM.
@@ -21,7 +21,7 @@ export const DEFAULT_WX_PREFS: WxPrefs = Object.freeze({ look: 'severity', hazar
 export const WX_KEYS = Object.keys(DEFAULT_WX_PREFS) as (keyof WxPrefs)[]
 /** The URL aid of each choice. */
 export const WX_URL_KEYS: Readonly<Record<keyof WxPrefs, string>> = Object.freeze({ look: 'wxlook', hazard: 'wxhaz', track: 'wxtrack', slice: 'wxslice', strip: 'wxstrip' })
-export const WX_LOOKS: readonly CloudLook[] = ['natural', 'severity', 'blocks']
+export const WX_LOOKS: readonly CloudLook[] = ['natural', 'severity', 'blocks', 'sculpted']
 export const WX_HAZARDS: readonly HazardStyle[] = ['curtain', 'fence', 'box']
 
 /** Only one of the choices counts; anything else (missing, another type, another word) keeps the fallback. */

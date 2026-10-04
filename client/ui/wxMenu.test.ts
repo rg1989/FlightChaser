@@ -101,7 +101,7 @@ function mount(prefs: WxPrefs = DEFAULT_WX_PREFS, view: Partial<WxMenuView> = {}
   return { root, menu, changes, masters, group, button, sw, pressed, aids, part }
 }
 
-/** Every control but the master switch: the two segments' buttons and the three aids' switches. */
+/** Every control but the master switch: the two segments' buttons (four looks, three styles) and the three aids' switches. */
 const others = (root: El): El[] => all(root).filter((e) => e.className === 'fh-seg-b' || (e.attrs.role === 'switch' && e.attrs['aria-label'] !== 'Weather'))
 /** What is on screen: the tree without its hidden parts. */
 const visible = (el: El): El[] => (el.hidden ? [] : [el, ...el.children.flatMap(visible)])
@@ -109,7 +109,7 @@ const visible = (el: El): El[] => (el.hidden ? [] : [el, ...el.children.flatMap(
 test('the panel: Clouds with its legend, Hazard areas, Looking ahead with a switch row and a hint each', () => {
   const { root, group } = mount()
   assert.deepEqual(all(root).filter((e) => e.className === 'fh-scene-title').map(text), ['Clouds', 'Hazard areas', 'Looking ahead'])
-  assert.deepEqual(group('Clouds').children.map(text), ['Natural', 'Severity colours', 'Blocks'])
+  assert.deepEqual(group('Clouds').children.map(text), ['Natural', 'Severity colours', 'Blocks', 'Sculpted'])
   assert.deepEqual(group('Hazard area style').children.map(text), ['Curtain', 'Fence', 'Box'])
   const rows = all(root).filter((e) => e.className === 'fh-scene-row')
   assert.deepEqual(rows.map((r) => text(r.children[1])), [
@@ -228,9 +228,9 @@ test('update() writes only what changed (it runs for every choice made)', () => 
   menu.update({ ...p })
   assert.equal(writes(), before, 'the same prefs: nothing written')
   menu.update({ ...p, look: 'blocks' })
-  assert.equal(writes(), before + 3, 'a look: its three buttons')
+  assert.equal(writes(), before + 4, 'a look: its four buttons')
   menu.update({ ...p, look: 'blocks', slice: true })
-  assert.equal(writes(), before + 4, 'a switch: that switch')
+  assert.equal(writes(), before + 5, 'a switch: that switch')
 })
 
 test('destroy() takes the panel\'s parts out of its root', () => {
@@ -280,7 +280,7 @@ test('the master row\'s hint follows the view: radar and airports top-down, clou
 test('Weather off: every other control keeps the stored choice but is disabled, and a click on one changes nothing', () => {
   const p: WxPrefs = { look: 'blocks', hazard: 'fence', track: false, slice: true, strip: false }
   const { root, menu, button, sw, pressed, aids, group, changes, masters } = mount(p, { wx: false })
-  assert.equal(others(root).length, 9)
+  assert.equal(others(root).length, 10)
   for (const e of others(root)) assert.equal(e.disabled, true, `${e.attrs['aria-label'] ?? e.textContent} is disabled`)
   for (const g of [group('Clouds'), group('Hazard area style'), ...['Track line', 'Level slice', 'Ahead strip'].map((l) => sw(l).parent!)]) assert.equal(g.attrs['aria-disabled'], 'true')
   assert.equal(sw('Weather').disabled, false, 'the master stays in use')
@@ -300,7 +300,7 @@ test('Weather off: every other control keeps the stored choice but is disabled, 
 
 test('top-down: the cloud look, the hazard style and the looking-ahead rows are there, disabled, with one line, "In the chase view"; in the chase the line goes', () => {
   const { root, menu, part } = mount(DEFAULT_WX_PREFS, { chasing: false })
-  assert.equal(others(root).length, 9)
+  assert.equal(others(root).length, 10)
   for (const e of others(root)) assert.equal(e.disabled, true)
   assert.equal(all(root).find((e) => e.attrs.role === 'switch' && e.attrs['aria-label'] === 'Weather')!.disabled, false, 'the master is in use')
   const note = part('fh-wxm-note')
@@ -324,7 +324,7 @@ test('Live only (History, a scenario): the master switch is disabled, showing it
 
 test('after a drawing error the Clouds segment is disabled, the hazard style and the aids are not', () => {
   const { root, menu, group, button, sw, changes } = mount(DEFAULT_WX_PREFS, { failed: true })
-  assert.deepEqual(group('Clouds').children.map((b) => b.disabled), [true, true, true])
+  assert.deepEqual(group('Clouds').children.map((b) => b.disabled), [true, true, true, true])
   assert.equal(group('Clouds').attrs['aria-disabled'], 'true')
   button('Clouds', 'Blocks').click()
   assert.deepEqual(changes, [])
@@ -434,4 +434,36 @@ test('the credit link looks like the rest of the line (its colour, underlined on
   const css = readFileSync(new URL('./wxMenu.css', import.meta.url), 'utf8')
   assert.match(css, /\.fh-wxm-seg\[aria-disabled='true'\],\s*\.fh-scene-row\[aria-disabled='true'\] \{[^}]*opacity: 0\.4;[^}]*pointer-events: none;[^}]*\}/)
   assert.match(css, /\.fh-seg-b:disabled \{[^}]*cursor: default;[^}]*\}/)
+})
+
+test('the fourth look, Sculpted: its button asks for it, shows pressed, and the others ask for theirs from it', () => {
+  const p: WxPrefs = { look: 'severity', hazard: 'curtain', track: true, slice: false, strip: true }
+  const { menu, button, pressed, changes } = mount(p)
+  button('Clouds', 'Sculpted').click()
+  assert.deepEqual(changes, [{ ...p, look: 'sculpted' }])
+  menu.update({ ...p, look: 'sculpted' })
+  assert.deepEqual(pressed('Clouds'), ['Sculpted'])
+  button('Clouds', 'Sculpted').click() // pressed already
+  button('Clouds', 'Blocks').click()
+  assert.deepEqual(changes, [{ ...p, look: 'sculpted' }, { ...p, look: 'blocks' }])
+  assert.deepEqual(mount({ ...p, look: 'sculpted' }).pressed('Clouds'), ['Sculpted'])
+})
+
+test('in the Sculpted look the level slice is not drawn: its switch is disabled, keeps its choice, and its hint says "Not in the Sculpted look yet"', () => {
+  const p: WxPrefs = { look: 'sculpted', hazard: 'curtain', track: true, slice: true, strip: true }
+  const { menu, sw, changes } = mount(p)
+  const hint = (): string => sw('Level slice').parent!.children[1].children[1].textContent
+  assert.deepEqual([sw('Level slice').disabled, sw('Level slice').parent!.attrs['aria-disabled'], sw('Level slice').attrs['aria-checked'], hint()], [true, 'true', 'true', 'Not in the Sculpted look yet'])
+  assert.deepEqual([sw('Track line').disabled, sw('Ahead strip').disabled], [false, false], 'the other aids are in use')
+  sw('Level slice').click()
+  sw('Level slice').parent!.click({ target: sw('Level slice').parent! })
+  assert.deepEqual(changes, [])
+  menu.update({ ...p, look: 'severity' }) // another look: in use again, with its own hint
+  assert.deepEqual([sw('Level slice').disabled, sw('Level slice').parent!.attrs['aria-disabled'], hint()], [false, 'false', "The weather at the aircraft's own altitude"])
+  sw('Level slice').click()
+  assert.deepEqual(changes, [{ ...p, look: 'severity', slice: false }])
+  menu.update({ ...p, look: 'sculpted' })
+  assert.deepEqual([sw('Level slice').disabled, hint()], [true, 'Not in the Sculpted look yet'])
+  menu.setView({ ...CHASE, wx: false }) // and with the weather off it is disabled as the rest
+  assert.equal(sw('Level slice').disabled, true)
 })

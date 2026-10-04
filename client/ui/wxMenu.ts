@@ -2,8 +2,9 @@
 // The Weather panel (a square of its own under the Layers square, always on the rail): a master switch (Weather, W: ScenePrefs.wx) with
 // what hangs under it: the rain scale in the radar's colours and the airports legend (the top-down map's) and the status line (both
 // views', with Open-Meteo's credit in it, and EUMETSAT's while the satellite's frame is in use, as links to their sites, as their licences
-// ask); Clouds, in three looks (natural, severity colours, blocks) with the severity scale's four colours under them; Hazard areas, in
-// three styles (curtain, fence, box); Looking ahead, a switch row each for the track line, the level slice and the ahead strip. The
+// ask); Clouds, in four looks (natural, severity colours, blocks, sculpted) with the severity scale's four colours under them; Hazard areas, in
+// three styles (curtain, fence, box); Looking ahead, a switch row each for the track line, the level slice and the ahead strip (the
+// level slice is not drawn in the Sculpted look: there its switch is disabled, keeps its choice, and its hint says so). The
 // looks, styles and aids are the chase's: top-down they show disabled, with one line, "In the chase view". With the master switch off
 // every other control keeps the choice stored but is disabled (native `disabled` on the buttons, aria-disabled on the row or the button
 // group, which wxMenu.css dims); nothing in WxPrefs changes with the switch. After a drawing error the Clouds segment is disabled; in
@@ -41,7 +42,7 @@ export interface WxMenuHandle {
   destroy(): void
 }
 
-const LOOKS: [CloudLook, string][] = [['natural', 'Natural'], ['severity', 'Severity colours'], ['blocks', 'Blocks']]
+const LOOKS: [CloudLook, string][] = [['natural', 'Natural'], ['severity', 'Severity colours'], ['blocks', 'Blocks'], ['sculpted', 'Sculpted']]
 const HAZARDS: [HazardStyle, string][] = [['curtain', 'Curtain'], ['fence', 'Fence'], ['box', 'Box']]
 // The severity scale's names (wxAhead.ts SEV_COLOR is in this order), as a legend says them.
 const LEGEND = ['Cloud', 'Light rain', 'Heavy rain', 'Thunderstorm']
@@ -54,6 +55,7 @@ const AIDS: Aid[] = [
   { key: 'slice', icon: 'layers', label: 'Level slice', hint: "The weather at the aircraft's own altitude" },
   { key: 'strip', icon: 'altitude', label: 'Ahead strip', hint: 'Side view of the next 80 km' },
 ]
+const NO_SLICE = 'Not in the Sculpted look yet' // the level slice's hint in that look, where it is not drawn
 /** A control group or a row, in use or not: its buttons, and the box that says so. */
 interface Part { box: HTMLElement; buttons: HTMLButtonElement[]; off: boolean }
 
@@ -196,9 +198,9 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
   const aids = AIDS.map((a) => {
     const r = switchRow(a.icon, a.label, a.hint, () => opts.onChange({ ...prefs, [a.key]: !prefs[a.key] }), prefs[a.key])
     switches.set(a.key, r.sw)
-    return r.part
+    return { ...a, part: r.part, hintEl: r.hint }
   })
-  ahead.append(...aids.map((p) => p.box))
+  ahead.append(...aids.map((a) => a.part.box))
   root.append(master, clouds, hazards, ahead)
 
   /** Everything the view decides: what is in use, what shows, the hint, the switch, the scale's colours. */
@@ -208,7 +210,12 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     setOff(m.part, !live)
     setOff(looks, !use || failed)
     setOff(styles, !use)
-    for (const p of aids) setOff(p, !use)
+    for (const a of aids) {
+      const undrawn = a.key === 'slice' && prefs.look === 'sculpted' // the Sculpted look has no level slice
+      setOff(a.part, !use || undrawn)
+      const words = undrawn ? NO_SLICE : a.hint
+      if (a.hintEl.textContent !== words) a.hintEl.textContent = words
+    }
     if (wx !== masterOn) m.sw.setAttribute('aria-checked', String((masterOn = wx)))
     const hint = chasing ? MASTER_HINT.chase : MASTER_HINT.top
     if (m.hint.textContent !== hint) m.hint.textContent = hint
@@ -228,7 +235,9 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     update(next) {
       for (const s of segs) if (next[s.key] !== prefs[s.key]) s.b.setAttribute('aria-pressed', String(next[s.key] === s.value))
       for (const [key, sw] of switches) if (next[key] !== prefs[key]) sw.setAttribute('aria-checked', String(next[key]))
+      const look = next.look !== prefs.look
       prefs = { ...next }
+      if (look) fit() // the level slice's switch goes out of use in the Sculpted look, and comes back
     },
     setView(next) {
       view = { ...next }

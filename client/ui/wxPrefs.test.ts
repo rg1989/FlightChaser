@@ -132,3 +132,14 @@ test('savedAfter: a choice made in the menu is written onto what was saved; a UR
   writeWxPrefs(savedAfter(saved, inForce, next), { setItem: (k, v) => void store.set(k, v) })
   assert.deepEqual(readWxPrefs('', store.get(WX_PREFS_KEY)!), { look: 'blocks', hazard: 'fence', track: true, slice: false, strip: false })
 })
+
+test('the Sculpted look: ?wxlook=sculpted and a stored "sculpted" are read, and written back', () => {
+  assert.deepEqual(readWxPrefs('?wxlook=sculpted', null), { ...DEFAULTS, look: 'sculpted' })
+  assert.deepEqual(readWxPrefs('', '{"look":"sculpted"}'), { ...DEFAULTS, look: 'sculpted' })
+  assert.deepEqual(readWxPrefs('?wxlook=severity', '{"look":"sculpted"}'), DEFAULTS)
+  assert.equal(readWxPrefs('?wxlook=Sculpted', null).look, 'severity') // the word as it is, no other
+  let stored: string | null = null
+  writeWxPrefs({ ...DEFAULTS, look: 'sculpted' }, { setItem: (_k, v) => void (stored = v) })
+  assert.equal(readWxPrefs('', stored).look, 'sculpted')
+  assert.equal(dropWxAids('?hex=a831b2&wxlook=sculpted&wx=1', ['look']), '?hex=a831b2&wx=1')
+})
