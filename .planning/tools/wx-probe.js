@@ -381,6 +381,7 @@ export async function flown({ s = 240 } = {}) {
   })
   po.observe({ type: 'longtask' })
   performance.clearMeasures('fh:wx')
+  performance.clearMeasures('fh:wx-ahead')
   const t0 = performance.now()
   const ends = []
   const swaps = []
@@ -398,5 +399,20 @@ export async function flown({ s = 240 } = {}) {
     const near = (t) => Math.abs(t - at) <= 1000
     return `at ${Math.round((at - t0) / 1000)} s: weather ${f1(max(wx.filter((e) => near(e.startTime)).map((e) => e.duration)))} ms, frame ${f1(max(dts.filter((_, i) => near(ends[i]))))} ms`
   })
-  return `${where()} flown ${Math.round(s)} s, ${f1(km)} km: ${swaps.length} new field${swaps.length === 1 ? '' : 's'} [${round.join('; ')}]; the weather's longest hold ${f1(max(wx.map((e) => e.duration)))} ms, ${wx.filter((e) => e.duration > 8).length} frames over 8 ms; frames median ${f1(med(dts))} p99 ${f1(pct(dts, 99))} max ${f1(max(dts))} ms; long tasks ${long.length} (max ${f1(max(long.map((l) => l.ms)))} ms)`
+  const ahead = performance.getEntriesByName('fh:wx-ahead')
+  const part = (e) => {
+    const a = ahead.find((x) => Math.abs(x.startTime + x.duration - (e.startTime + e.duration)) < 0.5)
+    return a === undefined ? '' : ` (the way ahead and the HUD ${f1(a.duration)})`
+  }
+  const top = [...wx].sort((a, b) => b.duration - a.duration).slice(0, 8).map((e) => `${f1(e.duration)} ms at ${f1((e.startTime - t0) / 1000)} s${part(e)}`).join(', ')
+  return `${where()} flown ${Math.round(s)} s, ${f1(km)} km: ${swaps.length} new field${swaps.length === 1 ? '' : 's'} [${round.join('; ')}]; the weather's longest hold ${f1(max(wx.map((e) => e.duration)))} ms, ${wx.filter((e) => e.duration > 8).length} frames over 8 ms, its longest: ${top}; frames median ${f1(med(dts))} p99 ${f1(pct(dts, 99))} max ${f1(max(dts))} ms; long tasks ${long.length} (max ${f1(max(long.map((l) => l.ms)))} ms)`
+}
+
+/** The first load: the frames in which the weather held the main thread longest since the page began, and when (s after the first of them). */
+export async function first() {
+  const all = performance.getEntriesByName('fh:wx')
+  if (all.length === 0) return `${where()} first: no fh:wx measure (?bench=1)`
+  const t0 = all[0].startTime
+  const top = [...all].sort((a, b) => b.duration - a.duration).slice(0, 6)
+  return `${where()} the first load: ${all.length} frames; the weather's longest holds: ${top.map((e) => `${f1(e.duration)} ms at ${f1((e.startTime - t0) / 1000)} s`).join(', ')}; over 8 ms: ${all.filter((e) => e.duration > 8).length}`
 }
