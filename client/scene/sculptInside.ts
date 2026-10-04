@@ -7,12 +7,14 @@
 // plainly below. Each band's mesh brings its top sheet and its underside as two maps on the field's texels (roof, floor: m above the
 // sea, both 0 outside a body); a place is in a band's body between the two, read between the four texels round it.
 // The depth is 0 at a body's surface and 1 from EDGE_M inside it (above the underside and below the top sheet: near the rim the
-// two are close, so it is shallow there). The cloud between two places is the depth added up along the line, km.
+// two are close, so it is shallow there). The cloud between two places is the depth added up along the line, km. And the track
+// line's pieces are each asked at their middle: in a body (deeper than IN_BODY), and of what severity, or in clear air.
 import type { SculptMesh } from './sculptMesh.ts'
 import { FIELD_KM, FIELD_N, type WxField } from './wxField.ts'
 import { wrapLon } from './wxGeo.ts'
 
 export const EDGE_M = 120 // a place is wholly in a body from this far inside its surface
+export const IN_BODY = 0.3 // a piece of the track line is in a body when its middle is this deep
 const TEXEL_KM = FIELD_KM / FIELD_N
 const KM_PER_DEG = 111.195 // of latitude: the field's map
 const RAD = Math.PI / 180
@@ -92,5 +94,18 @@ export function cloudBetween(mesh: SculptMesh | null, field: WxField | null, a: 
   }
   out.depth = (sum / samples) * km
   out.sev = sum > 0 ? sev / sum : 0
+  return out
+}
+
+/**
+ * The track line's pieces, from each place of `places` to the next: the severity of the body a piece's middle is in (0 … 3), or −1
+ * in clear air. Written into `out` (a number a piece), which is returned.
+ */
+export function trackSeverities(mesh: SculptMesh | null, field: WxField | null, places: readonly Place[], out: Float32Array): Float32Array {
+  for (let k = 0; k + 1 < places.length && k < out.length; k++) {
+    const [a, b] = [places[k], places[k + 1]]
+    bodyAt(mesh, field, (a.lat + b.lat) / 2, a.lon + wrapLon(b.lon - a.lon) / 2, (a.altM + b.altM) / 2, at)
+    out[k] = at.depth > IN_BODY ? at.sev : -1
+  }
   return out
 }

@@ -102,6 +102,8 @@ import { REACH_KM } from './cloudShaders.ts'
 import { CloudVolume, resumeRendering, type CloudLook, type HazardStyle } from './cloudVolume.ts'
 import { MARCH_TIERS, MarchPace } from './marchPace.ts'
 import { SculptedClouds, type SculptTint } from './sculptedClouds.ts'
+import { sceneAids } from './sculptAids.ts'
+import { groundShadow } from './sculptShadow.ts'
 import { domVeil } from './sculptVeil.ts'
 import { drawnHeightM } from './exaggeration.ts'
 import { GroundFog, fogNear } from './groundFog.ts'
@@ -294,7 +296,9 @@ function cesiumSky(viewer: Viewer, onCloudsFailed: () => void, broken: boolean, 
     onCloudsFailed()
   }
   // Only the renderer of the look in use is made: the other's worker, images and shaders cost nothing until it is asked for.
-  const cloudsFor = (l: CloudLook): SkyClouds => (l === 'sculpted' ? new SculptedClouds(viewer.scene, { onFailed, veil: domVeil(viewer.container as HTMLElement) }) : new CloudVolume(viewer.scene, { broken, onFailed }))
+  const cloudsFor = (l: CloudLook): SkyClouds => (l === 'sculpted'
+    ? new SculptedClouds({ primitives: viewer.scene.primitives, camera: viewer.scene.camera, renderError: viewer.scene.renderError, context: (viewer.scene as unknown as { context: unknown }).context, light: () => viewer.scene.light as { direction?: Cartesian3 } }, { onFailed, veil: domVeil(viewer.container as HTMLElement), shadow: groundShadow(viewer), aids: sceneAids(viewer) })
+    : new CloudVolume(viewer.scene, { broken, onFailed }))
   return { clouds: cloudsFor(look), cloudsFor, fog: new GroundFog(viewer.scene), precip: new Precipitation(viewer.container as HTMLElement) }
 }
 

@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PUFF_FILL } from './cloudField.ts'
-import { BAND_TRIANGLES, SHOULDER_MAX_KM, VERTEX_FLOATS, sculptMesh, shoulder, type SculptBand } from './sculptMesh.ts'
+import { BAND_TRIANGLES, SHADOW_ALPHA, SHADOW_N, SHADOW_RGB, SHADOW_SHIFT_KM, SHOULDER_MAX_KM, VERTEX_FLOATS, sculptMesh, shadowImage, shoulder, type SculptBand } from './sculptMesh.ts'
 import { buildField, type FieldSpec } from './wxField.ts'
 
 const [LAT, LON] = [47, 8]
@@ -162,4 +162,47 @@ test('sculptMesh: a top rises by the distance in from the rim: a deck is level f
   const edge = Math.max(...storm.map(([r]) => r))
   for (const [r, h] of storm) if (r < edge - SHOULDER_MAX_KM - 0.5) assert.ok(Math.abs(h - 11_000) < 1, `at ${r} km of ${edge}: ${h}`)
   assert.ok(storm.some(([r, h]) => r > edge - SHOULDER_MAX_KM + 0.5 && h < 10_000))
+})
+
+test('shadowImage: a faint tint under each body, soft at its rim, the north at the top; moved away from the light by the body\'s height, a little', () => {
+  assert.equal(sculptMesh(buildField([], LAT, LON)).shadow, null)
+  assert.equal(shadowImage([], null), null)
+  const KM = 320 / SHADOW_N // a pixel
+  /** The shadow's weight (its alphas added), and its middle: km east and north of the field's. */
+  const middle = (im: { data: Uint8ClampedArray }): { sum: number; east: number; north: number; most: number } => {
+    let [sum, x, y, most] = [0, 0, 0, 0]
+    for (let j = 0; j < SHADOW_N; j++) {
+      for (let i = 0; i < SHADOW_N; i++) {
+        const a = im.data[(j * SHADOW_N + i) * 4 + 3]
+        sum += a
+        x += a * ((i + 0.5) * KM - 160)
+        y += a * (160 - (j + 0.5) * KM)
+        most = Math.max(most, a)
+      }
+    }
+    return { sum, east: x / sum, north: y / sum, most }
+  }
+  // A deck 30 km wide, 40 km north-east of the middle, its base at 1,000 m; the light overhead.
+  const deck = sculptMesh(buildField([disc(1000, 2500, 30_000, 0, 40, 40)], LAT, LON))
+  const im = deck.shadow!
+  assert.deepEqual([im.width, im.height, im.data.length], [SHADOW_N, SHADOW_N, SHADOW_N * SHADOW_N * 4])
+  const m = middle(im)
+  assert.ok(Math.abs(m.east - 40) < 0.7 && Math.abs(m.north - 40) < 0.7, `under the deck: ${m.east}, ${m.north}`)
+  assert.equal(m.most, Math.round(SHADOW_ALPHA * 255), 'faint: the map under it stays readable')
+  assert.ok(SHADOW_ALPHA <= 0.25)
+  const at = (east: number, north: number): number[] => [...im.data.subarray((Math.floor((160 - north) / KM) * SHADOW_N + Math.floor((east + 160) / KM)) * 4).subarray(0, 4)]
+  assert.deepEqual(at(40, 40), [...SHADOW_RGB, Math.round(SHADOW_ALPHA * 255)])
+  assert.equal(at(40, -40)[3], 0, 'none to the south: the first row is the north')
+  assert.equal(at(-40, 40)[3], 0)
+  const soft = new Set(im.data.filter((_, k) => k % 4 === 3))
+  assert.ok(soft.size > 6, 'its edge runs through the alphas between')
+  // The light from the west, 45° up: the shadow lies a kilometre east (the base's height); a deck with its base at 8 km no further than SHADOW_SHIFT_KM.
+  const west: [number, number, number] = [-Math.SQRT1_2, 0, Math.SQRT1_2]
+  const low = middle(sculptMesh(buildField([disc(1000, 2500, 30_000, 0, 40, 40)], LAT, LON), west).shadow!)
+  assert.ok(low.east - m.east > 0.4 && low.east - m.east < 1.7 && Math.abs(low.north - m.north) < 0.3, `${low.east - m.east}`)
+  const high = middle(sculptMesh(buildField([disc(8000, 9500, 30_000, 0, 40, 40)], LAT, LON), west).shadow!)
+  assert.ok(high.east - m.east > 1.2 && high.east - m.east < SHADOW_SHIFT_KM + 0.7, `${high.east - m.east}`)
+  // The light under the horizon (night): no further either.
+  const night = middle(sculptMesh(buildField([disc(8000, 9500, 30_000, 0, 40, 40)], LAT, LON), [1, 0, -0.2]).shadow!)
+  assert.ok(Math.abs(night.east - m.east) < SHADOW_SHIFT_KM + 0.7)
 })

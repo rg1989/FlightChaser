@@ -26,6 +26,7 @@ export interface FieldJob {
   noise: boolean
   sat?: SatGrid | null
   sculpt?: boolean // the field's bodies as a mesh, and no image
+  light?: [number, number, number] | null // a sculpt job's: the unit vector toward the scene's light at the place (east, north, up), for the bodies' shadow
 }
 
 /** A field made: with each band's tile of its image (none for a band with no cloud), its clear-air map (none of an empty field), which bands rain, the noise if it was asked for, and how long the making took, ms. */
@@ -75,7 +76,7 @@ export function makeField(job: FieldJob): FieldMade {
   let near: Bitmap | null = null
   let wet = Array.from({ length: BANDS }, () => false)
   let box: [number, number, number, number] = [1, 1, -1, -1]
-  const mesh = job.sculpt === true ? sculptMesh(field) : null
+  const mesh = job.sculpt === true ? sculptMesh(field, job.light ?? null) : null
   if (!field.empty && mesh === null) {
     const s = survey(field)
     tiles = tiles.map((_, b) => fieldTile(field, b))
@@ -97,5 +98,6 @@ export function transfers(made: FieldMade): ArrayBuffer[] {
   const out = [...f.cov, ...f.base, ...f.top, ...f.sev].map((a) => a.buffer as ArrayBuffer)
   for (const image of [...made.tiles, made.near, made.noise]) if (image !== null) out.push(image.data.buffer as ArrayBuffer)
   for (const band of made.mesh?.bands ?? []) out.push(...[band.vertices, band.indices, band.roof, band.floor].map((a) => a.buffer as ArrayBuffer))
+  if (made.mesh?.shadow) out.push(made.mesh.shadow.data.buffer as ArrayBuffer)
   return out
 }

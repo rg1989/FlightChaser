@@ -15,6 +15,11 @@
 // card. Shown again, the bodies are written again from the mesh kept.
 // A shader that another graphics card will not compile would stop Cesium's render loop: a render error while its layer is in the scene
 // takes the layer out for good (failed, onFailed), as the cloud volume's pass.
+// The hazard areas' edges (setHazards) and the track line along the way ahead (setAhead), which the other looks' cloud pass draws
+// itself, are handed to a SculptAids here (in the app plain Cesium geometry), while shown: the edges when they are given, the track
+// line every frame, its pieces coloured where they are inside a body as drawn. The level slice is not drawn in this look.
+// With its mesh a field brings its bodies' shadow on the ground, a faint tint moved a little away from the scene's light as it stood
+// when the field was asked for (a SculptShadow lays it: in the app a picture draped on the terrain); it changes with the bodies.
 // Flying through a body (through(), every frame): while the camera is inside one, a light veil in the body's colour lies over the
 // view (a SculptVeil: in the app an element over the globe), its strength by how deep in the camera is (sculptInside.ts bodyAt:
 // the bodies as drawn), eased over EASE_S; and the chased aircraft is tinted toward that colour by the cloud on the line from the
@@ -29,12 +34,13 @@ import type { CloudLook, HazardStyle } from './cloudVolume.ts'
 import { fieldBuilder, type FieldBuilder } from './fieldBuilder.ts'
 import type { SatGrid } from './satGrid.ts'
 import { countLayer, gpuLayers, type MakeLayer, type SculptBody, type SculptLayer, type SculptUniforms } from './sculptGpu.ts'
-import { bodyAt, cloudBetween, type Depth, type Place } from './sculptInside.ts'
+import { bodyAt, cloudBetween, trackSeverities, type Depth, type Place } from './sculptInside.ts'
 import { INSIDE, severityRgb } from './sculptShaders.ts'
 import type { AheadPath } from './wxAhead.ts'
-import type { WxField } from './wxField.ts'
+import type { Bitmap, WxField } from './wxField.ts'
 import { packSpecs, type FieldMade } from './wxFieldJob.ts'
-import type { Hazard } from './wxGeo.ts'
+import { wrapLon, type Hazard } from './wxGeo.ts'
+import type { SculptMesh } from './sculptMesh.ts'
 
 /** What of Cesium's scene the bodies touch: its primitives, its camera, the event it raises when a frame fails, and its graphics context (private; the bodies are made in it). */
 export interface SculptScene {
@@ -42,6 +48,7 @@ export interface SculptScene {
   camera: Camera
   renderError?: { addEventListener(listener: (scene: unknown, error: unknown) => void): () => void }
   context?: unknown
+  light?: () => { direction?: Cartesian3 } | undefined // the scene's light now (a light with a direction: the way it travels)
 }
 
 /** What is on the card and in the scene (for checks in the console, and the bench's line). */
@@ -58,10 +65,28 @@ export const EASE_S = 0.5 // the veil and the aircraft's tint come and go over t
 export const TINT_MAX = 0.5 // the chased aircraft is tinted toward the body's colour by at most this
 export const TINT_KM = 0.3 // and by 63 % of that with this much cloud between the camera and it
 const TINT_SAMPLES = 6 // places asked along the line from the camera to the aircraft, each frame
+export const TRACK_PIECES = 6 // the track line's pieces in each minute of the way ahead
 
 /** The veil over the view while the camera is inside a body: a CSS colour and how strong (0: none). In the app an element over the globe (sculptVeil.ts). */
 export interface SculptVeil {
   set(css: string, opacity: number): void
+  destroy(): void
+}
+
+/** The bodies' shadow on the ground: an image over the field's square round lat, lon (sculptMesh.ts shadowImage), or none. In the app a picture draped on the terrain (sculptShadow.ts). */
+export interface SculptShadow {
+  set(image: Bitmap | null, lat: number, lon: number): void
+  destroy(): void
+}
+
+/**
+ * What draws the look's other parts (in the app plain Cesium geometry: sculptAids.ts): the hazard areas' edges in a style and each
+ * area's colour (none: nothing), and the track line as a line through the places given, each piece of a severity (−1: clear air;
+ * no place: no line).
+ */
+export interface SculptAids {
+  hazards(hazards: readonly Hazard[], style: HazardStyle, color: (h: Hazard) => string): void
+  track(positions: readonly Cartesian3[], severities: ArrayLike<number>): void
   destroy(): void
 }
 
@@ -87,6 +112,19 @@ export class SculptedClouds {
   readonly #uniforms: SculptUniforms = { light: 1 }
   readonly #camera: Camera
   readonly #veil: SculptVeil | null
+  readonly #shadow: SculptShadow | null
+  readonly #aids: SculptAids | null
+  #hazards: readonly Hazard[] = []
+  #style: HazardStyle = 'box'
+  #hazardColor: (h: Hazard) => string = () => '#ffffff'
+  #ahead: AheadPath | null = null // the way ahead, while its track line shows
+  #tracked = false // the aids hold a track line
+  readonly #way: Place[] = [] // the track line's places, and where they are in the world
+  readonly #wayWC: Cartesian3[] = []
+  #waySev = new Float32Array(0)
+  readonly #light: SculptScene['light']
+  readonly #toLocal = new Matrix4() // draw()'s own
+  readonly #toward = new Cartesian3()
   readonly #at: Depth = { depth: 0, sev: 0 } // through()'s own
   readonly #eye: Place = { lat: 0, lon: 0, altM: 0 }
   readonly #plane: Place = { lat: 0, lon: 0, altM: 0 }
@@ -112,10 +150,14 @@ export class SculptedClouds {
    * geoid: the sea's height above the ellipsoid at a place, m (default EGM96). onFailed: told once, when a render error has taken the
    * layer out for good. builder: who makes the fields and their meshes (default: a worker in a page, this thread elsewhere). layer:
    * what draws the bodies (default: Cesium's renderer in the scene's context; with no context, a count of them). veil: what lays the
-   * veil over the view (default: none).
+   * veil over the view (default: none). shadow: what lays the bodies' shadow on the ground (default: none).
+   * aids: what draws the hazard areas' edges and the track line (default: none).
    */
-  constructor(scene: SculptScene, opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; builder?: FieldBuilder; layer?: MakeLayer; veil?: SculptVeil } = {}) {
+  constructor(scene: SculptScene, opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; builder?: FieldBuilder; layer?: MakeLayer; veil?: SculptVeil; shadow?: SculptShadow; aids?: SculptAids } = {}) {
     this.#primitives = scene.primitives
+    this.#aids = opts.aids ?? null
+    this.#shadow = opts.shadow ?? null
+    this.#light = scene.light
     this.#camera = scene.camera
     this.#veil = opts.veil ?? null
     this.#geoid = opts.geoid ?? geoidN
@@ -133,7 +175,10 @@ export class SculptedClouds {
     if (this.#destroyed || on === this.#show) return
     this.#show = on
     if (!on) this.#away()
-    else if (this.#made !== null && bands(this.#made) > 0 && !this.#failed) this.#load(this.#made, !this.#late)
+    else {
+      this.#aids?.hazards(this.#hazards, this.#style, this.#hazardColor)
+      if (this.#made !== null && bands(this.#made) > 0 && !this.#failed) this.#load(this.#made, !this.#late)
+    }
   }
 
   /** The field in use: what the bodies are of, and what the HUD asks (wxField.ts sampleField). Null until the first has come. */
@@ -162,13 +207,32 @@ export class SculptedClouds {
   draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }, sat: SatGrid | null = null): void {
     if (this.#destroyed) return
     this.#asking = true
-    this.#builder.ask({ id: ++this.#asked, specs: packSpecs(specs), lat: at.lat, lon: at.lon, noise: false, sat, sculpt: true }, (made) => this.#take(made))
+    this.#builder.ask({ id: ++this.#asked, specs: packSpecs(specs), lat: at.lat, lon: at.lon, noise: false, sat, sculpt: true, light: this.#lightAt(at.lat, at.lon) }, (made) => this.#take(made))
     this.#asking = false
   }
 
-  setHazards(_hazards: readonly Hazard[], _style: HazardStyle, _color: (h: Hazard) => string): void {}
+  /** The unit vector toward the scene's light at a place (east, north, up), for the shadow a field's mesh brings; null where the scene's light has no direction of its own (Cesium's sun: overhead will do). */
+  #lightAt(lat: number, lon: number): [number, number, number] | null {
+    const travel = this.#light?.()?.direction
+    if (travel === undefined) return null
+    Matrix4.inverseTransformation(Transforms.eastNorthUpToFixedFrame(Cartesian3.fromDegrees(lon, lat), undefined, this.#toLocal), this.#toLocal)
+    const t = Matrix4.multiplyByPointAsVector(this.#toLocal, travel, this.#toward)
+    return [-t.x, -t.y, -t.z]
+  }
 
-  setAhead(_path: AheadPath | null, _show: { track: boolean; slice: boolean }): void {}
+  /** The hazard areas whose edges are drawn, how (curtain, fence or box), and each area's CSS colour: handed to the aids while shown. */
+  setHazards(hazards: readonly Hazard[], style: HazardStyle, color: (h: Hazard) => string): void {
+    if (this.#destroyed) return
+    this.#hazards = hazards
+    this.#style = style
+    this.#hazardColor = color
+    if (this.#show) this.#aids?.hazards(hazards, style, color)
+  }
+
+  /** Every frame: the way ahead of the aircraft (null: none) and whether its track line shows (the level slice is not drawn in this look). The line itself is laid at through(). */
+  setAhead(path: AheadPath | null, show: { track: boolean; slice: boolean }): void {
+    this.#ahead = show.track ? path : null
+  }
 
   /** Every frame while the weather shows: the Sun's night; and of a coming field's mesh, a band written, the field coming into use the frame after the last. */
   frame(_tf: TerrainFrame, night: number): void {
@@ -214,6 +278,36 @@ export class SculptedClouds {
     t.color[1] = g + (1 - g) * INSIDE
     t.color[2] = b + (1 - b) * INSIDE
     this.#lay()
+    this.#track(mesh, field)
+  }
+
+  /** The track line handed to the aids: TRACK_PIECES pieces a minute along the way ahead, each of the severity of the body its middle is in; none with no way ahead. */
+  #track(mesh: SculptMesh | null, field: WxField | null): void {
+    if (this.#aids === null) return
+    const points = this.#ahead?.points
+    if (points === undefined || points.length < 2) {
+      if (this.#tracked) this.#aids.track([], this.#waySev)
+      this.#tracked = false
+      return
+    }
+    const n = (points.length - 1) * TRACK_PIECES + 1
+    while (this.#way.length < n) {
+      this.#way.push({ lat: 0, lon: 0, altM: 0 })
+      this.#wayWC.push(new Cartesian3())
+    }
+    this.#way.length = this.#wayWC.length = n
+    if (this.#waySev.length !== n - 1) this.#waySev = new Float32Array(n - 1)
+    for (let k = 0; k < n; k++) {
+      const [a, b] = [points[Math.min(points.length - 2, Math.floor(k / TRACK_PIECES))], points[Math.min(points.length - 1, Math.floor(k / TRACK_PIECES) + 1)]]
+      const t = k / TRACK_PIECES - Math.min(points.length - 2, Math.floor(k / TRACK_PIECES))
+      const p = this.#way[k]
+      p.lat = a.lat + (b.lat - a.lat) * t
+      p.lon = a.lon + wrapLon(b.lon - a.lon) * t
+      p.altM = a.altM + (b.altM - a.altM) * t
+      Cartesian3.fromDegrees(p.lon, p.lat, p.altM + this.#geoid(p.lat, p.lon), undefined, this.#wayWC[k])
+    }
+    this.#aids.track(this.#wayWC, trackSeverities(mesh, field, this.#way, this.#waySev))
+    this.#tracked = true
   }
 
   /** The chased aircraft's tint now (through() works it out): nothing while hidden. */
@@ -229,6 +323,8 @@ export class SculptedClouds {
     this.#unlisten?.()
     this.#away()
     this.#veil?.destroy()
+    this.#shadow?.destroy()
+    this.#aids?.destroy()
   }
 
   /** A field the builder has made. Shown, and with a body: its bands are written first (at once when it was made within draw, else one a frame), and then it is in use. Hidden, failed, or with no body: in use at once. */
@@ -275,6 +371,7 @@ export class SculptedClouds {
     const f = made.field
     Transforms.eastNorthUpToFixedFrame(Cartesian3.fromDegrees(f.lon, f.lat, this.#geoid(f.lat, f.lon)), undefined, this.#frame)
     this.#layer?.use(bodies, this.#frame, made.mesh?.radiusM ?? 0)
+    this.#shadow?.set(bodies.length > 0 ? made.mesh?.shadow ?? null : null, f.lat, f.lon)
     for (const body of old) body.destroy()
     if (bodies.length === 0) this.#lift()
   }
@@ -312,10 +409,14 @@ export class SculptedClouds {
     this.#tint.amount = 0
     this.#throughMs = Number.NaN
     this.#lay()
+    this.#aids?.hazards([], this.#style, this.#hazardColor)
+    if (this.#tracked) this.#aids?.track([], this.#waySev)
+    this.#tracked = false
     const coming = this.#coming
     this.#drop()
     for (const body of this.#bodies) body.destroy()
     this.#bodies = []
+    this.#shadow?.set(null, 0, 0)
     if (coming !== null && !this.#destroyed) this.#made = coming
     this.#lift()
   }

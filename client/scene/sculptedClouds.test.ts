@@ -3,9 +3,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Cartesian3, Cartographic, Event, Matrix4, type Camera } from 'cesium'
 import { PUFF_FILL, sunBrightness, type CloudSpec } from './cloudField.ts'
+import type { HazardStyle } from './cloudVolume.ts'
+import { aheadPath } from './wxAhead.ts'
+import type { Hazard } from './wxGeo.ts'
 import type { FieldBuilder } from './fieldBuilder.ts'
 import { countLayer, type SculptUniforms } from './sculptGpu.ts'
-import { EASE_S, SculptedClouds, TINT_KM, TINT_MAX, VEIL_MAX, type SculptScene } from './sculptedClouds.ts'
+import { EASE_S, SculptedClouds, TINT_KM, TINT_MAX, TRACK_PIECES, VEIL_MAX, type SculptScene } from './sculptedClouds.ts'
 import { INSIDE, severityRgb } from './sculptShaders.ts'
 import { sampleField, type WxField } from './wxField.ts'
 import { makeField, type FieldJob, type FieldMade } from './wxFieldJob.ts'
@@ -270,4 +273,87 @@ test('through: hidden, there is no veil and no tint; destroy takes the veil away
   assert.deepEqual([f.told.length, f.clouds.tint.amount], [n, 0], 'hidden: nothing is worked out')
   f.clouds.destroy()
   assert.equal(f.gone(), true)
+})
+
+test('the shadow: a field\'s bodies bring their shadow with them, asked for with the scene\'s light as it stands; hidden or empty, there is none', () => {
+  const laid: ({ width: number } | null)[] = []
+  const jobs: FieldJob[] = []
+  let gone = false
+  // The light travels down and east at the field's middle: it comes from the west, 45° up.
+  const up = Cartesian3.normalize(Cartesian3.fromDegrees(LON, LAT), new Cartesian3())
+  const east = Cartesian3.normalize(Cartesian3.cross(Cartesian3.UNIT_Z, up, new Cartesian3()), new Cartesian3())
+  const travel = Cartesian3.normalize(Cartesian3.subtract(east, up, new Cartesian3()), new Cartesian3())
+  const scene: SculptScene = { primitives: { add: (p) => p, remove: () => true }, camera: {} as Camera, light: () => ({ direction: travel }) }
+  const clouds = new SculptedClouds(scene, {
+    builder: { ask: (job, done) => (jobs.push(job), done(makeField(job))), destroy: () => {} }, geoid: () => 0, layer: countLayer,
+    shadow: { set: (image) => void laid.push(image), destroy: () => void (gone = true) },
+  })
+  clouds.draw(TWO_BANDS, { lat: LAT, lon: LON })
+  assert.equal(JSON.stringify(laid), '[null]', 'hidden: none')
+  const light = jobs[0].light!
+  assert.ok(Math.abs(light[0] + Math.SQRT1_2) < 0.01 && Math.abs(light[1]) < 0.01 && Math.abs(light[2] - Math.SQRT1_2) < 0.01, `toward the light: ${light}`)
+  clouds.show = true
+  assert.equal(laid.at(-1)?.width, 256)
+  clouds.draw([], { lat: LAT, lon: LON })
+  assert.equal(laid.at(-1), null, 'an empty sky: none')
+  clouds.draw(TWO_BANDS, { lat: LAT, lon: LON })
+  clouds.show = false
+  assert.equal(laid.at(-1), null)
+  clouds.destroy()
+  assert.equal(gone, true)
+  // A scene whose light has no direction of its own (Cesium's sun): overhead.
+  const plain = new SculptedClouds({ primitives: { add: (p) => p, remove: () => true }, camera: {} as Camera, light: () => ({}) }, { builder: { ask: (job, done) => (jobs.push(job), done(makeField(job))), destroy: () => {} }, layer: countLayer })
+  plain.draw(TWO_BANDS, { lat: LAT, lon: LON })
+  assert.equal(jobs.at(-1)!.light, null)
+})
+
+// ---- the hazard areas' edges and the track line ----------------------------------------------------------------------------
+
+test('the aids: the hazard areas\' edges are handed on while shown, in their style; the track line every frame, its pieces coloured where they are in a body; hidden, none of either', () => {
+  const camera = { positionCartographic: Cartographic.fromDegrees(LON, LAT, 9000) }
+  const edges: { n: number; style: HazardStyle }[] = []
+  const tracks: { n: number; sev: number[]; first: Cartesian3 | undefined }[] = []
+  let gone = false
+  const clouds = new SculptedClouds({ primitives: { add: (p) => p, remove: () => true }, camera: camera as unknown as Camera }, {
+    builder: { ask: (job, done) => done(makeField(job)), destroy: () => {} }, geoid: () => 25, layer: countLayer,
+    aids: {
+      hazards: (hazards, style) => void edges.push({ n: hazards.length, style }),
+      track: (positions, sev) => void tracks.push({ n: positions.length, sev: Array.from(sev).slice(0, Math.max(0, positions.length - 1)), first: positions[0] && Cartesian3.clone(positions[0]) }),
+      destroy: () => void (gone = true),
+    },
+  })
+  const area = { key: 'a', rings: [], baseM: 0, topM: 9000 } as unknown as Hazard
+  clouds.setHazards([area], 'fence', () => '#ff4d3d')
+  assert.ok(edges.length < 1, 'hidden: not drawn')
+  clouds.show = true
+  assert.equal(JSON.stringify(edges), '[{"n":1,"style":"fence"}]')
+  clouds.setHazards([area, area], 'curtain', () => '#ff4d3d')
+  assert.deepEqual(edges.at(-1), { n: 2, style: 'curtain' })
+  // A deck of heavy rain 40 km wide, 2,000 to 3,500 m, 60 km east; the aircraft flies east at 2,750 m, 10 km a minute.
+  clouds.draw([puff(2000, 3500, 40_000, 60, { sev: 2 })], { lat: LAT, lon: LON })
+  const path = aheadPath({ lat: LAT, lon: LON, altM: 2750 }, 90, 324, 0)!
+  clouds.through(null, 0)
+  assert.ok(tracks.length < 1, 'no way ahead given: no line')
+  clouds.setAhead(path, { track: true, slice: true })
+  clouds.through(null, 16)
+  const t = tracks.at(-1)!
+  assert.equal(t.n, (path.points.length - 1) * TRACK_PIECES + 1)
+  assert.ok(Cartesian3.distance(t.first!, Cartesian3.fromDegrees(LON, LAT, 2750 + 25)) < 0.01, 'from the aircraft, its height above the sea lifted by the geoid')
+  const km = (k: number): number => ((k + 0.5) * path.kmPerMin) / TRACK_PIECES // a piece's middle
+  t.sev.forEach((sev, k) => {
+    if (km(k) > 50 && km(k) < 70) assert.ok(Math.abs(sev - 2) < 1e-3, `in the deck at ${km(k)} km: ${sev}`)
+    else if (km(k) < 42 || km(k) > 78) assert.equal(sev, -1, `clear air at ${km(k)} km`)
+  })
+  clouds.setAhead(path, { track: false, slice: true })
+  clouds.through(null, 32)
+  assert.equal(tracks.at(-1)!.n, 0, 'the track line switched off: taken away, once')
+  const n = tracks.length
+  clouds.through(null, 48)
+  assert.equal(tracks.length, n)
+  clouds.setAhead(path, { track: true, slice: false })
+  clouds.through(null, 64)
+  clouds.show = false
+  assert.deepEqual([edges.at(-1)!.n, tracks.at(-1)!.n], [0, 0], 'hidden: both taken away')
+  clouds.destroy()
+  assert.equal(gone, true)
 })

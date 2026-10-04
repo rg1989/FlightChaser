@@ -31,8 +31,10 @@
 // severity (0 … 3), its height above the sea (m: the shader draws the level lines from it), 1 on the underside, and how far in from
 // the rim it is (m: the shader draws the rim's line from it).
 // With its mesh a band brings its top sheet and its underside as two maps on the field's texels (roof, floor): what answers "is this
-// place inside a body" (sculptInside.ts).
-import { BANDS, FIELD_KM, FIELD_N, type WxField } from './wxField.ts'
+// place inside a body" (sculptInside.ts). And the mesh brings one image of the bodies' shadow on the ground (shadowImage): a faint
+// tint under each body, soft at its edge, moved a little away from the light: enough to place a cloud over the ground, and no more,
+// so that the map under it stays readable.
+import { BANDS, FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.ts'
 
 export const RIM_COVER = 0.4 // a body stands where the cover is above this
 export const SHOULDER_MAX_KM = 2.5 // a body's top is rounded over at most this far in from its rim
@@ -71,6 +73,7 @@ export interface SculptMesh {
   bands: SculptBand[]
   radiusM: number
   triangles: number
+  shadow: Bitmap | null // the bodies' shadow on the ground, over the field's square, the first row the north; none with no body
   ms: number
 }
 
@@ -592,10 +595,75 @@ function normals(v: Float32Array, indices: Uint32Array): void {
   }
 }
 
-/** The field's bodies (see the header). level: the cut to start from (0, the finest, unless a test asks for a coarser one). An empty field has none. */
-export function sculptMesh(f: WxField, level = 0): SculptMesh {
+export const SHADOW_N = 256 // the shadow image's side: 1.25 km a pixel
+export const SHADOW_ALPHA = 0.2 // under the middle of a body the ground is tinted by this: faint, the map stays readable
+export const SHADOW_RGB: readonly [number, number, number] = [10, 16, 28]
+export const SHADOW_SHIFT_KM = 2 // a shadow is moved away from the light by its body's height over the light's slope, at most this far: it stays by its body
+const SHADOW_SOFT = 1 // its edge is softened over this many pixels each way, twice
+
+/**
+ * The bodies' shadow on the ground as an image over the field's square (SHADOW_N a side, the first row the north, as a canvas has
+ * it): SHADOW_RGB, its alpha SHADOW_ALPHA under a body and falling softly to nothing past its rim. Each band's shadow is moved away
+ * from the light (the unit vector toward it: east, north, up at the field's middle; null: straight overhead) by the band's lowest
+ * base over the light's slope, at most SHADOW_SHIFT_KM. None with no body.
+ */
+export function shadowImage(bands: readonly SculptBand[], light: readonly [number, number, number] | null): Bitmap | null {
+  if (bands.length === 0) return null
+  const n = SHADOW_N
+  const per = FIELD_N / n
+  let cover = new Float32Array(n * n)
+  for (const band of bands) {
+    let lowest = Infinity
+    for (let o = 0; o < band.floor.length; o++) if (band.roof[o] > band.floor[o] && band.floor[o] < lowest) lowest = band.floor[o]
+    if (lowest === Infinity) continue
+    const up = light === null ? 1 : Math.max(0.05, light[2])
+    const reach = light === null ? 0 : Math.min(SHADOW_SHIFT_KM, (lowest / 1000) * (Math.hypot(light[0], light[1]) / up))
+    const flat = light === null ? 0 : Math.hypot(light[0], light[1])
+    const [dx, dy] = flat > 0 ? [(-light![0] / flat) * reach / TEXEL_KM, (-light![1] / flat) * reach / TEXEL_KM] : [0, 0] // texels
+    for (let y = 0; y < FIELD_N; y++) {
+      for (let x = 0, o = y * FIELD_N; x < FIELD_N; x++, o++) {
+        if (!(band.roof[o] > band.floor[o])) continue
+        const [i, j] = [Math.floor((x + dx) / per), Math.floor((y + dy) / per)]
+        if (i >= 0 && i < n && j >= 0 && j < n) cover[j * n + i] = 1
+      }
+    }
+  }
+  let tmp = new Float32Array(n * n)
+  for (let pass = 0; pass < 2; pass++) {
+    for (const d of [1, n]) { // east–west, then north–south
+      for (let k = 0; k < n * n; k++) {
+        let [sum, count] = [0, 0]
+        for (let t = -SHADOW_SOFT; t <= SHADOW_SOFT; t++) {
+          const q = k + t * d
+          if (q < 0 || q >= n * n || (d === 1 && Math.floor(q / n) !== Math.floor(k / n))) continue
+          sum += cover[q]
+          count++
+        }
+        tmp[k] = sum / count
+      }
+      ;[cover, tmp] = [tmp, cover]
+    }
+  }
+  const data = new Uint8ClampedArray(n * n * 4)
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const o = ((n - 1 - j) * n + i) * 4 // the image's first row is the north
+      data[o] = SHADOW_RGB[0]
+      data[o + 1] = SHADOW_RGB[1]
+      data[o + 2] = SHADOW_RGB[2]
+      data[o + 3] = cover[j * n + i] * SHADOW_ALPHA * 255
+    }
+  }
+  return { data, width: n, height: n }
+}
+
+/**
+ * The field's bodies (see the header). light: the unit vector toward the scene's light at the field's middle (east, north, up), for
+ * the shadow; none: overhead. level: the cut to start from (0, the finest, unless a test asks for a coarser one). An empty field has none.
+ */
+export function sculptMesh(f: WxField, light: readonly [number, number, number] | null = null, level = 0): SculptMesh {
   const t0 = performance.now()
-  const mesh: SculptMesh = { lat: f.lat, lon: f.lon, bands: [], radiusM: 0, triangles: 0, ms: 0 }
+  const mesh: SculptMesh = { lat: f.lat, lon: f.lon, bands: [], radiusM: 0, triangles: 0, shadow: null, ms: 0 }
   if (!f.empty) {
     const fr = frameAt(f.lat, f.lon)
     for (let b = 0; b < BANDS; b++) {
@@ -606,6 +674,7 @@ export function sculptMesh(f: WxField, level = 0): SculptMesh {
       const v = band.vertices
       for (let o = 0; o < v.length; o += F) mesh.radiusM = Math.max(mesh.radiusM, Math.hypot(v[o], v[o + 1], v[o + 2]))
     }
+    mesh.shadow = shadowImage(mesh.bands, light)
   }
   mesh.ms = performance.now() - t0
   return mesh
