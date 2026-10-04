@@ -20,9 +20,10 @@
 // flight-data frame). A list of SIGMETs that brings the same areas draws nothing again.
 // And the sky a pilot would see (a Sky: Cesium's parts in the app):
 // - clouds from the airports' reports (cloudField.ts) within 150 km, built when new reports come or the aircraft has moved
-//   30 km, and drawn the frame after (the work spread over two frames) by the one cloud volume (cloudVolume.ts: it lays every
-//   source's cloud specs into a weather field round the aircraft and draws that as volumes, in the look chosen). Clouds of
-//   other sources join the same list after the observed ones (#buildClouds);
+//   30 km, and handed the frame after (the work spread over two frames) to the one cloud volume (cloudVolume.ts: it has every
+//   source's cloud specs made into a weather field round the aircraft, off the main thread, and draws that as volumes, in the look
+//   chosen, from when it is made; the field before it stands until then). Clouds of other sources join the same list after the
+//   observed ones (#buildClouds);
 // - rain clouds from the radar's newest frame: towers where it rains hard, flat decks where it rains lightly (cloudField.ts
 //   radarClouds); the volume draws the rain under them. The frame is read to 180 km (RADAR_READ_KM): as far as the volume shows a
 //   cloud (150 km: its reach, which fades over the last 20) and the 30 km to the next build past that, so that what a build adds is
@@ -190,7 +191,7 @@ type Feed = 'metar' | 'sigmet' | 'radar' | 'model'
 
 /** What draws the sky round the aircraft: Cesium's parts in the app (cesiumSky), fakes in tests. */
 export interface Sky {
-  clouds: Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'> & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'scale'>>
+  clouds: Pick<CloudVolume, 'show' | 'draw' | 'frame' | 'fade' | 'destroy' | 'setHazards' | 'setAhead'> & Partial<Pick<CloudVolume, 'look' | 'field' | 'failed' | 'scale' | 'madeMs'>>
   fog: Pick<GroundFog, 'set' | 'frame' | 'destroy'>
   precip: Pick<Precipitation, 'set' | 'aim' | 'destroy'>
 }
@@ -528,7 +529,7 @@ export class Weather3D {
     return this.#sky
   }
 
-  /** How long the last draw took, ms: the field built from the cloud specs and its images made for the pass (the bench's line says it). */
+  /** How long the last draw held the main thread, ms: the cloud specs handed to the volume (and, where it has no worker, their field made). */
   get drawMs(): number {
     return this.#drawMs
   }

@@ -62,6 +62,9 @@ export interface WxField {
   empty: boolean
 }
 
+/** What a field reads of a cloud spec: its place, its middle's height, its billboard's width and height, its severity, and whether it is a tower's. */
+export type FieldSpec = Pick<CloudSpec, 'lon' | 'lat' | 'heightM' | 'scale' | 'tower' | 'sev'>
+
 /** A spec as a disc on the map: its heights and severity, its middle and radius in texels. */
 interface Disc {
   base: number
@@ -76,7 +79,7 @@ const clampH = (m: number): number => (m > 0 ? (m < HEIGHT_MAX_M ? m : HEIGHT_MA
 const kmPerLon = (lat: number): number => KM_PER_DEG * Math.max(0.01, Math.cos(lat * RAD))
 
 /** The map of the specs round lat, lon. Specs that reach nowhere into the square are left out. */
-export function buildField(specs: readonly CloudSpec[], lat: number, lon: number): WxField {
+export function buildField(specs: readonly FieldSpec[], lat: number, lon: number): WxField {
   const N = FIELD_N
   const kx = kmPerLon(lat)
   const cells = N * N

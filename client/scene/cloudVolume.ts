@@ -2,7 +2,9 @@
 // The chase's weather as volumes: one post-process pass that walks every pixel's ray through the weather field (wxField.ts), so a cloud
 // is a body with a near side and a far side. The aircraft flies into it, fades in it and is gone in thick cloud (nothing is cleared round
 // it), and the terrain, the buildings and the aircraft hide the cloud behind them and are hidden by the cloud in front, as the depth
-// buffer says. Weather3D hands it the cloud specs of every source at once (draw), and it builds the field round the aircraft from them.
+// buffer says. Weather3D hands it the cloud specs of every source at once (draw), and it has the field of them made round the place
+// given: by its builder (fieldBuilder.ts), in the app a worker, so that the frames do not wait for it. Until the builder answers, the
+// field made last is drawn, and asked by the HUD; then the new one is taken (the field, its two images, and with the first the noise).
 // The pass is a PostProcessStageComposite of two stages, the march at half the size (scale: marchPace.ts makes it coarser when the
 // frames are slow) and the mix at full size: cloudShaders.ts has their shaders and says what each draws (the clouds in three looks,
 // the rain, the shadows; the hazard areas' edges and the level slice, sorted with the cloud; the track line). This file makes the pass
@@ -30,14 +32,15 @@ import { Cartesian2, Cartesian3, Ellipsoid, Matrix4, PostProcessStage, PostProce
 import { geoidN } from '../../shared/geoid.ts'
 import type { TerrainFrame } from '../types.ts'
 import { sunBrightness, type CloudSpec } from './cloudField.ts'
-import { NOISE_KM, noiseAtlas } from './cloudNoise.ts'
+import { NOISE_KM } from './cloudNoise.ts'
 import { ATLAS_H, ATLAS_W, MARCH_SHADER, MIX_SHADER, PATH_N, R_KM } from './cloudShaders.ts'
+import { fieldBuilder, type FieldBuilder } from './fieldBuilder.ts'
 import { MARCH_SCALES } from './marchPace.ts'
 import type { AheadPath } from './wxAhead.ts'
 import { MAX_EDGES, hazardEdges, packEdges } from './wxEdges.ts'
-import { FIELD_KM, FIELD_N, buildField, fieldAtlas, type Bitmap, type WxField } from './wxField.ts'
+import { FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.ts'
+import { packSpecs, type FieldMade } from './wxFieldJob.ts'
 import type { Hazard } from './wxGeo.ts'
-import { survey } from './wxSurvey.ts'
 
 export type CloudLook = 'natural' | 'severity' | 'blocks'
 /** How a hazard area's edge is drawn: a curtain hung from its top, a fence (lines and posts), or the box of today (a faint fill and its edges). */
@@ -160,6 +163,7 @@ export class CloudVolume {
   readonly #geoid: (lat: number, lon: number) => number
   readonly #onFailed: () => void
   readonly #broken: boolean
+  readonly #builder: FieldBuilder
   readonly #unlisten: (() => void) | null // ends its listening for the scene's render errors
   readonly #frame = new Matrix4() // world metres to the field's frame
   readonly #eyeToLocal = new Matrix4()
@@ -173,7 +177,10 @@ export class CloudVolume {
   readonly #scratch = new Cartesian3()
   #pass: PostProcessStageComposite | null = null
   #field: WxField | null = null
-  #images: { field: unknown; near: unknown } | null = null // the field's, for a pass made when it is shown again; null before the first draw
+  #images: { field: unknown; near: unknown } | null = null // the field's, for a pass made when it is shown again; null before the first field has come
+  #noise: Bitmap | null = null // the noise, once the builder has given it (with the first field)
+  #asked = 0 // fields asked of the builder
+  #madeMs = 0
   #cloud = false // the field has cloud
   #seaM = 0 // the frame's level: the geoid at the field's middle
   #scale: MapScale = { sx: 1, sy: 1, t: 0 }
@@ -198,13 +205,15 @@ export class CloudVolume {
   /**
    * geoid: the sea's height above the ellipsoid at a place, m (default EGM96). onFailed: told once, when a render error has taken the
    * pass out for good. broken: the march is given a shader that cannot compile (?wxbreak=1: the failure seen handled on any machine).
+   * builder: who makes the fields (default: a worker in a page, this thread elsewhere).
    */
-  constructor(scene: VolumeScene, opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean } = {}) {
+  constructor(scene: VolumeScene, opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder } = {}) {
     this.#stages = scene.postProcessStages
     this.#camera = scene.camera
     this.#geoid = opts.geoid ?? geoidN
     this.#onFailed = opts.onFailed ?? (() => {})
     this.#broken = opts.broken === true
+    this.#builder = opts.builder ?? fieldBuilder()
     this.#unlisten = scene.renderError?.addEventListener((_scene, error) => this.#fail(error)) ?? null
   }
 
@@ -232,9 +241,14 @@ export class CloudVolume {
     this.#sync(true)
   }
 
-  /** The field last built: what the pass draws, and what the HUD asks (wxField.ts sampleField). Null before the first draw. */
+  /** The field last made: what the pass draws, and what the HUD asks (wxField.ts sampleField). Null until the first has come. */
   get field(): WxField | null {
     return this.#field
+  }
+
+  /** How long the making of that field took, ms, where it was made (the bench's line says it). */
+  get madeMs(): number {
+    return this.#madeMs
   }
 
   /** Whether a render error has taken the pass out of the scene: for good, until the page is loaded again. The field is still built. */
@@ -243,27 +257,35 @@ export class CloudVolume {
   }
 
   /**
-   * These clouds in place of those drawn before: the field built round `at` (the aircraft) and the frame laid there, the hazard areas'
-   * edges and the way ahead laid in that frame, and a pass for it all. With no cloud the field's images are blank.
+   * These clouds in place of those drawn before, once their field is made: the builder is asked for the field round `at`, and what
+   * is drawn stands until it answers (at once where there is no worker).
    */
   draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }): void {
     if (this.#destroyed) return
-    const f = buildField(specs, at.lat, at.lon)
+    this.#builder.ask({ id: ++this.#asked, specs: packSpecs(specs), lat: at.lat, lon: at.lon, noise: this.#noise === null }, (made) => this.#take(made))
+  }
+
+  /**
+   * A field the builder has made, in place of the one drawn: the frame laid at its middle, the hazard areas' edges and the way ahead
+   * laid in that frame, and a pass for it all. With no cloud the field's images are blank.
+   */
+  #take(made: FieldMade): void {
+    if (this.#destroyed) return
+    if (made.noise !== null) this.#noise = made.noise
+    const f = made.field
     this.#field = f
+    this.#madeMs = made.ms
     this.#cloud = !f.empty
     this.#lo = f.lo.map((m) => m / 1000)
     this.#hi = f.hi.map((m) => m / 1000)
-    let wet: boolean[] = []
-    if (f.empty) {
+    if (made.atlas === null || made.near === null) {
       this.#images = { field: image(BLANK), near: image(BLANK) }
       this.#top = NO_TOP_KM
     } else {
-      const s = survey(f)
-      wet = s.wet
-      this.#images = { field: image(fieldAtlas(f)), near: image(s.near) }
+      this.#images = { field: image(made.atlas), near: image(made.near) }
       this.#top = Math.max(...this.#hi)
     }
-    this.#floor = this.#lo.map((km, b) => (wet[b] ? 0 : km))
+    this.#floor = this.#lo.map((km, b) => (made.wet[b] ? 0 : km))
     const seaM = this.#geoid(f.lat, f.lon)
     this.#seaM = seaM
     localFrame(f.lat, f.lon, seaM, this.#frame)
@@ -321,6 +343,7 @@ export class CloudVolume {
     this.#destroyed = true
     this.#show = false
     this.#images = null
+    this.#builder.destroy()
     this.#unlisten?.()
     this.#sync(false)
   }
@@ -395,7 +418,7 @@ export class CloudVolume {
       name: `fh_cloud_march_${n}`, fragmentShader: this.#broken ? `${MARCH_SHADER}\n?wxbreak=1: this line is not a shader's, so the march does not compile.\n` : MARCH_SHADER,
       textureScale: this.#marchScale,
       uniforms: {
-        ...shared, u_noise: image(this.#cloud ? noiseAtlas() : BLANK), u_near: images.near, u_noiseFrame: () => this.#noiseFrame, u_floor: () => this.#floor,
+        ...shared, u_noise: image(this.#cloud && this.#noise !== null ? this.#noise : BLANK), u_near: images.near, u_noiseFrame: () => this.#noiseFrame, u_floor: () => this.#floor,
         u_top: () => this.#top, u_light: () => this.#light,
         u_edges: image(this.#edges), u_edgeCount: () => edgeCount, u_hazard: () => HAZARD[this.#style] ?? HAZARD.box, u_aircraft: () => this.#aircraft,
       },

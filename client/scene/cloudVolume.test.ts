@@ -7,9 +7,11 @@ import { PUFF_FILL, SEV, sunBrightness, type CloudSpec } from './cloudField.ts'
 import { noiseAtlas } from './cloudNoise.ts'
 import { MARCH_SHADER, MIX_SHADER } from './cloudShaders.ts'
 import { CloudVolume, eyeToLocal, localFrame, localToMap, mapScale, resumeRendering, tileUv } from './cloudVolume.ts'
+import type { FieldBuilder } from './fieldBuilder.ts'
 import { AHEAD_MIN, aheadPath } from './wxAhead.ts'
 import { hazardEdges, packEdges } from './wxEdges.ts'
 import { BANDS, FIELD_KM, FIELD_N, HEIGHT_MAX_M, TOWER_BAND, buildField, fieldAtlas, sampleField, type WxField } from './wxField.ts'
+import { makeField, unpackSpecs, type FieldJob, type FieldMade } from './wxFieldJob.ts'
 import { hazardsNear, type Hazard } from './wxGeo.ts'
 import { survey } from './wxSurvey.ts'
 
@@ -133,7 +135,7 @@ const HERE = { lat: LAT, lon: LON }
 type Uniforms = Record<string, unknown>
 interface Image { data: Uint8ClampedArray; width: number; height: number }
 
-function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean } = {}) {
+function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder } = {}) {
   const added: PostProcessStageComposite[] = []
   const removed: PostProcessStageComposite[] = []
   const stages = { add: (s: PostProcessStageComposite) => (added.push(s), s), remove: (s: PostProcessStageComposite) => (removed.push(s), true) } as unknown as PostProcessStageCollection
@@ -233,6 +235,41 @@ test('CloudVolume: each draw is a new pass in place of the last (a field given t
   assert.deepEqual(r.removed, [first])
   assert.equal(r.live().length, 1)
   assert.ok(!names.includes(r.stage(0).name) && !names.includes(r.stage(1).name))
+})
+
+test('CloudVolume: the field is made by its builder (a worker\'s, in the app) and the frames do not wait for it: until the builder answers, the field made last stands, in the pass and for the HUD; then the new one is taken, and the noise that came with the first; an answer that comes after the volume is destroyed is not taken', () => {
+  const asks: { job: FieldJob; done: (made: FieldMade) => void }[] = []
+  let ended = 0
+  const r = rig({ builder: { ask: (job, done) => void asks.push({ job, done }), destroy: () => void ended++ } })
+  const answer = (n: number): void => asks[n].done(makeField(asks[n].job))
+  r.vol.show = true
+  r.vol.draw([CU, CB], HERE)
+  assert.equal(asks.length, 1)
+  const first = asks[0].job
+  assert.deepEqual([first.lat, first.lon, first.noise], [LAT, LON, true], 'round the place given; the noise has not come: asked for')
+  assert.deepEqual(unpackSpecs(first.specs).map((s) => [s.lon, s.lat, s.tower !== undefined]), [[CU.lon, CU.lat, false], [CB.lon, CB.lat, true]])
+  assert.deepEqual([r.vol.field, r.live().length], [null, 0], 'not made yet: nothing to draw, and nothing waited for')
+  answer(0)
+  const f = r.vol.field!
+  assert.deepEqual([f.lat, f.lon, r.live().length], [LAT, LON, 1])
+  assert.deepEqual((r.march().u_noise as Image).data, noiseAtlas().data, 'the noise is the builder\'s')
+  assert.ok(r.vol.madeMs >= 0)
+  const pass = r.live()[0]
+  r.vol.draw([CU, RAIN], at(10, 0))
+  assert.deepEqual([asks.length, asks[1].job.noise], [2, false], 'the noise is there: not asked for again')
+  assert.equal(r.vol.field, f, 'the field made last stands for the HUD')
+  assert.equal(r.live()[0], pass, 'and in the pass')
+  assert.equal(r.call<number>(0, 'u_top'), 11)
+  answer(1)
+  assert.deepEqual([r.vol.field!.lat, r.vol.field!.lon], [at(10, 0).lat, at(10, 0).lon])
+  assert.equal(r.call<number>(0, 'u_top'), 8.7, 'the storm is gone with the old field')
+  const second = r.vol.field
+  r.vol.draw([CU], HERE)
+  r.vol.destroy()
+  assert.equal(ended, 1, 'the builder is ended with the volume')
+  answer(2)
+  assert.equal(r.vol.field, second)
+  assert.equal(r.live().length, 0)
 })
 
 test('CloudVolume: each shader is given every uniform it declares, and no other', () => {

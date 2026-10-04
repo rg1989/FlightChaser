@@ -2027,7 +2027,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     if (bench !== null && now >= benchSayMs) {
       benchSayMs = Infinity
       const b = bench.recent()
-      const wx = weather3d.show ? `${weather3d.look}, march at ${weather3d.sky.clouds.scale ?? '?'}, last draw ${weather3d.drawMs.toFixed(0)} ms` : 'off'
+      const wx = weather3d.show ? `${weather3d.look}, march at ${weather3d.sky.clouds.scale ?? '?'}, last draw ${weather3d.drawMs.toFixed(0)} ms, its field made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms` : 'off'
       console.warn(`FlightHopper bench: frame p50 ${(1000 / b.fpsP50).toFixed(1)} ms, p95 ${b.frameMsP95.toFixed(1)} ms · weather ${wx}`)
     }
     measure?.('fh:frame', now)
