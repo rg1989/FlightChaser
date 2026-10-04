@@ -2,9 +2,12 @@
 // that what grows shows. A classic script, run before the app's own by a `preload` step that reads it from vite as it stands:
 //   preload { const x = new XMLHttpRequest(); x.open('GET', '/.planning/tools/perf2-pre.js', false); x.send(); (0, eval)(x.responseText) }
 // (a preload counts for the pages loaded after it: give it an entry of its own before the soak's, e.g. "pre|wx=0&setup=0|preload …").
-// A slow graphics card's stand-in: `eval viewer.resolutionScale = 3.16` draws the view at ten times the pixels, so that the check
-// machine's card has ten times the work for every one of them (run it without UNCAP, on a display's 60 frames a second, to see
-// what the pace does on such a card). __fhTiers() times each tier's pass there; __fhWatch() follows the pace's tier over a while.
+// A quick card that is not kept busy slows its clock, and a pass's time read then is too long and wavers (2 to 4 times, on the
+// check machine's RTX 4090 at a third of its load). `eval __fhBurn()` keeps it busy: one more stage after the cloud pass, which
+// only burns the card's time, made heavier until the frames wait for the card. The pass's time read then is the card's own at
+// full clock. __fhTiers() times each tier's pass; __fhWatch() follows the pace's tier over a while.
+// (`viewer.resolutionScale = 3.16` draws the view at ten times the pixels, but in this headless Chromium a frame's time then
+// goes with the canvas's size whatever is drawn, 75 ms at 20 megapixels: it is no stand-in for a slow card's frames.)
 // Then `eval __fhs()` at each sample: one object of numbers since the sample before (frames, long tasks, the weather's hold, uploads,
 // draws, worker messages, requests) and of what is alive now (WebGL objects, workers, timers, listeners, DOM nodes, the scene's parts,
 // the heap). It reads window.viewer and window.weather3d (app.ts); with ?bench=1 the app's User Timing measures too, which it clears
@@ -254,6 +257,55 @@
     }
     w.holdTier(null)
     return out
+  }
+  // The graphics card kept busy: a stage after the cloud pass that only burns time (a loop of sines for every pixel), made heavier
+  // until a frame takes `frameMs` or more (the frames then wait for the card: it runs at full clock). Gives the loop's length and
+  // the frames' median time with it. __fhBurn(0) takes the stage out.
+  let burner = null
+  window.__fhBurn = async (frameMs = 30) => {
+    const v = window.viewer
+    const stages = v.scene.postProcessStages
+    if (burner !== null) {
+      stages.remove(burner.stage)
+      burner = null
+    }
+    if (!(frameMs > 0)) return null
+    const Stage = stages.fxaa.constructor
+    const b = { k: 32, stage: null }
+    b.stage = new Stage({
+      name: 'fh_perf2_burn',
+      fragmentShader: `uniform sampler2D colorTexture; uniform float u_k; in vec2 v_textureCoordinates;
+        void main() {
+          vec4 c = texture(colorTexture, v_textureCoordinates);
+          float a = 0.0;
+          for (int i = 0; i < 262144; i++) { if (float(i) >= u_k) break; a += sin(float(i) * 0.37 + c.r + a * 0.001); }
+          out_FragColor = c + vec4(a * 1.0e-9);
+        }`,
+      uniforms: { u_k: () => b.k },
+    })
+    stages.add(b.stage)
+    burner = b
+    const median = async (ms) => {
+      const f = []
+      let was = performance.now()
+      const end = was + ms
+      while (was < end) {
+        await new Promise(raf)
+        const now = performance.now()
+        f.push(now - was)
+        was = now
+      }
+      f.sort((x, y) => x - y)
+      return pct(f, 50)
+    }
+    await median(1500)
+    let m = await median(1000)
+    while (m < frameMs && b.k < 262000) {
+      b.k = Math.min(262000, Math.ceil(b.k * Math.max(1.25, Math.min(2, frameMs / Math.max(m, 1)))))
+      await median(600)
+      m = await median(1000)
+    }
+    return [b.k, r1(m)]
   }
   // The pace followed for `secs` seconds: every `every` seconds [seconds on, the tier, the pass's ms, its parts, the frames' median ms and their 95th percentile].
   window.__fhWatch = async (secs = 60, every = 5) => {
