@@ -205,9 +205,11 @@ function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: 
   const frameTiles = new Map<string, Map<string, SourceTile>>() // tiles of the frame whose URL has this in it, over `tiles`
   const tileHold = { on: false } // while on, a tile is answered only after releaseTiles()
   const tileHeld: (() => void)[] = []
+  const tileRefuse = { on: false } // while on, a tile cannot be had: the ask rejects
   const tile = async (radar: RadarSource, z: number, x: number, y: number): Promise<SourceTile | null> => {
     const key = `${z}/${x}/${y}`
     tileAsks.push(key)
+    if (tileRefuse.on) throw new Error('radar: not now')
     if (tileHold.on) await new Promise<void>((resolve) => tileHeld.push(resolve))
     const own = [...frameTiles].find(([path]) => radar.url.includes(path))?.[1]
     return own?.get(key) ?? tiles.get(key) ?? null // as it is when answered
@@ -221,7 +223,7 @@ function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: 
     look: o.look,
   })
   return {
-    w, asked, answers, model, epoch, failing, hold, sources, removed, labelCalls, lines, shades, failedNotes, sky, tiles, tileAsks, tileHold, frameTiles,
+    w, asked, answers, model, epoch, failing, hold, sources, removed, labelCalls, lines, shades, failedNotes, sky, tiles, tileAsks, tileHold, tileRefuse, frameTiles,
     releaseTiles: (newestFirst = false) => (newestFirst ? tileHeld.splice(0).reverse() : tileHeld.splice(0)).forEach((f) => f()),
     releaseSome: (n: number) => tileHeld.splice(0, n).forEach((f) => f()), // the first n tiles held
     held: () => tileHeld.length,
@@ -1208,6 +1210,26 @@ test('Weather3D: rain clouds from the radar within 100 km of the aircraft: its t
   assert.equal(expected.filter((c) => c.tower === undefined).length, 2, 'the 22 dBZ rain and the snow: two decks')
   assert.ok(expected.filter((c) => c.tower === undefined).every((c) => near(c.heightM - (PUFF_FILL * c.scale[1]) / 2, ceiling, 1e-6) && c.groundM === 30), 'at the ceiling')
   assert.deepEqual(r.sky.clouds.ats.at(-1), { lat: AC.lat, lon: AC.lon }, 'drawn round the aircraft')
+})
+
+test('Weather3D: a radar tile that could not be had (RainViewer\'s budget spent, or the fetch failed) is asked for again at the next look, and the radar\'s clouds are built when it comes', async () => {
+  const r = rig()
+  giveTiles(r, echoTiles(AC, [[20, 0, 50]]))
+  r.tileRefuse.on = true
+  await open(r)
+  for (const t of [16, 1000, 1016]) r.w.update(AC, t)
+  await flush()
+  assert.ok(r.sky.clouds.draws.every((d) => towerPuffs(d).length === 0), 'no tile: no radar clouds')
+  const asks = r.tileAsks.length
+  r.tileRefuse.on = false
+  r.w.update(AC, 2000) // a look
+  assert.ok(r.tileAsks.length > asks, 'asked for again')
+  await flush()
+  drawn(r, AC, 3000)
+  assert.ok(towerPuffs(r.sky.clouds.draws.at(-1)!).length > 0, 'built when the tile came')
+  const again = r.tileAsks.length
+  for (const t of [4000, 4016, 5000, 5016]) r.w.update(AC, t)
+  assert.equal(r.tileAsks.length, again, 'each had: none asked for again')
 })
 
 test('Weather3D: without the radar\'s tiles yet it builds without its clouds, and builds again when they come (not at every look)', async () => {

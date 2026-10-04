@@ -276,6 +276,9 @@ function stubSource(asked: string[]): RadarSource {
   dbz[120 * 256 + 100] = 40
   const echo: SourceTile = { dbz, snow: new Uint8Array(256 * 256) }
   return new (class extends RadarSource {
+    override want(): boolean {
+      return true
+    }
     override get(z: number, x: number, y: number): Promise<SourceTile | null> {
       asked.push(`${z}/${x}/${y}`)
       return Promise.resolve(z === 7 && x === 76 && y === 50 ? echo : null)
@@ -305,13 +308,36 @@ test('RadarProvider: tiles to level 12 as straight-alpha ImageData; each asks on
   })
 })
 
+test('RadarProvider: a tile whose source tiles are not all on their way is answered "not now" (Cesium asks again), each asked for that the budget allows; one that could not be fetched is cancelled, not drawn as no rain', async () => {
+  await withBrowser(async () => {
+    const wanted: string[] = []
+    let allowed = 5
+    const source = new (class extends RadarSource {
+      override want(z: number, x: number, y: number): boolean {
+        wanted.push(`${z}/${x}/${y}`)
+        return allowed-- > 0
+      }
+      override get(): Promise<SourceTile | null> {
+        return Promise.reject(new TypeError('Failed to fetch'))
+      }
+    })('https://h', '/p')
+    const p = new RadarProvider(source, RAIN_PALETTE.dark)
+    assert.equal(p.requestImage(76, 50, 7), undefined, 'four of its nine source tiles cannot be asked for yet')
+    assert.equal(wanted.length, 9, 'every one tried: those the budget allows are on their way')
+    allowed = 9
+    const request = new Request()
+    await assert.rejects(p.requestImage(76, 50, 7, request)!)
+    assert.equal(request.state, RequestState.CANCELLED, 'asked for again later')
+  })
+})
+
 test('RadarProvider: dropped, its tiles still waiting are not drawn, and Cesium hears them as cancelled (it logs nothing)', async () => {
   await withBrowser(async () => {
     const p = new RadarProvider(stubSource([]), RAIN_PALETTE.dark)
     const request = new Request()
     const pending = p.requestImage(305, 201, 9, request)
     p.drop()
-    await assert.rejects(pending)
+    await assert.rejects(pending!)
     assert.equal(request.state, RequestState.CANCELLED)
   })
 })
@@ -323,7 +349,7 @@ test('RadarProvider: while its layer is hidden, tiles still waiting are not draw
     const request = new Request()
     const pending = p.requestImage(305, 201, 9, request)
     shown = false
-    await assert.rejects(pending)
+    await assert.rejects(pending!)
     assert.equal(request.state, RequestState.CANCELLED)
     assert.equal(p.dropped, false, 'not retired: shown again, it draws')
   })
