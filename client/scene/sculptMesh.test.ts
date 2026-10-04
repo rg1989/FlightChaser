@@ -135,7 +135,8 @@ test('sculptMesh: a band that would take too many triangles is cut more coarsely
   for (let y = -150; y <= 150; y += 7.5) for (let x = -150; x <= 150; x += 7.5) specs.push(disc(1000 + ((x * 7 + y * 13) % 400), 2600, 9000 + ((x * 3 + y * 5) % 3000), 0, x, y))
   const m = sculptMesh(buildField(specs, LAT, LON))
   assert.equal(m.bands.length, 1)
-  assert.ok(m.triangles <= BAND_TRIANGLES, `${m.triangles} triangles`)
+  const finest = 4 * 1024 * 1024 * 0.6 // were it cut finely all over: more than half the square is cover
+  assert.ok(finest > 10 * BAND_TRIANGLES && m.triangles <= 262_144, `${m.triangles} triangles: the coarsest cut's most`)
   assert.equal(shape(m.bands[0]).open, 0)
 })
 
@@ -205,4 +206,21 @@ test('shadowImage: a faint tint under each body, soft at its rim, the north at t
   // The light under the horizon (night): no further either.
   const night = middle(sculptMesh(buildField([disc(8000, 9500, 30_000, 0, 40, 40)], LAT, LON), [1, 0, -0.2]).shadow!)
   assert.ok(Math.abs(night.east - m.east) < SHADOW_SHIFT_KM + 0.7)
+})
+
+test('sculptMesh: an overcast sky in four layers with storms through them is built within its triangles, and in a time a worker can spare', () => {
+  // Decks 300 km wide in each layer band, their rims ragged with smaller clouds, and twelve storms.
+  const specs: FieldSpec[] = [disc(900, 1800, 600_000), disc(2600, 3800, 560_000), disc(5200, 6500, 500_000, 1), disc(9000, 10_000, 620_000)]
+  for (let k = 0; k < 160; k++) specs.push(disc(1000 + (k % 4) * 2400, 2200 + (k % 4) * 2400, 12_000 + (k % 7) * 3000, k % 2, ((k * 37) % 300) - 150, ((k * 91) % 300) - 150))
+  for (let k = 0; k < 12; k++) specs.push(disc(1000, 9000 + (k % 3) * 1000, 12_000, 3, ((k * 53) % 240) - 120, ((k * 29) % 240) - 120, k))
+  const field = buildField(specs, LAT, LON)
+  const m = sculptMesh(field)
+  console.log(`an overcast sky: ${m.bands.length} bands, ${m.triangles} triangles, built in ${m.ms.toFixed(0)} ms`)
+  assert.equal(m.bands.length, 5)
+  for (const b of m.bands) {
+    assert.ok(b.indices.length / 3 <= BAND_TRIANGLES, `band ${b.band}: ${b.indices.length / 3}`)
+    console.log(`  band ${b.band}: ${b.indices.length / 3} triangles`)
+    assert.equal(shape(b).open, 0)
+  }
+  assert.ok(m.ms < 1500, `${m.ms} ms`)
 })

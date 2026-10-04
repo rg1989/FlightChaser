@@ -23,7 +23,7 @@ import { SEV_COLOR } from './wxAhead.ts'
 export const LEVEL_M = 500 // a level line at every this much height above the sea
 export const VEIL = 0.34 // the surface nearest the eye veils what is behind it by this: about a third
 export const GLANCE = 0.3 // more, where it turns away from the eye
-export const BEHIND = 0.1 // a body's near side behind another surface, by this
+export const BEHIND = 0.04 // a body's near side behind another surface, by this: next to nothing, so that layer over layer of an overcast does not hide the ground
 export const INSIDE_VEIL = 0.2 // and the inside of the body the camera is in, by this
 export const EDGE_ALPHA = 0.95 // the rim's and the outline's line
 export const LINE_ALPHA = 0.8 // a level line

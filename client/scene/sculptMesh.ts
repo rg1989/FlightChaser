@@ -22,7 +22,8 @@
 // is all body and whose top and underside are level to within FLAT_M is a fan of at most a few triangles round its middle (its edge
 // toward a finely cut block has that block's corners, so no gap opens between them); a block with no body is nothing. So the
 // triangles go with the length of the rims, not with the area of the cloud. A band that would still take more than BAND_TRIANGLES
-// (a sky of broken cover with no level part) is cut more coarsely: cells of a texel, then of two.
+// (a sky of broken cover with no level part) is cut more coarsely: cells of a texel, then of two (at that last cut it has what it
+// has: 262,144 at most).
 // A body is closed: its top sheet and its underside meet at the rim, in the same places. Each sheet has its own corners (the rim is a
 // crease: the top's normals lean out, the underside's point down), and a corner's normal is the mean of its sheet's faces round it.
 // A band's mesh is its own (no corner is shared between bands): the renderer writes a band to the card a frame.
@@ -39,7 +40,7 @@ import { BANDS, FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.t
 export const RIM_COVER = 0.4 // a body stands where the cover is above this
 export const SHOULDER_MAX_KM = 2.5 // a body's top is rounded over at most this far in from its rim
 export const VERTEX_FLOATS = 10 // x, y, z, the normal's x, y, z, the severity, the height above the sea, 1 on the underside, the distance in from the rim
-export const BAND_TRIANGLES = 300_000 // a band of more than this is cut more coarsely
+export const BAND_TRIANGLES = 150_000 // a band of more than this is cut more coarsely
 const BLOCK_TEXELS = 4 // a block's side, in the field's texels
 const NODE_TEXELS: readonly number[] = [0.5, 1, 2] // the nodes' spacing at each level of cut, finest first
 const FLAT_M = 30 // a block all of body whose top and underside are level to within this is not cut finely
@@ -166,25 +167,42 @@ function read(g: Grid, f: WxField, b: number, step: number, i: number, j: number
     g.seen[k] = 1 // no cover within two texels: nothing to read
     return
   }
-  const [C, B, T, S] = [f.cov[b], f.base[b], f.top[b], f.sev[b]]
+  const C = f.cov[b]
+  const B = f.base[b]
+  const T = f.top[b]
+  const S = f.sev[b]
   let cover = 0
-  let [x0, x1, y0, y1] = [0, 0, 0, 0] // the texels its heights are read from
+  let x0 = 0 // the texels its heights are read from
+  let x1 = 0
+  let y0 = 0
+  let y1 = 0
   if (step === 0.5) {
-    const [tx, ty] = [i >> 1, j >> 1]
-    const [wx, wy] = [(i & 1) === 1 ? HALF : WHOLE, (j & 1) === 1 ? HALF : WHOLE]
+    const tx = i >> 1
+    const ty = j >> 1
+    const wx = (i & 1) === 1 ? HALF : WHOLE
+    const wy = (j & 1) === 1 ? HALF : WHOLE
     for (let q = 0; q < 4; q++) {
       if (wy[q] === 0) continue
       const row = clampT(ty - 1 + q) * FIELD_N
       for (let p = 0; p < 4; p++) if (wx[p] !== 0) cover += wy[q] * wx[p] * C[row + clampT(tx - 1 + p)]
     }
     cover = cover < 0 ? 0 : cover > 1 ? 1 : cover
-    ;[x0, x1, y0, y1] = [tx, tx + (i & 1), ty, ty + (j & 1)]
+    x0 = tx
+    x1 = tx + (i & 1)
+    y0 = ty
+    y1 = ty + (j & 1)
   } else {
     const reach = step === 1 ? 0 : 1
-    ;[x0, x1, y0, y1] = [i * step - reach, i * step + reach, j * step - reach, j * step + reach]
+    x0 = i * step - reach
+    x1 = i * step + reach
+    y0 = j * step - reach
+    y1 = j * step + reach
     for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) cover = Math.max(cover, C[clampT(y) * FIELD_N + clampT(x)])
   }
-  let [w, bs, ts, ss] = [0, 0, 0, 0]
+  let w = 0
+  let bs = 0
+  let ts = 0
+  let ss = 0
   for (let y = y0; y <= y1; y++) {
     for (let x = x0; x <= x1; x++) {
       const o = clampT(y) * FIELD_N + clampT(x)
@@ -372,9 +390,70 @@ function tops(g: Grid, cellKm: number): void {
   })
 }
 
-/** The bodies of band b of the field in the frame fr, cut at `level` (0 the finest) or, when that takes too many triangles, more coarsely; none when the band has no body. */
-function sculptBand(f: WxField, b: number, fr: Frame, level: number): SculptBand | null {
+/** A band's cover on the field's texels, looked at once: the texels with cover within two texels of them (a node elsewhere has none: it is not read), the box of texels the cover spans, and the cut to begin at. */
+interface Around {
+  nearby: Uint8Array
+  x0: number
+  y0: number
+  x1: number
+  y1: number
+  level: number
+}
+
+/**
+ * Band b's cover looked at before any node is read; null with no cover. The cut to begin at is the finest whose triangles, counted
+ * roughly from the texels (a block all of cover, with all of cover round it, a few; any other by its texels of cover), are within
+ * BAND_TRIANGLES: the reading and the shaping of a cut that is then thrown away were most of an overcast sky's time.
+ */
+function around(f: WxField, b: number, from: number): Around | null {
   if (f.lo[b] > f.hi[b]) return null
+  const N = FIELD_N
+  const C = f.cov[b]
+  const row = new Uint8Array(N * N) // cover within two texels east or west
+  let [x0, y0, x1, y1] = [N, N, -1, -1]
+  for (let y = 0; y < N; y++) {
+    for (let x = 0, o = y * N; x < N; x++, o++) {
+      if (!(C[o] > 0)) continue
+      row.fill(1, y * N + Math.max(0, x - 2), y * N + Math.min(N - 1, x + 2) + 1)
+      if (x < x0) x0 = x
+      if (x > x1) x1 = x
+      if (y < y0) y0 = y
+      if (y > y1) y1 = y
+    }
+  }
+  if (x1 < 0) return null
+  const nearby = new Uint8Array(N * N)
+  for (let y = Math.max(0, y0 - 2); y <= Math.min(N - 1, y1 + 2); y++) {
+    for (let x = Math.max(0, x0 - 2), o = y * N + x; x <= Math.min(N - 1, x1 + 2); x++, o++) {
+      for (let v = Math.max(0, y - 2); v <= Math.min(N - 1, y + 2); v++) {
+        if (row[v * N + x] === 1) {
+          nearby[o] = 1
+          break
+        }
+      }
+    }
+  }
+  // The blocks' texels of cover, and the rough count at each cut.
+  const nb = N / BLOCK_TEXELS
+  const inside = new Uint8Array(nb * nb)
+  for (let y = y0; y <= y1; y++) for (let x = x0, o = y * N + x; x <= x1; x++, o++) if (C[o] > RIM_COVER) inside[Math.floor(y / BLOCK_TEXELS) * nb + Math.floor(x / BLOCK_TEXELS)]++
+  const all = BLOCK_TEXELS * BLOCK_TEXELS
+  let [level, fine] = [0, 0] // blocks to be few triangles; texels of cover in the blocks cut finely
+  for (let bj = 0; bj < nb; bj++) {
+    for (let bi = 0, k = bj * nb; bi < nb; bi++, k++) {
+      if (inside[k] === 0) continue
+      const deep = inside[k] === all && bi > 0 && bj > 0 && bi < nb - 1 && bj < nb - 1 && inside[k - 1] === all && inside[k + 1] === all && inside[k - nb] === all && inside[k + nb] === all
+      if (deep) level++
+      else fine += inside[k]
+    }
+  }
+  let cut = from
+  while (cut + 1 < NODE_TEXELS.length && 8 * level + (4 * fine) / (NODE_TEXELS[cut] * NODE_TEXELS[cut]) > BAND_TRIANGLES) cut++
+  return { nearby, x0, y0, x1, y1, level: cut }
+}
+
+/** The bodies of band b of the field in the frame fr, cut at `level` (0 the finest) or, when that takes too many triangles, more coarsely; none when the band has no body. */
+function sculptBand(f: WxField, b: number, fr: Frame, level: number, around: Around): SculptBand | null {
   const step = NODE_TEXELS[level]
   const s = BLOCK_TEXELS / step // cells a block's side
   const nb = FIELD_N / BLOCK_TEXELS // blocks a side
@@ -394,35 +473,30 @@ function sculptBand(f: WxField, b: number, fr: Frame, level: number): SculptBand
       for (let y = Math.max(0, bj - 1); y <= Math.min(nb - 1, bj + 1); y++) for (let x = Math.max(0, bi - 1); x <= Math.min(nb - 1, bi + 1); x++) near[y * nb + x] = 1
     }
   }
-  // The texels with cover within two texels of them (a node elsewhere has none: it is not read), and the box of nodes they span.
-  const nearby = new Uint8Array(FIELD_N * FIELD_N)
-  let [x0, y0, x1, y1] = [FIELD_N, FIELD_N, -1, -1]
-  for (let y = 0; y < FIELD_N; y++) {
-    for (let x = 0, o = y * FIELD_N; x < FIELD_N; x++, o++) {
-      if (!(C[o] > 0)) continue
-      for (let v = Math.max(0, y - 2); v <= Math.min(FIELD_N - 1, y + 2); v++) nearby.fill(1, v * FIELD_N + Math.max(0, x - 2), v * FIELD_N + Math.min(FIELD_N - 1, x + 2) + 1)
-      if (x < x0) x0 = x
-      if (x > x1) x1 = x
-      if (y < y0) y0 = y
-      if (y > y1) y1 = y
-    }
-  }
-  if (x1 < 0) return null
+  const { nearby, x0, y0, x1, y1 } = around
   const edge = (t: number): number => Math.min(n - 2, Math.max(1, t))
   g.box = [edge(Math.floor((x0 - 2) / step)), edge(Math.floor((y0 - 2) / step)), edge(Math.ceil((x1 + 2) / step)), edge(Math.ceil((y1 + 2) / step))]
+  // The nodes read; and a first count of the triangles, were every block the rim passes through cut finely and every other level: more
+  // than the band may have is cut more coarsely at once (the shaping below is the longer work).
   let any = false
+  let rough = 0
   for (let bj = 0; bj < nb; bj++) {
     for (let bi = 0; bi < nb; bi++) {
       if (near[bj * nb + bi] === 0) continue
+      let inside = 0
       for (let j = bj * s; j <= bj * s + s; j++) {
         for (let i = bi * s; i <= bi * s + s; i++) {
           read(g, f, b, step, i, j, nearby)
-          if (cov[j * n + i] > RIM_COVER) any = true
+          if (cov[j * n + i] > RIM_COVER) inside++
         }
       }
+      if (inside === 0) continue
+      any = true
+      rough += inside === (s + 1) * (s + 1) ? 8 : 4 * inside
     }
   }
   if (!any) return null
+  if (rough > BAND_TRIANGLES && level + 1 < NODE_TEXELS.length) return sculptBand(f, b, fr, level + 1, around)
   tops(g, step * TEXEL_KM)
   const kind = new Uint8Array(nb * nb)
   let estimate = 0
@@ -452,7 +526,7 @@ function sculptBand(f: WxField, b: number, fr: Frame, level: number): SculptBand
     }
   }
   if (estimate === 0) return null
-  if (estimate > BAND_TRIANGLES && level + 1 < NODE_TEXELS.length) return sculptBand(f, b, fr, level + 1)
+  if (estimate > BAND_TRIANGLES && level + 1 < NODE_TEXELS.length) return sculptBand(f, b, fr, level + 1, around)
 
   // The corners, laid as they are first named: a pair (top sheet, underside) for a node inside a body and for an edge of the grid the rim crosses.
   let vertices = new Float32Array(F * 4096)
@@ -555,7 +629,7 @@ function sculptBand(f: WxField, b: number, fr: Frame, level: number): SculptBand
     }
   }
   if (at === 0) return null
-  if (at / 3 > BAND_TRIANGLES && level + 1 < NODE_TEXELS.length) return sculptBand(f, b, fr, level + 1)
+  if (at / 3 > BAND_TRIANGLES && level + 1 < NODE_TEXELS.length) return sculptBand(f, b, fr, level + 1, around)
   const band: SculptBand = { band: b, vertices: vertices.slice(0, 2 * pairs * F), indices: indices.slice(0, at), roof: new Float32Array(FIELD_N * FIELD_N), floor: new Float32Array(FIELD_N * FIELD_N) }
   normals(band.vertices, band.indices)
   for (let y = y0; y <= y1; y++) {
@@ -667,7 +741,8 @@ export function sculptMesh(f: WxField, light: readonly [number, number, number] 
   if (!f.empty) {
     const fr = frameAt(f.lat, f.lon)
     for (let b = 0; b < BANDS; b++) {
-      const band = sculptBand(f, b, fr, level)
+      const look = around(f, b, level)
+      const band = look === null ? null : sculptBand(f, b, fr, look.level, look)
       if (band === null) continue
       mesh.bands.push(band)
       mesh.triangles += band.indices.length / 3
