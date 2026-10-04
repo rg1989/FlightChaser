@@ -20,13 +20,15 @@
 // to the field: a field built round another place keeps every cloud's detail; and the hazard areas' edges nearest the aircraft, at
 // most 48 (wxEdges.ts hazardEdges, packEdges).
 // A field that comes is not drawn at once: the atlas is 6 MB, and written to the card in one frame it holds the frame up. The field
-// and the clear-air map have a second pair of images. A coming field's bands are written into that pair, one band a frame (frame();
-// all at once where the field was made within draw itself: no worker, so no frame was spared anyway), while the pass goes on drawing
-// the field in use from the first pair; when the last is written the pairs change places, and with them the field in use, its
-// frame, its heights and the edges laid in it: one frame draws the old field whole, the next the new one whole. The pass stands
+// and the clear-air map have a second pair of images. A coming field's bands are written into that pair, one band a frame, then its
+// clear-air map (frame(); all at once where the field was made within draw itself: no worker, so no frame was spared anyway), while
+// the pass goes on drawing the field in use from the first pair; at the frame after the last write the pairs change places, and
+// with them the field in use, its frame, its heights and the edges laid in it (a frame that writes nothing to the card): one frame
+// draws the old field whole, the next the new one whole. The pass stands
 // through it all: it is made again only for another size of march.
-// ponytail: the 48 edges nearest the aircraft are picked when the hazard areas are given and at each draw (30 km of flight), not as
-// the aircraft moves: among more than 48, one that has become nearer since is not yet drawn. Upgrade: pick again every few km.
+// ponytail: the 48 edges nearest the aircraft are picked when the hazard areas are given and when a field comes into use (35 to 52 km
+// of flight), not as the aircraft moves: among more than 48, one that has become nearer since is not yet drawn. Upgrade: pick again
+// every few km.
 // While hidden, while there is no cloud, no hazard area's edge and no aid to draw, and once destroyed there is no stage in the scene
 // and no image on the card, so nothing runs and nothing is held. Shown again, the images are made and written again from the field
 // kept. With no cloud the images are there and are not read: the march walks no ray.
@@ -387,23 +389,30 @@ export class CloudVolume {
   }
 
   /**
-   * `made` is to come into use once its images are written into the spare pair: a band's tile at each write (#write), the clear-air
-   * map with the last. now: all of it at once.
+   * `made` is to come into use once its images are written into the spare pair: a band's tile at each write (#write), then the
+   * clear-air map. now: all of it at once.
    */
   #load(made: FieldMade, now: boolean): void {
     this.#spare ??= { field: this.#image(ATLAS_W, ATLAS_H), near: this.#image(NEAR_N, NEAR_N) }
     const into = this.#spare
     this.#coming = made
     this.#writes = made.tiles.flatMap((tile, b) => (tile === null ? [] : [() => into.field.write(tile, (b % 3) * FIELD_N, Math.floor(b / 3) * FIELD_N)]))
+    if (made.near !== null) this.#writes.push(() => into.near.write(made.near!, 0, 0))
     if (now) this.#write(Infinity)
   }
 
-  /** At most n of the coming field's bands written; after the last, its clear-air map, and the field is in use from the images written. */
+  /**
+   * At most n of the coming field's writes done; when none is left, and this call did none (all at once: in the same call), the
+   * field is in use from the images written.
+   */
   #write(n: number): void {
-    for (let k = 0; k < n && this.#writes.length > 0; k++) this.#writes.shift()!()
+    let done = 0
+    while (done < n && this.#writes.length > 0) {
+      this.#writes.shift()!()
+      done++
+    }
     const made = this.#coming
-    if (this.#writes.length > 0 || made === null || this.#spare === null) return
-    if (made.near !== null) this.#spare.near.write(made.near, 0, 0)
+    if (this.#writes.length > 0 || (done > 0 && n !== Infinity) || made === null || this.#spare === null) return
     ;[this.#shown, this.#spare] = [this.#spare, this.#shown]
     this.#coming = null
     this.#use(made, true)

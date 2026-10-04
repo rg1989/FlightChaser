@@ -295,7 +295,7 @@ test('CloudVolume: a draw keeps the pass: the new field is written into a second
   assert.ok(made.every((im) => !im.destroyed))
 })
 
-test('CloudVolume: a field that comes from a worker is not written to the graphics card in one frame: a band at each frame, while the pass draws the field in use from its own images; with the last band the two change places, all at once: the field the HUD asks, the images, the heights and the frame', () => {
+test('CloudVolume: a field that comes from a worker is not written to the graphics card in one frame: a band at each frame, then its clear-air map, while the pass draws the field in use from its own images; at the frame after the last write (one that writes nothing) the two change places, all at once: the field the HUD asks, the images, the heights and the frame', () => {
   const b = lateBuilder()
   const r = rig({ builder: b.builder })
   r.vol.show = true
@@ -303,21 +303,24 @@ test('CloudVolume: a field that comes from a worker is not written to the graphi
   b.answer(0)
   assert.deepEqual([r.vol.field, r.live().length], [null, 0], 'made, but not on the card yet')
   r.vol.frame(TF, 0)
-  assert.deepEqual([r.vol.field!.lat, r.live().length], [LAT, 1], 'one band (the cumulus\'s): one frame')
+  r.vol.frame(TF, 0)
+  assert.deepEqual([r.vol.field, r.live().length], [null, 0], 'one band (the cumulus\'s) and the clear-air map: two frames of writing')
+  r.vol.frame(TF, 0)
+  assert.deepEqual([r.vol.field!.lat, r.live().length], [LAT, 1], 'and in use at the third')
   const first = r.vol.field
   const shown = r.image('u_field')
   const there = at(10, 5)
   r.vol.draw([CU, RAIN, CB], there) // three bands
   b.answer(1)
   const want = fieldAtlas(buildField([CU, RAIN, CB], there.lat, there.lon))
-  for (const frame of [1, 2]) {
+  for (const frame of [1, 2, 3, 4]) {
     r.vol.frame(TF, 0)
     assert.equal(r.vol.field, first, `frame ${frame}: the field in use stands`)
     assert.ok(r.image('u_field') === shown && r.call<number>(0, 'u_top') === 2.5, 'and so do its images and its heights')
     assert.deepEqual(shown.data, fieldAtlas(first!).data, 'which nothing is written into')
   }
   r.vol.frame(TF, 0)
-  assert.deepEqual([r.vol.field!.lat, r.vol.field!.lon], [there.lat, there.lon], 'frame 3: the last band, and the new field is in use')
+  assert.deepEqual([r.vol.field!.lat, r.vol.field!.lon], [there.lat, there.lon], 'frame 5: three bands and the clear-air map are written, and the new field is in use')
   assert.notEqual(r.image('u_field'), shown)
   assert.deepEqual(r.image('u_field').data, want.data)
   assert.deepEqual(r.image('u_near').data, survey(r.vol.field!).near.data)
@@ -329,7 +332,7 @@ test('CloudVolume: a field that comes from a worker is not written to the graphi
   r.vol.frame(TF, 0)
   r.vol.draw([CB], HERE)
   b.answer(3)
-  for (let k = 0; k < 4; k++) r.vol.frame(TF, 0)
+  for (let k = 0; k < 3; k++) r.vol.frame(TF, 0)
   assert.equal(r.call<number>(0, 'u_top'), 11)
   assert.deepEqual(r.call<number[]>(0, 'u_lo').map((lo, k) => lo < r.call<number[]>(0, 'u_hi')[k]), [false, false, false, false, true], 'the storm alone')
   // an empty sky has nothing to write: in use at once
