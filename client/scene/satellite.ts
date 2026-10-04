@@ -32,7 +32,7 @@
 // pictures. What the numbers have that the pictures have not (checked on 2026-10-04: server/geos.ts): they are the satellite's own
 // pixels, where EUMETView's pictures are the products laid again on a lattice of 1/24° of latitude and longitude (the heights in
 // blocks of 1/8°), which stands about 2 km south-east of the pixels and puts a height block's edge up to 7 km off; nothing is read
-// back from a colour; and the frame is there sooner (the Data Store has a frame 14 minutes after its time, EUMETView 16 to 23). The
+// back from a colour; and the frame is there sooner (the Data Store has a frame 14 minutes after its time, EUMETView 16 to 26). The
 // heights are the same steps of 320 m by either route: the product holds no finer ones. The server is asked for the same box,
 // with the time of the frame held; every minute while it answers (it asks EUMETSAT only when a newer frame can be there, so the
 // minute costs EUMETSAT nothing: a frame is in use a minute or two after it is published, where the pictures' check every 5

@@ -7,12 +7,19 @@
 // pixels a side, 2^16 / 13,642,337 degrees a pixel (the specification's CFAC and LFAC: 3.0 km under the satellite), the point under
 // the satellite in the middle of pixel 1856 counted from 1 (COFF, LOFF), the first pixel in the south-east corner, a row running
 // west and the rows north. The products' own GRIB grid says the same (Xp = Yp = 1856, scanning mode 0xC0), and the heights' grid,
-// in blocks of three pixels, says 619 of 1,237: block 619 is pixels 1855 to 1857, its middle pixel 1856. Two things do not agree
-// with it by half a pixel, and are left as they are (a pixel is 3 to 5 km; checked on the frame of 2026-10-04 10:30 UTC):
-// - EUMETView's picture of the same mask (the keyless route, client/scene/satellite.ts) matches these pixels best when they are
-//   moved half a pixel west and north (93.5 to 97 % of 4 boxes' cells the same class, against 91 to 96 % unmoved): its picture
-//   stands about 2 km south-east of this grid's;
-// - the mask's processed disc is even about pixel 1855 (from 0) south to north, and about 1855.5 east to west.
+// in blocks of three pixels, says 619 of 1,237: block 619 is pixels 1855 to 1857, its middle pixel 1856. What was checked of it
+// on the frames of 2026-10-04 (a pixel is 3 to 5 km):
+// - the heights' blocks lie on the mask's pixels as said: a block has a height where four or more of its nine pixels are cloud,
+//   in 99.0 % of the blocks at this alignment and in 95.0 % or fewer one pixel off any way;
+// - the mask's own classes at 16 coasts that were clear: land begins half a pixel out to sea on coasts that face west (Tel Aviv,
+//   Caesarea, Beirut, Cape Town) and about a pixel out on coasts that face east (Sousse, Bari, Dar es Salaam), so the mask counts
+//   a coast's pixel as land, and the grid stands within a third of a pixel of the coasts;
+// - EUMETView's pictures of the same products (the keyless route, client/scene/satellite.ts) are not these pixels: they lie on a
+//   lattice of 1/24° of latitude and longitude (the heights in blocks of 1/8°), upright on the map, where the satellite's pixels
+//   are parallelograms (at 31° E, 37° N a column leans 20° from north) and 3 km, not 4.6, under the satellite. The pictures' mask
+//   agrees with these pixels on 92 to 95 % of a 1,000 km box's cells, and best (95 to 96.5 %) with the pixels moved a cell of
+//   2.5 km north-west: the pictures stand about half a pixel south-east;
+// - the mask's processed disc is even about pixel 1855 (from 0) south to north, and about 1855.5 east to west: not explained.
 // ponytail: the Earth's edge is where the line of sight grazes the ellipsoid; mountains and the atmosphere are not in it. No
 // inverse (a pixel's place): the cut-out goes from places to pixels. Upgrade: the inverse, if a product is ever read pixel by pixel.
 

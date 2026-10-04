@@ -7,11 +7,14 @@
 // The two products, of Meteosat at 0° (SEVIRI), a frame every 15 minutes, each a zip of about 0.5 MB holding one GRIB 2 file
 // (grib2.ts says what that is), in the Data Store 13.5 to 14.5 minutes after the frame's time (24 products watched, 2026-10-04):
 // - EO:EUM:DAT:MSG:CLM, the cloud mask: for each of the 3,712 × 3,712 pixels, clear over water, clear over land, cloud, or no data;
-// - EO:EUM:DAT:MSG:CTH, the cloud top height: for each block of three pixels by three with enough cloud in it, the height of its
-//   highest cloud, a number of 320 m steps (1 to 47 seen: 320 m to 15,040 m), and a quality flag. The height is the cloud top's
+// - EO:EUM:DAT:MSG:CTH, the cloud top height: for each block of three pixels by three with four or more cloudy pixels, the height
+//   of its highest cloud, a number of 320 m steps (1 to 47 seen: 320 m to 15,040 m), and a quality flag. The height is the cloud top's
 //   pressure read as a height in the ICAO standard atmosphere (EUM/MSG/SPE/022 v5B, §10.3.2.2). So the raw heights are the same
-//   320 m steps the pictures' fifty colours stand for: what the raw route adds is that none is misread from a colour, the frame
-//   8 to 16 minutes sooner (EUMETView has it 22 to 30 minutes after its time), and the quality flag.
+//   320 m steps the pictures' fifty colours stand for. What the raw route adds: the satellite's own pixels (geos.ts: EUMETView's
+//   pictures are the products laid again on a lattice of 1/24°, the heights on one of 1/8°), no number read back from a colour,
+//   the frame 2 to 11 minutes sooner (EUMETView had the frames watched 16 to 26 minutes after their time), and the quality flag.
+//   The flag (1 on 1 % of the tops under 2 km and on 36 % of those over 8 km, whose heights differ from their neighbours' by
+//   1,500 m on average, against 570 m for the others) marks a height of poor quality, not a cloud in doubt: it is read and not used.
 // What is asked of EUMETSAT, and how seldom:
 // - the newest products of the two collections (a search each: no key needed): only when a page asks for a frame, only once a
 //   newer frame than the one held can be there (13 minutes after its own time), and then at most once a minute;

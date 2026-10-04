@@ -6,7 +6,7 @@
 // It prints how the masks agree (also with the raw grid moved a cell each way: the two services place the pixels half a satellite
 // pixel apart), a table of raw height less picture height over the cells where both have one, and writes four plans as PNGs
 // (raw-mask, raw-tops, view-mask, view-tops: the masks white, green, blue as EUMETView colours them, the tops in the pictures' own
-// colours) and the raw answer (raw.bin), so that the pictures can be asked for later (EUMETView has a frame 2 to 9 minutes after
+// colours) and the raw answer (raw.bin), so that the pictures can be asked for later (EUMETView has a frame 2 to 11 minutes after
 // the Data Store) with the raw answer given as the fifth argument. With a field's middle (sat-probe.js state() says it) the four plans
 // are also written cut to the field's 320 km square, 128 cells a side (-square.png), to lay beside the field's own plans.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'

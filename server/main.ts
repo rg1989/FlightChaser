@@ -156,7 +156,7 @@ async function sendJson(req: IncomingMessage, res: ServerResponse, status: numbe
   res.writeHead(status, { ...headers, 'content-length': bytes }).end(text)
 }
 
-/** Bytes (a satellite frame: shared/sat.ts), gzipped off the event loop when they are over 1 KB and the client accepts gzip: 640 KB go as 16 to 60 KB. */
+/** Bytes (a satellite frame: shared/sat.ts), gzipped off the event loop when they are over 1 KB and the client accepts gzip: 640 KB go as 34 to 48 KB. */
 async function sendBytes(req: IncomingMessage, res: ServerResponse, bytes: Uint8Array, extra: Record<string, string> = {}): Promise<void> {
   const headers = { 'content-type': 'application/octet-stream', 'cache-control': 'no-store', vary: 'accept-encoding', ...extra }
   if (bytes.length > GZIP_MIN_BYTES && acceptsGzip(req.headers['accept-encoding'])) {

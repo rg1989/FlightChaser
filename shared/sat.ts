@@ -1,7 +1,7 @@
 // shared/sat.ts
 // A frame of the weather satellite over a box, as the server cuts it out of the satellite's raw products (server/eumetsat.ts, GET
 // /api/wx/sat) and the chase's weather reads it (client/scene/satellite.ts): the numbers the keyless route reads back from two
-// pictures' colours, sent as they are. Bytes, not JSON: 640 KB for 400 × 400 cells (16 to 60 KB gzipped), which the page has
+// pictures' colours, sent as they are. Bytes, not JSON: 640 KB for 400 × 400 cells (34 to 48 KB gzipped, in three real skies), which the page has
 // nothing to parse of: the three planes are read where they lie in the answer. All numbers little-endian:
 //    0  "FHS1"                     the format
 //    4  n, uint32                  cells a side
