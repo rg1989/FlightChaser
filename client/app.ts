@@ -1958,6 +1958,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         wxAircraft.lon = chased.lon
         wxAircraft.altM = chased.hM
         wxAircraft.trackDeg = chased.trackDeg ?? chased.headingDeg
+        wxAircraft.gsKt = chased.gsKt ?? undefined
       }
       weather3d.setNight(prefs.light && st !== null ? st.night : 0)
       weather3d.update(chased !== null ? wxAircraft : null, now, tf)

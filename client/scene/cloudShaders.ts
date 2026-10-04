@@ -94,7 +94,7 @@ const THIN_STEP = 0.25 // in thin cloud a step is as long as hides this much (an
 const THIN = ERODE * 0.2
 /** The cover fades to nothing between these, km from the aircraft: what Weather3D reads its sources by. */
 export const REACH_KM: readonly [number, number] = [130, 150]
-const RIM_KM: readonly [number, number] = [150, 158] // and at the square's rim
+export const RIM_KM: readonly [number, number] = [150, 158] // and at the square's rim (what fieldPlace.ts places a field by)
 const BOX_KM = 165 // the ray is clipped to this in the frame: the field's 160 km and room for the map's bend
 const GAIN = 1.5 // the field's cover × profile is drawn times this, capped at 1 (the mock's): bodies are solid, their edges crisp
 const SIGMA = 7 // extinction per km of full cloud (the mock's) …
