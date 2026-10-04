@@ -67,6 +67,7 @@ export interface CardView {
   sub: string // "Airline · A321 · G-EZGY", the parts known
   flag: string
   type: string
+  model: string | null // drawn on a model that is not its own: what is drawn, in words (modelFor.ts placeholderWords); else null
   stats: CardStat[]
   state: CardState
   dot: CardDot
@@ -81,6 +82,9 @@ export interface CardRange {
   distM: number
   from: string
 }
+
+/** An aircraft's type designator and ADS-B category → the words for the model it is drawn on; null on its own model. */
+export type ModelWords = (typeCode: string | null, category: string | null) => string | null
 
 const DASH = '—'
 const NO_LOOKUP: Lookup = { country: null, airline: null }
@@ -112,10 +116,12 @@ function split(v: string): [string, string] {
  * minute, wider for coarse files) was not heard, which reads "<text> · not heard" on the grey dot with the numbers
  * dimmed. 'quiet': the text, grey, the last known numbers dimmed (dashes with no sample). 'none': the text, grey, dashes.
  * Chase is offered only on a 'replay' sample that was heard (chaseDisabled), and never takes "Map" away.
+ * modelWords: what the 3-D view draws this type and category on, in words, when that is not the type's own model (the
+ * app's model picker); the card says it under its header, once the aircraft has a position (before, nothing is drawn).
  */
 export function cardView(
   selHex: string | null, s: RenderState | null, raw: ReadsbAircraft | null, info: AircraftInfo | null, status: StatusBrief, lookup: Lookup,
-  sinceSelectS: number, chasing = true, range: CardRange | null = null, replay: ReplayStatus | null = null,
+  sinceSelectS: number, chasing = true, range: CardRange | null = null, replay: ReplayStatus | null = null, modelWords: ModelWords | null = null,
 ): CardView {
   const sections = detailRows(s, raw, info, lookup)
   const get = (key: string): string | null => {
@@ -140,6 +146,7 @@ export function cardView(
   const vs = stat(fields, 'VS', lost)
   const hdg = stat(fields, 'TRK', lost) // the reported direction of travel (HDG is a computed nose heading)
   const type = get('type') ?? ''
+  const category = info !== null && info.hex === hex ? info.category : null
   const sub = [lookup.airline, get('reg')].filter((x): x is string => x !== null && x !== '').join(' · ')
 
   let state: CardState
@@ -174,6 +181,7 @@ export function cardView(
     sub,
     flag: lookup.country?.flag ?? '',
     type,
+    model: s === null || modelWords === null ? null : modelWords(type === '' ? null : type, category), // no position: nothing is drawn
     stats: [
       { key: 'alt', label: 'Alt', value: altV, unit: alt.value === 'GND' || altV === DASH ? '' : 'ft', dim: alt.dim },
       { key: 'gs', label: 'Speed', value: split(gs.value)[0], unit: gs.value === DASH ? '' : 'kt', dim: gs.dim },
@@ -214,6 +222,8 @@ export interface FlightCardOpts {
   traffic?: boolean
   /** Start (on) or stop recording this aircraft; resolves to its recording (null: none), or rejects. */
   onRecord?(hex: string, on: boolean): Promise<RecordingState | null>
+  /** What the 3-D view draws an aircraft on when it has no model of its own (cardView); absent: the card says nothing of it. */
+  modelWords?: ModelWords
 }
 
 export interface FlightCardHandle {
@@ -323,6 +333,12 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
   expandBtn.setAttribute('aria-expanded', 'false')
   head.append(ident, actions)
 
+  // Drawn on a model that is not its own (a stand-in, the generic one): a line that says so, by a dashed aircraft.
+  const model = h('div', 'fh-card-model')
+  const modelText = h('span', 'fh-card-model-t')
+  model.append(icon('plane', 14), modelText)
+  model.hidden = true
+
   // The primary action: Chase (into the 3-D view) while focused; Map (back to top-down) while chasing, in the same place.
   // A traffic aircraft's: Chase (it instead of the chased one).
   const chaseBtn = h('button', 'fh-pill')
@@ -430,7 +446,7 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
 
   const foot = h('div', 'fh-card-foot')
   foot.append(statusRow, expandBtn, chaseBtn)
-  card.append(head, figure, stats, recRow, range, foot, more)
+  card.append(head, model, figure, stats, recRow, range, foot, more)
   root.append(card)
 
   let curHex: string | null = null
@@ -553,12 +569,18 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
       lk = opts.lookup(hex, cs)
       lkKey = key
     }
-    const v = cardView(hex, curS, curRaw, curInfo, curStatus, lk, (Date.now() - selectedAtMs) / 1000, curChasing, curRange, curReplay)
+    const v = cardView(hex, curS, curRaw, curInfo, curStatus, lk, (Date.now() - selectedAtMs) / 1000, curChasing, curRange, curReplay, opts.modelWords)
     paintChase(curChasing, v.chaseDisabled)
     set(flag, v.flag)
     set(callsign, v.callsign)
     set(type, v.type)
     type.hidden = v.type === ''
+    if (model.hidden !== (v.model === null)) {
+      model.hidden = v.model === null
+      place() // a line taller or shorter: it may fit a place it did not
+    }
+    set(modelText, v.model ?? '')
+    if (model.title !== (v.model ?? '')) model.title = v.model ?? '' // the whole line, should it not fit
     set(subText, v.sub)
     syncSub()
     for (const st of v.stats) {

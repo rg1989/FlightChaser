@@ -12,6 +12,7 @@ import { LiveryShaders, liveryCode } from './livery.ts'
 import type { ModelPicker } from './modelFor.ts'
 import { GearMotion, gearWanted, swingLegs } from './gear.ts'
 import { fixMatrix, hprFor, loadGearModel, modelUrl } from './model.ts'
+import { asPlaceholder, dress } from './placeholder.ts'
 
 export const RANGE_NM = 10 // while the camera is within NEAR_CAMERA_M of the chased aircraft
 const FAR_RANGE_NM = 60
@@ -210,6 +211,8 @@ interface Slot {
   e: FleetEntry | null
   headingDeg: number
   livery?: string | null
+  placeholder: boolean // the model, and gearPlaceholder its gear, wear the placeholder look now (placeholder.ts)
+  gearPlaceholder: boolean
   // its landing gear (manifest gear): the model, where it is, the last decision (null: a first look), when the height
   // above the ground was last read and what it was, and the leg nodes swung to legsAt
   gear: Model | null
@@ -233,10 +236,11 @@ const FT = 0.3048
 const AGL_EVERY_S = 0.5 // a traffic aircraft's height above the drawn ground is read this often (globe.getHeight picks)
 
 /**
- * The chase traffic, each aircraft on its type's model (ModelPicker). Models come from a pool per GLB that grows to the
- * most ever needed of it (≤ MAX_MODELS drawn in all), and Cesium shares one GLB's geometry between its models. A model
- * loads async; an aircraft shows nothing until a ready model of its type is free (chase shows no flat icons), and nor
- * does one over MAX_MODELS. A GLB that fails to load leaves its aircraft undrawn.
+ * The chase traffic, each aircraft on its type's model (ModelPicker): in its airline's livery where the model is its
+ * own, as a placeholder (placeholder.ts: no livery, its gear too) where it is a stand-in or the generic one. Models
+ * come from a pool per GLB that grows to the most ever needed of it (≤ MAX_MODELS drawn in all), and Cesium shares one
+ * GLB's geometry between its models. A model loads async; an aircraft shows nothing until a ready model of its type is
+ * free (chase shows no flat icons), and nor does one over MAX_MODELS. A GLB that fails to load leaves its aircraft undrawn.
  * Brackets hide while the model is hidden (isOccluded: buildings, terrain, the chased aircraft), and behind the camera;
  * over each the flight ID, under it the distance from the chased aircraft (shownLabels keeps a crowd readable). A click
  * in a square opens that aircraft (open, one at most): app.ts shows its card, and its brackets are highlighted, its
@@ -260,6 +264,7 @@ export class Traffic {
   readonly #byHex = new Map<string, Slot>()
   readonly #models = new Set<string>()
   readonly #want = new Map<string, ModelManifestEntry>()
+  readonly #placeholders = new Set<string>() // the hexes whose model is not their own: drawn as placeholders
   readonly #boxes: Box[] = []
   readonly #boxSlot: Slot[] = [] // the slot of boxes[i]
   readonly #camDist: number[] = [] // camera → square centre (m), for the depth probe
@@ -298,12 +303,14 @@ export class Traffic {
   select(entries: readonly FleetEntry[], chasedHex: string | null, at: { lat: number; lon: number } | null, rangeNm = RANGE_NM): ReadonlySet<string> {
     this.#models.clear()
     this.#want.clear()
+    this.#placeholders.clear()
     const near = at === null ? [] : nearestInRange(entries, chasedHex, at.lat, at.lon, rangeNm)
     this.#wantOf.clear()
     for (let i = 0; i < near.length && i < MAX_MODELS; i++) {
       const e = near[i].e
-      const m = this.#pick.for(e.info?.typeCode ?? null, e.info?.category ?? null)
+      const { entry: m, fit } = this.#pick.pick(e.info?.typeCode ?? null, e.info?.category ?? null)
       this.#want.set(e.hex, m)
+      if (asPlaceholder(fit)) this.#placeholders.add(e.hex)
       this.#wantOf.set(m, (this.#wantOf.get(m) ?? 0) + 1)
     }
     // Gone from range, or its type became known after it was drawn on another model: the slot goes back to its pool.
@@ -354,8 +361,16 @@ export class Traffic {
       const e = s.e
       if (e.trackDeg !== null) s.headingDeg = e.trackDeg
       const m = s.m
+      // On a model that is not its own: the placeholder look, and no livery (an airline's paint on the wrong shape would
+      // lie). Its type can arrive, or change, after the aircraft does: then the same model is its own, and is painted.
+      const placeholder = this.#placeholders.has(s.hex)
+      if (s.placeholder !== placeholder) {
+        s.placeholder = placeholder
+        s.livery = undefined
+        dress(s.model, placeholder)
+      }
       const livery = liveryCode(e.info?.callsign ?? null, e.info?.reg ?? null, e.info?.military) // the callsign can arrive after the aircraft does
-      if (m.paint && s.livery !== livery) {
+      if (!placeholder && m.paint && s.livery !== livery) {
         s.livery = livery
         s.model.customShader = this.#shaders(m).for(livery)
       }
@@ -498,6 +513,7 @@ export class Traffic {
       s.gear.show = false
       return
     }
+    if (s.gearPlaceholder !== s.placeholder) dress(s.gear, (s.gearPlaceholder = s.placeholder)) // as its aircraft is drawn
     Matrix4.clone(mm, s.gear.modelMatrix)
     if (ibl) s.gear.imageBasedLighting.imageBasedLightingFactor = ibl
     s.gear.show = true
@@ -532,7 +548,7 @@ export class Traffic {
           if (this.#destroyed) return void model.destroy()
           model.show = false
           this.#viewer.scene.primitives.add(model)
-          const slot: Slot = { m, model, hex: null, e: null, headingDeg: 0, gear: null, motion: new GearMotion(), want: null, aglS: Infinity, aglFt: null, legsAt: -1, occluded: false }
+          const slot: Slot = { m, model, hex: null, e: null, headingDeg: 0, placeholder: false, gearPlaceholder: false, gear: null, motion: new GearMotion(), want: null, aglS: Infinity, aglFt: null, legsAt: -1, occluded: false }
           this.#slots.push(slot)
           if (m.gear !== undefined) {
             this.#loadGear(m.gear.uri).then(

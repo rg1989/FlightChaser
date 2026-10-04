@@ -43,11 +43,92 @@ livery (one livery per airline). Choose reference photos of the operator's own a
 
 ## Part 2. The type model
 
-### 2.1 Is there a model already?
+### 2.1 Is there a model already? Own models, stand-ins and placeholders
 
 `client/scene/modelFor.ts` picks the model for an ICAO type designator from `public/models/manifest.json`: an entry
 that lists the designator, then the longest `PREFIX*` entry, then the family fallback. The survey prints the model for
 each type. If the model is right for the type (same family, same wingtips, same engines), go to Part 3.
+
+Each model entry has two lists of designators. The picker (`ModelPicker.pick`) says which one matched:
+
+| The designator is in | The picker's `fit` | The aircraft is drawn |
+|---|---|---|
+| `types` | `own` | as the model, in its operator's livery |
+| `standIns` | `standIn` | as a placeholder, without a livery |
+| neither (or the type is unknown) | `generic` | as a placeholder, without a livery, on the model of its category (`fallback`) or on `default` |
+
+- **`types`** holds the designators that the model truly is: the aircraft itself and the other members of its
+  family. A family member has the same fuselage and the same layout. It can be shorter or longer (A318 and A319 on the
+  A320), or an earlier or later generation (the 737 Classic on the 737-800, the A330neo on the A330-300, the E2 on the
+  Embraer 190).
+- **`standIns`** holds the designators of other aircraft that have no model: the model is only the nearest shape.
+  Examples: the 757 on the A321, the 767 on the 787, the A380 on the 747, the Dash 8 on the ATR 72, a Piper on the
+  Cessna 182. A derivative with a different shape is also a stand-in (the Belugas on the A330, the E-7 on the 737).
+- If you are not sure, use `standIns`.
+- An exact designator has priority over a prefix from the other list. Thus `"types": ["A33*"]` with
+  `"standIns": ["A337"]` makes each A330 an own type, but not the BelugaXL.
+- Write each designator one time only in the manifest. `modelFor.test.ts` fails if a designator is in two lists. The
+  same test contains the table of what each model is and what it stands in for: change the table when you change a list.
+
+The lists at this time:
+
+| Model | Own (`types`) | Stand-in for (`standIns`) |
+|---|---|---|
+| `a320` Airbus A320 | A320, A319, A318, A19N | |
+| `a20n` Airbus A320neo | A20N | |
+| `a321` Airbus A321 | A321 | 757 (B752, B753) |
+| `a21n` Airbus A321neo | A21N | |
+| `b738` Boeing 737-800 | each 737 that is not a MAX (B73*), P-8 | A220 (BCS1, BCS3), E-7 (E737) |
+| `b38m` Boeing 737 MAX 8 | B37M, B38M, B39M, B3XM | |
+| `b773` Boeing 777-300 | each 777 (B77*) | |
+| `b789` Boeing 787-9 | each 787 (B78*) | 767 (B76*), KC-46 (K46) |
+| `a333` Airbus A330-300 | each A330 (A33*) | BelugaXL (A337), Beluga (A3ST), A300 (A306, A30B), A310 |
+| `a359` Airbus A350-900 | A359, A35K | |
+| `e75l` Embraer 175 | E170, E175 (E17*, E75*) | ERJ 135/145 (E135, E145, E45X) |
+| `e190` Embraer 190 | E190, E195 and their E2 (E19*, E29*) | |
+| `crj9` Bombardier CRJ900 | each CRJ (CRJ*) | MD-80, MD-90, DC-9, 717 (B712), Fokker 100 and 70 |
+| `at75` ATR 72 | ATR 42 and 72 (AT4*, AT7*) | Dash 8 (DH8*), Saab 340 and 2000, Dornier 328, Jetstream 41 |
+| `b744` Boeing 747-400 | each 747 (B74*) | A340, A380, An-124, An-225, Il-96, Il-86, 707 and its military types, DC-8 |
+| `c550` Cessna Citation II | Citation I, II and V (C50*, C55*, C560) | each other business jet in the list (other Citations, Phenom, Challenger, Global, Gulfstream, Falcon, Learjet, Hawker and so on) |
+| `c182` Cessna 182 | C182 | Cessna 172, 152 and 150, Piper PA-28 (P28*), Cirrus SR20 and SR22 (SR2*) |
+| `ec135` Eurocopter EC135 | EC35 | |
+
+`name` in the entry is the name of the aircraft that the model shows ("Boeing 787-9"). The flight card uses it.
+
+#### The placeholder
+
+An aircraft that is not on its own model must not look like a real aircraft. `client/scene/placeholder.ts` draws it as
+a placeholder, in the chase view and in the chase traffic:
+
+- It is a wire frame in one light blue colour (`--fh-placeholder`): rings round the fuselage, ribs on the wings, the
+  outline, and nothing between the lines. You can see the far side of the frame and the scene through it.
+- The colour does not change with the sun. By night the frame shows as bright as by day.
+- It has no livery. The paint of an airline on the shape of a different aircraft would be false.
+- The landing gear, the lights, the brackets, the smallest size on screen and the click area are the same as for a
+  real model.
+- The frame is drawn with holes, not with transparency. Each pixel of a line has a depth, so the ground, the
+  buildings and the clouds of the weather hide it and are hidden by it as with a real model.
+- The flight card and the traffic card tell it in words below the header: "Shown as a Boeing 787-9: no B763 model yet"
+  for a stand-in, "Placeholder model: no J328 model yet" for the generic model, and "Placeholder model: type unknown"
+  if the aircraft sends no type.
+
+To see the other two looks that were made for comparison, add `?ghost=1` (a hologram: scan lines and a bright outline)
+or `?ghost=3` (a flat ghost: a pale hatch and a dashed outline) to the address. `?ghost=2` is the wire frame.
+`?ghost=2,all` draws each aircraft as a placeholder and `?ghost=0` draws none as a placeholder. Use these two only to
+compare the cost.
+
+#### Promote a stand-in
+
+A stand-in becomes an own type when a model of it is in the manifest:
+
+1. Make the model: a variant of a model that we have (2.2) or a new model from a source file (2.3).
+2. Write the designator in the `types` of the new entry. For a variant, write it in the recipe: `variants.ts` then
+   removes it from the `types` and the `standIns` of each other entry. For a new model, remove it from the other
+   entry's `standIns` yourself.
+3. Give the entry a `name`.
+4. Move the designator in the table of `modelFor.test.ts` and in the table above, then run the tests.
+
+The aircraft then flies on its own model, in its operator's livery, and the card does not show the line.
 
 ### 2.2 A variant of an existing model (recipe)
 
@@ -73,8 +154,9 @@ Use a GPL model from FlightAirMap-3dmodels or Flightradar24's fr24-3d-models, as
 `third_party/aircraft-models/scripts/` (Blender: `/opt/homebrew/bin/blender -b`), then:
 
 1. Put the GLB in `public/models/` and the unchanged source in `third_party/aircraft-models/source/`.
-2. Add a manifest entry (copy a similar one): `uri`, `license`, `author`, `source`, `forwardAxisFix`, `lengthM`,
-   `gearHeightM`, `scale`, `types`, `box`, `paint` (the region map), and a `gear` model if there is one.
+2. Add a manifest entry (copy a similar one): `name`, `uri`, `license`, `author`, `source`, `forwardAxisFix`,
+   `lengthM`, `gearHeightM`, `scale`, `types` (and `standIns`, see 2.1), `box`, `paint` (the region map), and a `gear`
+   model if there is one.
 3. Run `profile.ts --write`, `light-anchors.ts --write` and `outline.ts --write`.
 4. Run `npm test`: `model.test.ts` checks the length and the nose direction from the geometry.
 5. Look at the profile overlay (`profile.ts --png <dir>`): every outline must sit on the mesh.

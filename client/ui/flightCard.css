@@ -102,6 +102,28 @@
   gap: 2px;
 }
 
+/* Drawn on a model that is not its own: the line that says so, in the placeholder's colour (placeholder.ts), by a dashed
+   aircraft. It wraps: the longest ("Shown as a Cessna Citation II: no GLF4 model yet") runs to two lines on a phone. */
+.fh-card-model {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 14px 2px 14px;
+  color: var(--fh-placeholder);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.fh-card-model[hidden] {
+  display: none;
+}
+
+.fh-card-model .fh-icon {
+  flex: none;
+  margin-top: 1px;
+  stroke-dasharray: 2.2 2.2;
+}
+
 .fh-card-actions .fh-done {
   color: var(--fh-ok);
 }

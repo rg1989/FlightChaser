@@ -245,7 +245,7 @@ export class AircraftLights {
   forChase(model: ChasedModel, entry: ModelManifestEntry, s: RenderState, damaged: boolean): void {
     const p = this.#next(s.hex, model.modelMatrix, entry)
     if (p === null) return
-    p.shader = model.customShader ?? null
+    p.shader = LiveryShaders.has(model.customShader) ? model.customShader : null // a placeholder has no painted skin to light
     p.s.onGround = s.onGround
     p.s.altFt = s.altBaroFt ?? s.hM / 0.3048
     p.s.gsKt = s.gsKt

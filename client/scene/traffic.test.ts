@@ -3,10 +3,15 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { Cartesian3, Cartographic, Ellipsoid, HeadingPitchRoll, Matrix4 } from 'cesium'
+import type { CustomShader, Model, Viewer } from 'cesium'
 import { destination } from '../../shared/geo.ts'
+import { toInfo } from '../../shared/info.ts'
+import type { ReadsbAircraft } from '../../shared/types.ts'
 import type { FleetEntry, ModelManifest } from '../types.ts'
 import { measureGlb, noseAzimuthDeg } from './model.ts'
-import { BOX_CENTRE, BOX_HALF, MIN_PX, RANGE_NM, flightId, hitAt, isOccluded, minScale, shownLabels, nearestInRange, scaleFor, squarePx, trafficHpr, trafficMatrix, trafficRangeNm } from './traffic.ts'
+import { ModelPicker } from './modelFor.ts'
+import { placeholderShader } from './placeholder.ts'
+import { BOX_CENTRE, BOX_HALF, MIN_PX, RANGE_NM, Traffic, flightId, hitAt, isOccluded, minScale, shownLabels, nearestInRange, scaleFor, squarePx, trafficHpr, trafficMatrix, trafficRangeNm } from './traffic.ts'
 import type { Box } from './traffic.ts'
 
 const root = new URL('../../', import.meta.url)
@@ -182,4 +187,71 @@ test('traffic: a climbing type model (its nose on glTF −Z) raises its nose, no
   const w = Cartesian3.normalize(Matrix4.multiplyByPointAsVector(mm, nose, new Cartesian3()), new Cartesian3())
   assert.ok(Cartesian3.dot(w, Ellipsoid.WGS84.geodeticSurfaceNormal(pos, new Cartesian3())) > 0.05, 'nose up')
   assert.ok(azErr(noseAzimuthDeg(mm, nose), 90) < 1, 'nose along the track')
+})
+
+// ---------- Traffic (Viewer and Model faked: no WebGL, no DOM; the camera looks away, so no bracket is placed) ----------
+
+interface FakeModel { id: string; show: boolean; ready: boolean; modelMatrix: Matrix4; customShader: CustomShader | undefined; backFaceCulling: boolean; imageBasedLighting: { imageBasedLightingFactor: unknown }; getNode(): undefined }
+const fakeModel = (id: string): FakeModel => ({ id, show: true, ready: true, modelMatrix: new Matrix4(), customShader: undefined, backFaceCulling: true, imageBasedLighting: { imageBasedLightingFactor: null }, getNode: () => undefined })
+
+function fakeTraffic(): { traffic: Traffic; models: FakeModel[]; gears: FakeModel[] } {
+  const here = Cartesian3.fromDegrees(-0.1, 51.5, 9_000)
+  const viewer = {
+    scene: {
+      primitives: { add: <T>(p: T): T => p, remove: (): boolean => true },
+      camera: { positionWC: here, directionWC: Cartesian3.normalize(here, new Cartesian3()), frustum: { fovy: 1 } }, // looking straight up
+      canvas: { clientHeight: 900 },
+      globe: { getHeight: (): number => 0 },
+      pickPositionSupported: false,
+    },
+  } as unknown as Viewer
+  const models: FakeModel[] = []
+  const gears: FakeModel[] = []
+  const traffic = new Traffic(viewer, new ModelPicker(manifest), {} as HTMLElement, {
+    load: async (e) => (models.push(fakeModel(e.id)), models[models.length - 1] as unknown as Model),
+    loadGear: async (uri) => (gears.push(fakeModel(uri)), gears[gears.length - 1] as unknown as Model),
+  })
+  return { traffic, models, gears }
+}
+
+const settle = async (): Promise<void> => {
+  for (let i = 0; i < 10; i++) await Promise.resolve()
+}
+
+test('Traffic: an aircraft on its own model flies its airline\'s livery; on a stand-in or the generic model it is a placeholder with no livery, gear and all', async () => {
+  const { traffic, models, gears } = fakeTraffic()
+  const info = (hex: string, flight: string, t?: string): FleetEntry['info'] => toInfo({ hex, flight, t, category: 'A3' } as ReadsbAircraft)
+  const parked = (hex: string, nm: number, flight: string, t?: string): FleetEntry => at(hex, nm, 45, { onGround: true, hM: 0, gsKt: 0, info: info(hex, flight, t) })
+  const entries = [parked('own', 1, 'ELY321', 'A321'), parked('standin', 2, 'ELY752', 'B752'), parked('generic', 3, 'ELY000')]
+  const here = { lat: 51.5, lon: -0.1 }
+  const placed = { positionOf: (hex: string): Cartesian3 | undefined => { const e = entries.find((x) => x.hex === hex); return e && Cartesian3.fromDegrees(e.lon, e.lat, e.hM) } }
+  const shaderOf = (hex: string): { id: string; shader: CustomShader | undefined; gear: CustomShader | undefined } => {
+    let found: FakeModel | undefined
+    traffic.forEachDrawn((h, mm) => { if (h === hex) found = models.find((x) => x.modelMatrix === mm) })
+    assert.ok(found, `${hex} is not drawn`)
+    const gear = gears.find((g) => g.show && Matrix4.equals(g.modelMatrix, found!.modelMatrix))
+    assert.ok(gear, `${hex}: parked, its gear is drawn`)
+    return { id: found.id, shader: found.customShader, gear: gear.customShader }
+  }
+
+  traffic.select(entries, 'chased', here) // asks for the models
+  await settle()
+  assert.deepEqual([...traffic.select(entries, 'chased', here)].sort(), ['generic', 'own', 'standin'])
+  traffic.update(placed, undefined, 0.016)
+  const own = shaderOf('own')
+  assert.equal(own.id, 'a321')
+  assert.ok(own.shader !== undefined && own.shader !== placeholderShader(), 'its own model: painted')
+  assert.equal(own.gear, undefined, 'and its gear as it is')
+  assert.deepEqual(shaderOf('standin'), { id: 'a321', shader: placeholderShader(), gear: placeholderShader() }, 'a 757 on the A321: a placeholder, though El Al has a livery')
+  assert.deepEqual(shaderOf('generic'), { id: 'a320', shader: placeholderShader(), gear: placeholderShader() }, 'no type: its category\'s model, a placeholder')
+
+  // The type arrives, or was wrong: the same model is now the aircraft's own, and the other way round.
+  entries[1].info = info('standin', 'ELY752', 'A321')
+  entries[0].info = info('own', 'ELY321', 'B753')
+  traffic.select(entries, 'chased', here)
+  traffic.update(placed, undefined, 0.016)
+  const now = shaderOf('standin')
+  assert.ok(now.shader !== undefined && now.shader !== placeholderShader() && now.gear === undefined, 'its own model after all: painted, its gear as it is')
+  assert.deepEqual(shaderOf('own'), { id: 'a321', shader: placeholderShader(), gear: placeholderShader() })
+  traffic.destroy()
 })

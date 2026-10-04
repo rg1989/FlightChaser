@@ -294,6 +294,11 @@ export class LiveryShaders {
     for (const s of made) s.setUniform('u_night', n)
   }
 
+  /** Whether s is a paint shader (made here: it has the lights' uniforms). A placeholder's shader (placeholder.ts) is not. */
+  static has(s: CustomShader | undefined): s is CustomShader {
+    return s !== undefined && made.has(s)
+  }
+
   /** Resolves once every atlas asked for so far is drawn and handed to its shader (the livery lab waits on it). */
   static idle(): Promise<unknown> {
     return queue

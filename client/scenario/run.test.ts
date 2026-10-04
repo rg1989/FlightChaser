@@ -283,6 +283,15 @@ test('Dresser: already on the scenario model it dresses at once; no livery or mo
   assert.deepEqual(bare.log, ['shape null on b744', 'damage false', 'gear false'])
 })
 
+test('Dresser: a recording of an aircraft with no model of its own asks for its stand-in as a placeholder; a scenario\'s model is its own', () => {
+  const a321 = entry('a321')
+  const asked: string[] = []
+  const m = { ...fakeModel(a321, 0), use: (e: ModelManifestEntry, placeholder = false): boolean => (asked.push(`${e.id} ${placeholder}`), false) }
+  new Dresser(a321, null, null, true).apply(m, NO_DAMAGE, false)
+  new Dresser(a321, LIVERY, null).apply(m, NO_DAMAGE, false)
+  assert.deepEqual(asked, ['a321 true', 'a321 false'])
+})
+
 test('Dresser.undress: leaves the model as the live chase wants it', () => {
   const m = fakeModel(entry('b744'), 0)
   Dresser.undress(m)

@@ -66,7 +66,8 @@ import {
 import { tracePath, traceSamples } from './history/trace.ts'
 import { liveryCode, liveryFromSpec, liveryOf, type Livery } from './scene/livery.ts'
 import { ChaseModel } from './scene/model.ts'
-import { ModelPicker } from './scene/modelFor.ts'
+import { ModelPicker, placeholderWords } from './scene/modelFor.ts'
+import { asPlaceholder, parseGhost, setPlaceholderAid } from './scene/placeholder.ts'
 import { BOX_HALF, Traffic, minScale, trafficRangeNm } from './scene/traffic.ts'
 import { AircraftLights } from './scene/aircraftLights.ts'
 import { makeNightLayer } from './scene/nightLights.ts'
@@ -472,6 +473,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     }),
   ])
   const pick = manifest ? new ModelPicker(manifest) : null
+  setPlaceholderAid(parseGhost(location.search)) // ?ghost=: the look of a model that is not the aircraft's own, for checking
   const entry = manifest?.models.find((m) => m.id === manifest.default) ?? null
   const model = entry
     ? await ChaseModel.load(viewer, entry).catch((e: unknown): null => {
@@ -479,6 +481,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         return null
       })
     : null
+  if (model !== null && entry !== null) model.use(entry, asPlaceholder('generic')) // nobody's own model: a placeholder until the aircraft's has loaded
 
   // Selected = focused: its flight card shows, the map stays top-down. Chasing = the 3-D chase view of the selected
   // aircraft (the card's Chase button; ?chase=1). The chase camera engages at its first state.
@@ -735,6 +738,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     onPick: (item) => goTo(item),
   })
   const photos = new PhotoCache() // shared: a traffic aircraft's photo is there when it is chased
+  // What the chase draws an aircraft on when it has no model of its own, in words, for the cards.
+  const modelWords = (type: string | null, category: string | null): string | null => (pick === null ? null : placeholderWords(pick.pick(type, category), type))
   const card = mountFlightCard(ui, {
     onClose: () => {
       byHand()
@@ -746,11 +751,12 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     },
     photos, lookup: lookupFor,
     onRecord: (hex, on) => api.record(hex, on).then((r) => r.rec),
+    modelWords: (type, category) => (chasing ? modelWords(type, category) : null), // the map draws no model
   })
   // A click in a traffic aircraft's brackets opens its card: live from the fleet, its full object asked for as a focused
   // aircraft's is (poll). Its Chase chases it instead (select: a chase stays a chase, on the new aircraft).
   const trafficCard = mountFlightCard(ui, {
-    traffic: true, onClose: () => traffic?.close(), onChase: () => chaseTraffic(), photos, lookup: lookupFor,
+    traffic: true, onClose: () => traffic?.close(), onChase: () => chaseTraffic(), photos, lookup: lookupFor, modelWords,
   })
   let trafficRaw: ReadsbAircraft | null = null // the open traffic aircraft's newest full upstream object
   let trafficAsked: { hex: string; ms: number } | null = null
@@ -1700,6 +1706,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     loadingScenario = id
     let scn: Scenario
     let recLivery: Livery | null = null // a recording flies in its airline's livery (or grey, military), as live
+    let recPlaceholder = false // …unless its type has no model of its own: then a placeholder, as live
     const file = recordingFile(id)
     // A package may carry its airfields as they were (airport.json: one airport, or a list of them: runways, flat rings);
     // most have none (404). A recording flew today's.
@@ -1707,10 +1714,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     try {
       if (file !== null) {
         const rec = await api.recording(file)
-        const m = pick?.for(rec.info.typeCode, rec.info.category) ?? null
-        const built = recordingScenario(rec, m?.id ?? '')
+        const picked = pick?.pick(rec.info.typeCode, rec.info.category) ?? null
+        const built = recordingScenario(rec, picked?.entry.id ?? '')
         if (built === null) throw new Error('too short to replay')
         scn = built
+        recPlaceholder = picked !== null && asPlaceholder(picked.fit)
         recLivery = liveryOf(liveryCode(rec.info.callsign, rec.info.reg, rec.info.military))
       } else scn = await loadScenario(scenarioBase, id)
     } catch (e) {
@@ -1743,7 +1751,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const livery = scn.aircraft.livery ? liveryFromSpec(`scenario:${scn.id}`, scn.aircraft.livery, scn.base, scn.present)
       : recLivery ?? (scn.aircraft.callsign ? liveryOf(liveryCode(scn.aircraft.callsign, scn.aircraft.registration || null)) : null)
     liveGear = null
-    dress = new Dresser(e, livery, scn.aircraft.shape?.halfSpanM ?? null)
+    dress = new Dresser(e, livery, scn.aircraft.shape?.halfSpanM ?? null, recPlaceholder) // a package names its own model
     run = ScenarioRun.start({ viewer, ui, scenario: scn, t: o.t, play: o.play, under: night, onExit: exitScenario })
     applyLayers() // with the run set: its weather is "Live only"
     if (aps.length > 0) {
@@ -1933,7 +1941,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         liveGear = byHeight ? gear : null
       } else {
         const ci = chaseInfo ?? (selected === null ? null : fleet.get(selected)?.info) ?? null
-        if (model !== null && pick !== null && model.use(pick.for(ci?.typeCode ?? null, ci?.category ?? null))) sun.attachModel(model.model)
+        // On its type's own model in its airline's livery; on a stand-in or the generic one, a placeholder (it takes no paint).
+        const picked = pick?.pick(ci?.typeCode ?? null, ci?.category ?? null)
+        if (model !== null && picked !== undefined && model.use(picked.entry, asPlaceholder(picked.fit))) sun.attachModel(model.model)
         model?.paint(liveryCode(ci?.callsign ?? null, ci?.reg ?? null, ci?.military))
         // The gear as a crew would have it (gear.ts), from the height over the ground drawn under the aircraft.
         const want = gearWanted(liveGear, { onGround: placed.onGround, aglFt: groundM === null ? null : (s.hM - groundM) / FT, vsFpm: placed.vsFpm, gsKt: placed.gsKt })
