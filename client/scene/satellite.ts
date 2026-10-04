@@ -49,9 +49,11 @@ export const SAT_KEEP_MS = 45 * 60_000
 /** And never when its own time is this long past. */
 export const SAT_OLD_MS = 90 * 60_000
 const SNAP_DEG = 0.5 // a frame's square is laid round the middle of the cell of this size the place is in
-// A frame serves a place while the place's weather field (320 km square, built round a place up to 28 km ahead of the aircraft) and
-// the room a cloud is moved by (its parallax and its drift: satPlace.ts) stand inside the frame's square.
-const SERVE_KM = 160 + 28 + 100
+// A frame serves an aircraft while its weather field (320 km square, built round a place up to AHEAD_KM ahead of it on its track)
+// and the room a cloud is moved by (its parallax and its drift: satPlace.ts) stand inside the frame's square; and it serves a field
+// built round a place while that field and that room do.
+const SERVE_KM = 160 + 100
+const AHEAD_KM = 28
 const STRANGE = 0.02 // a picture with more than this share of pixels in colours not known is not used
 const TOP_FAR = 64 // a colour farther than this from every height's colour is none (two neighbouring heights' colours are 16 to 123 apart: a blend of two neighbours is within this of one of them)
 const MASK_OFF = 24 // a mask colour this far (of 255) off any blend of its three is none
@@ -205,10 +207,13 @@ export function satBox(lat: number, lon: number): SatBox {
   return [r(midLat - dLat), r(midLon - dLon), r(midLat + dLat), r(midLon + dLon)]
 }
 
-/** Whether a frame of this box serves a place: the place's field and the room a cloud is moved by stand inside it. */
-export function satServes(box: SatBox, lat: number, lon: number): boolean {
-  const dLat = SERVE_KM / KM_PER_DEG
-  const dLon = SERVE_KM / (KM_PER_DEG * Math.max(0.2, Math.cos(lat * RAD)))
+/**
+ * Whether a frame of this box serves an aircraft at a place: the field built for it (round a place up to aheadKm on) and the room a
+ * cloud is moved by stand inside the box. aheadKm 0: whether it serves a field built round the place itself.
+ */
+export function satServes(box: SatBox, lat: number, lon: number, aheadKm = AHEAD_KM): boolean {
+  const dLat = (SERVE_KM + aheadKm) / KM_PER_DEG
+  const dLon = (SERVE_KM + aheadKm) / (KM_PER_DEG * Math.max(0.2, Math.cos(lat * RAD)))
   return lat - dLat >= box[0] && lat + dLat <= box[2] && lon - dLon >= box[1] && lon + dLon <= box[3]
 }
 
@@ -236,15 +241,17 @@ export interface SatFetch {
 
 let reader: { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } | null = null
 
+const ASK: RequestInit = { referrerPolicy: 'no-referrer', credentials: 'omit' } // the page's address and cookies are not EUMETSAT's to have
+
 /** The browser's fetches. A picture's colours must arrive as sent: each is a number. */
 const browserFetch: SatFetch = {
   async text(url) {
-    const r = await fetch(url)
+    const r = await fetch(url, ASK)
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     return r.text()
   },
   async pixels(url, n) {
-    const r = await fetch(url)
+    const r = await fetch(url, ASK)
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     const type = r.headers.get('content-type') ?? ''
     if (!type.startsWith('image/png')) throw new Error(`not a picture (${type})`) // a time it has no frame for is answered in XML, with 200
@@ -314,7 +321,7 @@ export class SatelliteSource {
    */
   usable(epochMs: number, lat: number, lon: number): SatPictures | null {
     const f = this.#held
-    if (f === null || !inSatView(lat, lon) || !satServes(f.box, lat, lon)) return null
+    if (f === null || !inSatView(lat, lon) || !satServes(f.box, lat, lon, 0)) return null
     return epochMs - this.#answeredMs <= SAT_KEEP_MS && epochMs - f.timeMs <= SAT_OLD_MS ? f : null
   }
 

@@ -378,3 +378,21 @@ test('SatelliteSource.forget: pictures whose pixels are gone (handed to a worker
   assert.equal(sat.pictures!.timeMs, T0)
   assert.equal(sat.gen, 2)
 })
+
+test('SatelliteSource.usable: a frame that serves the aircraft serves the field built ahead of it too (the field\'s middle stands up to 28 km ahead on the track)', async () => {
+  const eumetview = server()
+  const sat = new SatelliteSource({ fetch: eumetview })
+  const t = T0 + 20 * 60_000
+  sat.look(0, t, LAT, LON)
+  await settle()
+  const box = sat.pictures!.box
+  // The farthest north the aircraft is still served: the next look asks for nothing there.
+  let lat = LAT
+  while (satServes(box, lat + 0.01, LON)) lat += 0.01
+  eumetview.asked.length = 0
+  sat.look(1000, t, lat, LON)
+  await settle()
+  assert.deepEqual(eumetview.asked, [])
+  assert.ok(sat.usable(t, lat + 28 / 111.195, LON) === sat.pictures, 'the field 28 km ahead of it')
+  assert.equal(sat.usable(t, lat + 40 / 111.195, LON), null)
+})
