@@ -146,6 +146,22 @@ test('public/models/<id>.glb and its manifest entry are up to date (regenerate: 
   }
 })
 
+test('a variant takes its recipe\'s name and stands in for nothing; its types come off the other entries\' stand-in lists too', () => {
+  for (const { id, r, entry } of built) {
+    assert.equal(entry.name, r.name, id)
+    assert.equal(entry.standIns, undefined, id)
+    assert.equal(byId(id).name, r.name, `${id} in the manifest`)
+  }
+  // A model made for a designator that another model only stood in for takes it off that list (the A321 stands in for the 757).
+  const moved: ModelManifest = JSON.parse(withEntry(text, { ...byId('a21n'), types: ['A21N', 'B752'] }, 'a321'))
+  const of = (id: string): ModelManifestEntry => moved.models.find((m) => m.id === id)!
+  assert.deepEqual(of('a321').standIns, ['B753'])
+  assert.deepEqual(of('a321').types, ['A321'])
+  assert.deepEqual(of('a21n').types, ['A21N', 'B752'])
+  assert.equal(of('a21n').standIns, undefined)
+  assert.equal(of('a21n').name, 'Airbus A321neo')
+})
+
 test('the variants own their types; provenance: the base\'s licence, authors and source, and the modification noted', () => {
   for (const { id, r } of built) {
     const e = byId(id)

@@ -74,7 +74,9 @@ export interface ModelManifestEntry {
   lengthM: number                               // real-world length the scale targets
   scale: number
   paint?: Paint                                 // where the livery goes (client/scene/livery.ts); absent: unpainted
-  types?: string[]                              // ICAO designators it draws; "B73*" matches a prefix (modelFor.ts)
+  name?: string                                 // the aircraft it is a model of, as people say it ("Boeing 787-9"): the card's words
+  types?: string[]                              // ICAO designators it truly is (itself, its family); "B73*" matches a prefix (modelFor.ts)
+  standIns?: string[]                           // designators of other aircraft it is only the nearest shape for: drawn as a placeholder
   box?: { centre: [number, number, number]; half: number } // traffic bracket square: model frame, unscaled (traffic.ts)
   // spheres that cover the mesh, in `box`'s frame (tools/models/outline.ts): what is the aircraft and what is only the
   // square round it (scene/modelOutline.ts)

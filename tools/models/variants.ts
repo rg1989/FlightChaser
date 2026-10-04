@@ -1,7 +1,7 @@
 // tools/models/variants.ts
 // Builds derived type models from a base model by recipe (tools/models/variants.json): a new wingtip device and bigger
 // engine nacelles on the same airframe (A320neo and A321neo sharklets and neo nacelles, the 737 MAX's AT winglets and
-// LEAP-1B nacelles). Writes public/models/<id>.glb and its manifest entry (the base's, with the new id, uri, types,
+// LEAP-1B nacelles). Writes public/models/<id>.glb and its manifest entry (the base's, with the new id, name, uri, types,
 // box, lights, outline, engine region and profile; the types move from the base's entry).
 //
 //   node tools/models/variants.ts                build every recipe (GLB + manifest entry)
@@ -569,8 +569,9 @@ export function build(id: string, r: Recipe, manifest: ModelManifest): { bytes: 
   const bytes = writeGlb(out)
   const entry: ModelManifestEntry = {
     ...structuredClone(base), id, uri: `models/${id}.glb`, author: `${base.author}; ${note}`, source: `${base.source}; ${note}, recipe ${id} in tools/models/variants.json`,
-    types: [...r.types], paint,
+    name: r.name, types: [...r.types], paint,
   }
+  delete entry.standIns // a model made for its types stands in for nothing
   delete entry.profile
   delete entry.lights
   delete entry.outline
@@ -594,9 +595,9 @@ export function inline(v: unknown): string {
 }
 
 /**
- * The manifest text with the variant's entry: the base's lines with the variant's id, uri, author, source, types, box,
- * lights, outline, engine region and profile; after the base's entry (or in place of its own). Its types come off every other
- * entry.
+ * The manifest text with the variant's entry: the base's lines with the variant's id, name, uri, author, source, types, box,
+ * lights, outline, engine region and profile, without the base's stand-ins; after the base's entry (or in place of its
+ * own). Its types come off every other entry, the types they stood in for too: a model of its own ends a stand-in.
  */
 export function withEntry(text: string, e: ModelManifestEntry, baseId: string): string {
   let lines = text.split('\n')
@@ -608,6 +609,9 @@ export function withEntry(text: string, e: ModelManifestEntry, baseId: string): 
     block[k] = block[k].replace(new RegExp(`"${key}": .*?(,?)$`), (_m, comma: string) => `"${key}": ${value}${comma}`)
   }
   set('id', JSON.stringify(e.id))
+  set('name', JSON.stringify(e.name))
+  const standIns = block.findIndex((l) => l.trimStart().startsWith('"standIns":'))
+  if (standIns >= 0) block.splice(standIns, 1)
   set('uri', JSON.stringify(e.uri))
   set('author', JSON.stringify(e.author))
   set('source', JSON.stringify(e.source))
@@ -625,9 +629,9 @@ export function withEntry(text: string, e: ModelManifestEntry, baseId: string): 
   // commas: every entry's closing line but the last one's
   const ends = lines.flatMap((l, i) => (/^ {4}\},?$/.test(l) ? [i] : []))
   for (const [k, i] of ends.entries()) lines[i] = k === ends.length - 1 ? '    }' : '    },'
-  // the types move: off every other entry
+  // the types move: off every other entry, whether it was their model or stood in for them
   const own = blockOf(lines, e.id)!
-  lines = lines.map((l, i) => (i >= own[0] && i <= own[1]) || !l.trimStart().startsWith('"types":') ? l
+  lines = lines.map((l, i) => (i >= own[0] && i <= own[1]) || !/^"(?:types|standIns)":/.test(l.trimStart()) ? l
     : l.replace(/\[([^\]]*)\]/, (_m, list: string) => inline(list.split(',').map((t) => JSON.parse(t.trim())).filter((t: string) => !(e.types ?? []).includes(t)))))
   return lines.join('\n')
 }
