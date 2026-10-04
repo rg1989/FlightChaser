@@ -64,7 +64,7 @@ test('hidden it draws nothing: no primitive in the scene, nothing on the card; i
   assert.deepEqual([r.list.length, r.layers.length, r.live()], [0, 0, 0])
   assert.ok(sampleField(r.clouds.field, LAT, LON, 1800).cover > 0.9, 'the field is there')
   assert.deepEqual(r.jobs.map((j) => [j.sculpt, j.noise]), [[true, false]], 'the job asks for the mesh, and for no noise')
-  assert.deepEqual(r.clouds.stats, { bodies: 0, triangles: 0, meshMs: r.clouds.stats.meshMs, layer: false })
+  assert.deepEqual(r.clouds.stats, { bodies: 0, triangles: 0, meshMs: r.clouds.stats.meshMs, heldMs: 0, layer: false })
 })
 
 test('shown: one primitive, a body for each band that has one; hidden again: no primitive and nothing on the card; shown again: made again from the mesh kept', () => {

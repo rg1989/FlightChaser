@@ -56,6 +56,7 @@ export interface SculptStats {
   bodies: number // meshes in use, one for each band that has a body
   triangles: number // in them
   meshMs: number // how long the building of the mesh in use took, where it was built
+  heldMs: number // the longest this look's own work held a frame: a band written to the card, a field coming into use (its shadow laid)
   layer: boolean // its primitive is in the scene
 }
 
@@ -140,6 +141,7 @@ export class SculptedClouds {
   #coming: FieldMade | null = null // a field whose bodies are being written: it is in use once they are
   #comingBodies: SculptBody[] = []
   #asked = 0 // fields asked of the builder
+  #heldMs = 0 // the longest a write or a coming into use took
   #asking = false // inside draw(): a field that comes now was made here, with no worker
   #late = false // the last field came after draw() had returned: a worker's, so the frames go on while its bodies are written
   #show = false
@@ -197,7 +199,7 @@ export class SculptedClouds {
   }
 
   get stats(): SculptStats {
-    return { bodies: this.#bodies.length, triangles: this.#bodies.reduce((n, b) => n + b.triangles, 0), meshMs: this.#made?.mesh?.ms ?? 0, layer: this.#layer !== null }
+    return { bodies: this.#bodies.length, triangles: this.#bodies.reduce((n, b) => n + b.triangles, 0), meshMs: this.#made?.mesh?.ms ?? 0, heldMs: this.#heldMs, layer: this.#layer !== null }
   }
 
   /**
@@ -237,7 +239,10 @@ export class SculptedClouds {
   /** Every frame while the weather shows: the Sun's night; and of a coming field's mesh, a band written, the field coming into use the frame after the last. */
   frame(_tf: TerrainFrame, night: number): void {
     this.#uniforms.light = sunBrightness(night)
-    if (this.#coming !== null) this.#write(BANDS_A_FRAME)
+    if (this.#coming === null) return
+    const t0 = performance.now()
+    this.#write(BANDS_A_FRAME)
+    this.#heldMs = Math.max(this.#heldMs, performance.now() - t0)
   }
 
   fade(_from: Cartesian3): void {}
