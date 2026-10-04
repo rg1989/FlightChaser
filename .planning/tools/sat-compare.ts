@@ -2,18 +2,20 @@
 // The satellite's frame by its two routes, compared over one box: the numbers the app's server cuts out of EUMETSAT's raw products
 // (GET /api/wx/sat: it needs a server running with EUMETSAT_KEY and EUMETSAT_SECRET) against what the page reads back from
 // EUMETView's two pictures of the same frame (client/scene/satellite.ts decodeFrame). Run on the QA machine, in the tree:
-//   node .planning/tools/sat-compare.ts <the server, e.g. http://127.0.0.1:8798> <lat> <lon> <out dir> [<raw answer saved before>]
+//   node .planning/tools/sat-compare.ts <the server, e.g. http://127.0.0.1:8798> <lat> <lon> <out dir> [<raw answer saved before> | -] [<lat> <lon> of a weather field's middle]
 // It prints how the masks agree (also with the raw grid moved a cell each way: the two services place the pixels half a satellite
 // pixel apart), a table of raw height less picture height over the cells where both have one, and writes four plans as PNGs
 // (raw-mask, raw-tops, view-mask, view-tops: the masks white, green, blue as EUMETView colours them, the tops in the pictures' own
 // colours) and the raw answer (raw.bin), so that the pictures can be asked for later (EUMETView has a frame 8 to 16 minutes after
-// the Data Store) with the raw answer given as the fifth argument.
+// the Data Store) with the raw answer given as the fifth argument. With a field's middle (sat-probe.js state() says it) the four plans
+// are also written cut to the field's 320 km square, 128 cells a side (-square.png), to lay beside the field's own plans.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { deflateSync, inflateSync } from 'node:zlib'
 import { SAT_LAYER, SAT_N, SAT_STEP_M, SAT_TOPS, decodeFrame, satBox, satMapUrl, type SatFrame } from '../../client/scene/satellite.ts'
 import { decodeSatCut } from '../../shared/sat.ts'
 
-const [api, latArg, lonArg, out, saved] = process.argv.slice(2)
+const [api, latArg, lonArg, out, savedArg, midLat, midLon] = process.argv.slice(2)
+const saved = savedArg === '-' ? undefined : savedArg
 if (out === undefined) throw new Error('usage: sat-compare.ts <server> <lat> <lon> <out dir> [<raw.bin>]')
 mkdirSync(out, { recursive: true })
 const box = satBox(Number(latArg), Number(lonArg))
@@ -61,10 +63,10 @@ function readPng(buf: Buffer): Uint8ClampedArray {
   return rgba
 }
 
-/** An n × n picture as a PNG file (RGB). */
-function writePng(file: string, rgb: (cell: number) => readonly [number, number, number]): void {
-  const raw = Buffer.alloc(n * (1 + 3 * n))
-  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) raw.set(rgb(y * n + x), y * (1 + 3 * n) + 1 + 3 * x)
+/** A square picture of `side` pixels as a PNG file (RGB): each pixel's colour by its column and row. */
+function writePng(file: string, side: number, rgb: (x: number, y: number) => readonly [number, number, number]): void {
+  const raw = Buffer.alloc(side * (1 + 3 * side))
+  for (let y = 0; y < side; y++) for (let x = 0; x < side; x++) raw.set(rgb(x, y), y * (1 + 3 * side) + 1 + 3 * x)
   const chunk = (kind: string, body: Buffer): Buffer => {
     const b = Buffer.alloc(12 + body.length)
     b.writeUInt32BE(body.length, 0)
@@ -79,8 +81,8 @@ function writePng(file: string, rgb: (cell: number) => readonly [number, number,
     return b
   }
   const head = Buffer.alloc(13)
-  head.writeUInt32BE(n, 0)
-  head.writeUInt32BE(n, 4)
+  head.writeUInt32BE(side, 0)
+  head.writeUInt32BE(side, 4)
   head.set([8, 2, 0, 0, 0], 8)
   writeFileSync(file, Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', head), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]))
 }
@@ -88,9 +90,20 @@ function writePng(file: string, rgb: (cell: number) => readonly [number, number,
 const DARK = [14, 18, 28] as const
 const maskRgb = (f: SatFrame, c: number): readonly [number, number, number] => (f.seen[c] === 0 ? DARK : f.cloud[c] >= 128 ? [250, 250, 250] : [38, 58, 44])
 const topRgb = (f: SatFrame, c: number): readonly [number, number, number] => (f.topM[c] === 0 ? DARK : SAT_TOPS[Math.min(SAT_TOPS.length, Math.round(f.topM[c] / SAT_STEP_M)) - 1])
+const SQUARE_N = 128 // the field's square in cells of 2.5 km
+/** The frame's cell at a place of the field's square: x cells east of its west edge, y south of its north edge. */
+const squareCell = (x: number, y: number): number => {
+  const lat = Number(midLat) + ((SQUARE_N / 2 - y - 0.5) * 2.5) / 111.195
+  const lon = Number(midLon) + ((x + 0.5 - SQUARE_N / 2) * 2.5) / (111.195 * Math.cos((Number(midLat) * Math.PI) / 180))
+  const [i, j] = [Math.floor(((lon - box[1]) / (box[3] - box[1])) * n), Math.floor(((box[2] - lat) / (box[2] - box[0])) * n)]
+  return i < 0 || j < 0 || i >= n || j >= n ? -1 : j * n + i
+}
 const plans = (name: string, f: SatFrame): void => {
-  writePng(`${out}/${name}-mask.png`, (c) => maskRgb(f, c))
-  writePng(`${out}/${name}-tops.png`, (c) => topRgb(f, c))
+  writePng(`${out}/${name}-mask.png`, n, (x, y) => maskRgb(f, y * n + x))
+  writePng(`${out}/${name}-tops.png`, n, (x, y) => topRgb(f, y * n + x))
+  if (midLon === undefined) return
+  writePng(`${out}/${name}-mask-square.png`, SQUARE_N, (x, y) => (squareCell(x, y) < 0 ? DARK : maskRgb(f, squareCell(x, y))))
+  writePng(`${out}/${name}-tops-square.png`, SQUARE_N, (x, y) => (squareCell(x, y) < 0 ? DARK : topRgb(f, squareCell(x, y))))
 }
 
 // ---- the raw route ----
