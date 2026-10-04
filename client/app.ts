@@ -846,6 +846,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const weather3d = new Weather3D(viewer, {
     apiBase: cfg.apiBase, labels: placeLabels, onStatus: (text) => wxMenu.setWeather(text), units: () => frameUnits, at: parseWxAt(location.search),
     demo: parseWxDemo(location.search), broken: parseWxBreak(location.search), tier: parseWxTier(location.search), satellite: satelliteFor(parseWxSat(location.search), cfg.apiBase),
+    look: wxPrefs.look,
     onShade: (shade) => sun.setOvercast(shade),
     onCloudsFailed: (note) => {
       applyLayers()
@@ -2007,6 +2008,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       weather3d.setNight(prefs.light && st !== null ? st.night : 0)
       weather3d.update(chased !== null ? wxAircraft : null, now, tf)
     }
+    model?.tint(weather3d.tint) // in the Sculpted look the chased aircraft takes the colour of the cloud it is in or behind
     const tAhead = bench === null ? 0 : performance.now()
     lookAhead(chased, now)
     if (bench !== null) {

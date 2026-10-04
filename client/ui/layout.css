@@ -112,6 +112,17 @@
 .fh-precip[hidden] {
   display: none;
 }
+/* The Sculpted look's veil while the camera is inside a cloud (client/scene/sculptVeil.ts): one flat colour over the 3-D view,
+   see-through, under the rain and the place names. The script sets its colour and its opacity. */
+.fh-wx-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+.fh-wx-veil[hidden] {
+  display: none;
+}
 .fh-precip-tilt {
   position: absolute;
   left: 50%;

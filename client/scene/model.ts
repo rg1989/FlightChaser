@@ -3,7 +3,7 @@
 // The aircraft must never fly sideways. model.test.ts proves it from the GLB's own geometry.
 // ChaseModel also carries a scenario's look: its livery, a folded span, damage and a separate landing gear; and the
 // placeholder look of an aircraft drawn on a model that is not its own (placeholder.ts).
-import { Axis, Cartesian2, Cartesian3, HeadingPitchRoll, Math as CesiumMath, Matrix3, Matrix4, Model, Quaternion, Transforms } from 'cesium'
+import { Axis, Cartesian2, Cartesian3, Color, ColorBlendMode, HeadingPitchRoll, Math as CesiumMath, Matrix3, Matrix4, Model, Quaternion, Transforms } from 'cesium'
 import type { CustomShader, ModelNode, Viewer } from 'cesium'
 import type { Damage } from '../scenario/timeline.ts'
 import type { ModelManifestEntry, RenderState } from '../types.ts'
@@ -207,6 +207,8 @@ export class ChaseModel {
   private readonly gear = new GearMotion()
   private readonly legs = new Map<Model, Array<ModelNode | undefined>>() // each gear model's leg nodes, in its manifest order
   private legsAt = -1 // the position the legs were last swung to (−1: not yet)
+  private tinted = false // a tint is on the drawn model (tint)
+  private readonly tintColor = new Color()
 
   /** Prefer ChaseModel.load. Adds the model to the scene hidden: it appears on the first update(), not at the Earth's centre. */
   constructor(viewer: Viewer, m: ModelManifestEntry, model: Model, loader = loadChaseModel, gearLoader = loadGearModel) {
@@ -405,6 +407,30 @@ export class ChaseModel {
     s.setUniform('u_span', this.halfSpanM === null ? 0 : this.halfSpanM / this.m.scale)
     s.setUniform('u_cut', fin ? 1 : 0)
     s.setUniform('u_rudder', band === null ? new Cartesian2() : new Cartesian2(band[0], band[1]))
+  }
+
+  /**
+   * The drawn model (and its gear) tinted toward a colour (each part 0 … 1) by amount (0 … 1), or (null) as it is: the weather's
+   * Sculpted look tints the aircraft while it is in or behind cloud (weather3d.ts tint). Cesium mixes a model's colour in after
+   * its own shader and its lighting, so the livery's paint and the placeholder's look are both tinted, and neither is replaced.
+   * While a tint is given, the colour stays on the model at no amount too: taking it off and on rebuilds the model's shader.
+   */
+  tint(t: { color: readonly [number, number, number]; amount: number } | null): void {
+    if (t === null && !this.tinted) return
+    this.tinted = t !== null
+    const models = [this.model, ...this.gears.values()]
+    if (t === null) {
+      for (const m of models) m.color = undefined as unknown as Color
+      return
+    }
+    this.tintColor.red = t.color[0]
+    this.tintColor.green = t.color[1]
+    this.tintColor.blue = t.color[2]
+    for (const m of models) {
+      m.color = this.tintColor
+      m.colorBlendMode = ColorBlendMode.MIX
+      m.colorBlendAmount = t.amount
+    }
   }
 
   /** The gear drawn now: not fully up, the entry has one, and it has loaded (the others hidden). */

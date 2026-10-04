@@ -28,14 +28,15 @@
 // A band's mesh is its own (no corner is shared between bands): the renderer writes a band to the card a frame.
 // A corner is VERTEX_FLOATS numbers: its place, metres east, north and up in the frame at the field's middle on the ellipsoid (heights
 // above the sea are laid as heights above the ellipsoid: the renderer lifts the frame by the geoid at the middle); its normal; its
-// severity (0 … 3), its height above the sea (m: the shader draws the level lines from it), and 1 on the underside.
+// severity (0 … 3), its height above the sea (m: the shader draws the level lines from it), 1 on the underside, and how far in from
+// the rim it is (m: the shader draws the rim's line from it).
 // With its mesh a band brings its top sheet and its underside as two maps on the field's texels (roof, floor): what answers "is this
 // place inside a body" (sculptInside.ts).
 import { BANDS, FIELD_KM, FIELD_N, type WxField } from './wxField.ts'
 
 export const RIM_COVER = 0.4 // a body stands where the cover is above this
 export const SHOULDER_MAX_KM = 2.5 // a body's top is rounded over at most this far in from its rim
-export const VERTEX_FLOATS = 9 // x, y, z, the normal's x, y, z, the severity, the height above the sea, 1 on the underside
+export const VERTEX_FLOATS = 10 // x, y, z, the normal's x, y, z, the severity, the height above the sea, 1 on the underside, the distance in from the rim
 export const BAND_TRIANGLES = 300_000 // a band of more than this is cut more coarsely
 const BLOCK_TEXELS = 4 // a block's side, in the field's texels
 const NODE_TEXELS: readonly number[] = [0.5, 1, 2] // the nodes' spacing at each level of cut, finest first
@@ -376,7 +377,7 @@ function sculptBand(f: WxField, b: number, fr: Frame, level: number): SculptBand
   const nb = FIELD_N / BLOCK_TEXELS // blocks a side
   const n = nb * s + 1
   const g = gridOf(n)
-  const { cov, base, top, sev, seen, node, across, up, ztop } = g
+  const { cov, base, top, sev, seen, node, across, up, ztop, far } = g
   const C = f.cov[b]
   const zTop = (k: number): number => ztop[k]
 
@@ -458,7 +459,7 @@ function sculptBand(f: WxField, b: number, fr: Frame, level: number): SculptBand
   const p = new Float64Array(3)
   const km = (i: number): number => (i * step + 0.5) * TEXEL_KM - FIELD_KM / 2 // a node's place on the map
   /** A pair of corners at a place of the map: the top sheet's at topM, the underside's at baseM. Its top corner's number. */
-  const lay = (eastKm: number, northKm: number, baseM: number, topM: number, sv: number): number => {
+  const lay = (eastKm: number, northKm: number, baseM: number, topM: number, sv: number, inM: number): number => {
     if ((2 * pairs + 2) * F > vertices.length) {
       const more = new Float32Array(vertices.length * 2)
       more.set(vertices)
@@ -474,12 +475,13 @@ function sculptBand(f: WxField, b: number, fr: Frame, level: number): SculptBand
       vertices[o + 6] = sv
       vertices[o + 7] = h
       vertices[o + 8] = under
+      vertices[o + 9] = inM
     }
     return 2 * pairs++
   }
   const corner = (i: number, j: number): number => {
     const k = j * n + i
-    if (node[k] < 0) node[k] = lay(km(i), km(j), base[k], zTop(k), sev[k])
+    if (node[k] < 0) node[k] = lay(km(i), km(j), base[k], zTop(k), sev[k], Math.min(far[k], n) * step * TEXEL_KM * 1000)
     return node[k]
   }
   /** The rim's pair on the edge from node (i, j) to the next east (di) or north (dj): where the cover crosses RIM_COVER, at the base (the inside node's, or between the two where both have heights). */
@@ -490,10 +492,10 @@ function sculptBand(f: WxField, b: number, fr: Frame, level: number): SculptBand
     const q = k + di + dj * n
     const t = (RIM_COVER - cov[k]) / (cov[q] - cov[k]) // from k toward q
     const [a, z] = cov[k] > RIM_COVER ? [k, q] : [q, k] // the inside node, the outside one
-    const far = cov[k] > RIM_COVER ? t : 1 - t // from the inside node
+    const part = cov[k] > RIM_COVER ? t : 1 - t // from the inside node
     const both = seen[z] === 2
-    const h = both ? base[a] + (base[z] - base[a]) * far : base[a]
-    return (held[k] = lay(km(i) + di * t * step * TEXEL_KM, km(j) + dj * t * step * TEXEL_KM, h, h, both ? sev[a] + (sev[z] - sev[a]) * far : sev[a]))
+    const h = both ? base[a] + (base[z] - base[a]) * part : base[a]
+    return (held[k] = lay(km(i) + di * t * step * TEXEL_KM, km(j) + dj * t * step * TEXEL_KM, h, h, both ? sev[a] + (sev[z] - sev[a]) * part : sev[a], 0))
   }
   /** A triangle of the top sheet (counter-clockwise from above), and the same of the underside, turned over. */
   const face = (a: number, bb: number, c: number): void => {

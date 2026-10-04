@@ -55,10 +55,10 @@ import { NEAR_N } from './wxSurvey.ts'
 import { packSpecs, type FieldMade } from './wxFieldJob.ts'
 import type { Hazard } from './wxGeo.ts'
 
-export type CloudLook = 'natural' | 'severity' | 'blocks'
+export type CloudLook = 'natural' | 'severity' | 'blocks' | 'sculpted' // (sculpted is not this pass's: sculptedClouds.ts draws it, as bodies)
 /** How a hazard area's edge is drawn: a curtain hung from its top, a fence (lines and posts), or the box of today (a faint fill and its edges). */
 export type HazardStyle = 'curtain' | 'fence' | 'box'
-const LOOK: Record<CloudLook, number> = { natural: 0, severity: 1, blocks: 2 } // u_look
+const LOOK: Record<CloudLook, number> = { natural: 0, severity: 1, blocks: 2, sculpted: 1 } // u_look
 const HAZARD: Record<HazardStyle, number> = { curtain: 0, fence: 1, box: 2 } // u_hazard
 const KM_PER_DEG = 111.195 // of latitude on the sphere the heights curve over (R_KM): the field's map
 const RAD = Math.PI / 180
