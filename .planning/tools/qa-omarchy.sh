@@ -14,9 +14,9 @@ set -e
 OUT=$1; shift
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 QA_DIR=${QA_DIR:-flighthopper-wxlab-qa}
-rsync -a --delete --exclude node_modules --exclude .git --exclude dist --exclude data/recordings --exclude .env.local --exclude shots --exclude '*.log' "$ROOT/" "omarchy:$QA_DIR/"
+rsync -a --delete --exclude node_modules --exclude .git --exclude dist --exclude data/recordings --exclude .env.local --exclude shots --exclude '*.log' "$ROOT/" "${QA_HOST:-omarchy}:$QA_DIR/"
 ARGS=$(printf ' %q' "$@")
-ssh omarchy "cd ~/$QA_DIR && QA_API=${QA_API:-8798} QA_FE=${QA_FE:-5198} QA_CDP=${QA_CDP:-9377} REPLAY=$(printf %q "${REPLAY:-data/recordings/2026-09-23.jsonl}") WAIT=${WAIT:-22} SIZE=$(printf %q "${SIZE:-1440 900 1 0}") UNCAP=${UNCAP:-0} TAIL=${TAIL:-80} bash .planning/tools/qa-remote.sh$ARGS"
+ssh "${QA_HOST:-omarchy}" "cd ~/$QA_DIR && QA_API=${QA_API:-8798} QA_FE=${QA_FE:-5198} QA_CDP=${QA_CDP:-9377} REPLAY=$(printf %q "${REPLAY:-data/recordings/2026-09-23.jsonl}") WAIT=${WAIT:-22} SIZE=$(printf %q "${SIZE:-1440 900 1 0}") UNCAP=${UNCAP:-0} TAIL=${TAIL:-80} bash .planning/tools/qa-remote.sh$ARGS"
 mkdir -p "$OUT"
-scp -q "omarchy:$QA_DIR/shots/*.png" "$OUT/"
+scp -q "${QA_HOST:-omarchy}:$QA_DIR/shots/*.png" "$OUT/"
 ls "$OUT"
