@@ -1,8 +1,8 @@
 // client/scene/fieldBuilder.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { fieldBuilder, type WorkerLike } from './fieldBuilder.ts'
-import { makeField, packSpecs, type FieldJob, type FieldMade } from './wxFieldJob.ts'
+import { builder, fieldBuilder, type WorkerLike } from './fieldBuilder.ts'
+import { SPEC_NUMBERS, makeField, packSpecs, type FieldJob, type FieldMade } from './wxFieldJob.ts'
 
 const SPEC = { lon: 20.1, lat: 11.1, heightM: 2000, scale: [3000, 1300] as [number, number] }
 const job = (id: number): FieldJob => ({ id, specs: packSpecs([SPEC]), lat: 10 + id, lon: 20, noise: false })
@@ -52,7 +52,7 @@ test('fieldBuilder: with a worker the ask is sent to it, and the caller is told 
   b.ask(j, (m) => got.push(m.id))
   assert.deepEqual(got, [])
   assert.deepEqual(f.posted, [j])
-  assert.equal(j.specs.length, 7, 'the ask is kept whole (its numbers are copied to the worker, not handed over): should the worker fail, it is made here')
+  assert.equal(j.specs.length, SPEC_NUMBERS, 'the ask is kept whole (its numbers are copied to the worker, not handed over): should the worker fail, it is made here')
   f.answer(0)
   assert.deepEqual(got, [1])
 })
@@ -125,4 +125,26 @@ test('fieldBuilder: destroyed, the worker is ended and nothing is told any more'
   assert.deepEqual(got, [])
   b.destroy()
   assert.equal(f.terminated(), 1, 'once')
+})
+
+test('builder: what an ask hands over goes to the worker with the job; a job that waited and was sent later takes its own; with no worker nothing is handed over', () => {
+  const sent: { job: { id: number }; transfer: Transferable[] | undefined }[] = []
+  const w: WorkerLike<{ id: number }, number> = {
+    onmessage: null, onerror: null, onmessageerror: null,
+    postMessage: (job, transfer) => void sent.push({ job, transfer }),
+    terminate: () => {},
+  }
+  const b = builder(() => w, (job: { id: number }) => job.id, 'a test\'s worker')
+  const [a, c] = [new ArrayBuffer(8), new ArrayBuffer(8)]
+  b.ask({ id: 1 }, () => {}, [a])
+  b.ask({ id: 2 }, () => {})
+  b.ask({ id: 3 }, () => {}, [c])
+  assert.deepEqual(sent.map((s) => [s.job.id, s.transfer]), [[1, [a]]])
+  w.onmessage?.({ data: 1 })
+  assert.deepEqual(sent.map((s) => [s.job.id, s.transfer]), [[1, [a]], [3, [c]]], 'the ask between was never sent, nor its list')
+  const here = builder<{ id: number; bytes: Uint8Array }, number>(null, (job) => job.bytes.length, 'none')
+  let got = -1
+  const bytes = new Uint8Array(16)
+  here.ask({ id: 1, bytes }, (n) => (got = n), [bytes.buffer])
+  assert.deepEqual([got, bytes.length], [16, 16], 'done here, the bytes still the caller\'s')
 })

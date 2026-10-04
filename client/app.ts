@@ -50,7 +50,7 @@ import { makeMapLayer, makeReferenceLayers } from './scene/mapLayer.ts'
 import { NO_DISCS, outlineDiscs, type Discs } from './scene/modelOutline.ts'
 import { PlaceLabels, type LayerLabel } from './scene/placeLabels.ts'
 import { Weather } from './scene/weather.ts'
-import { Weather3D, parseWxAt, parseWxBreak, parseWxDemo, parseWxTier, type Aircraft as WxAircraft } from './scene/weather3d.ts'
+import { Weather3D, parseWxAt, parseWxBreak, parseWxDemo, parseWxSat, parseWxTier, type Aircraft as WxAircraft } from './scene/weather3d.ts'
 import { aheadPath, aheadStatus, hazardWords, keepProfile, type KeptProfile } from './scene/wxAhead.ts'
 import { makePendingLayer } from './scene/pendingLayer.ts'
 import { RouteLine, type PathPoint } from './scene/routeLine.ts'
@@ -833,13 +833,14 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const aircraftDiscs: Discs = { n: 0, d: new Float64Array(0) } // the chased aircraft's outline on screen: no name over it
   const weather = new Weather(viewer, cfg.apiBase, ui, (text) => toggles.setWeather(text), { units: () => frameUnits, radarIndex: () => map.liftIndex })
   // The chase's weather: round the chased aircraft, its hazard areas' labels through the names overlay. Its overcast greys the sky and
-  // dims the Sun's light too (0 when it is hidden). ?wxat=, ?wxdemo=, ?wxbreak= and ?wxtier= are check aids: the weather of another place, a made-up sky
-  // in place of the real one, a cloud pass that fails on purpose, and the cloud march held at one tier. The clouds' look and the other Weather-menu
+  // dims the Sun's light too (0 when it is hidden). ?wxat=, ?wxdemo=, ?wxbreak=, ?wxtier= and ?wxsat=0 are check aids: the weather of another place, a made-up sky
+  // in place of the real one, a cloud pass that fails on purpose, the cloud march held at one tier, and the sky without the weather satellite. The clouds' look and the other Weather-menu
   // choices are applied below (applyWxPrefs). Should the cloud pass fail (a drawing error took it out: its choices then do nothing), the Weather
   // button and its panel go (applyLayers) and one toast says so.
   const weather3d = new Weather3D(viewer, {
     apiBase: cfg.apiBase, labels: placeLabels, onStatus: (text) => toggles.setWeather(text), units: () => frameUnits, at: parseWxAt(location.search),
-    demo: parseWxDemo(location.search), broken: parseWxBreak(location.search), tier: parseWxTier(location.search), onShade: (shade) => sun.setOvercast(shade),
+    demo: parseWxDemo(location.search), broken: parseWxBreak(location.search), tier: parseWxTier(location.search), satellite: parseWxSat(location.search) ? undefined : null,
+    onShade: (shade) => sun.setOvercast(shade),
     onCloudsFailed: (note) => {
       applyLayers()
       alertsUi.notice('Weather', note)

@@ -5,12 +5,15 @@
 // One field is made at a time. An ask that comes meanwhile waits, and a later one takes its place: a field nobody will draw is not
 // made. Every field made is told, also when a later ask waits: the caller draws it until the next has come.
 // The same serves any work of a worker's that has a stand-in on the caller's thread (builder): the gathering of a sky's clouds is
-// asked for through it too (weather3d.ts, wxGather.ts).
+// asked for through it too (weather3d.ts, wxGather.ts). An ask may name arrays of its job to hand over to the worker, not copy
+// (the satellite's pictures, 1.3 MB: copying them held the frame that asked 3 to 4 ms): they go with the job when it is sent, and
+// are the caller's no longer. A job done on the caller's thread hands nothing over; one that the worker had when it failed is done
+// here with those arrays gone, and its work must stand that (wxGather.ts says a frame without its pixels is missing).
 import { makeField, type FieldJob, type FieldMade } from './wxFieldJob.ts'
 
 export interface Builder<J, M> {
-  /** Has this job done; `done` is told when it is: later (a worker's), or before this returns (done here). */
-  ask(job: J, done: (made: M) => void): void
+  /** Has this job done; `done` is told when it is: later (a worker's), or before this returns (done here). transfer: arrays of the job handed over to a worker with it, not copied. */
+  ask(job: J, done: (made: M) => void, transfer?: Transferable[]): void
   /** Ends the worker. Nothing is told after. */
   destroy(): void
 }
@@ -21,7 +24,7 @@ export interface WorkerLike<J = FieldJob, M = FieldMade> {
   onmessage: ((e: { data: M }) => void) | null
   onerror: ((e: unknown) => void) | null
   onmessageerror: ((e: unknown) => void) | null
-  postMessage(job: J): void
+  postMessage(job: J, transfer?: Transferable[]): void
   terminate(): void
 }
 
@@ -37,6 +40,7 @@ export function builder<J, M>(start: (() => WorkerLike<J, M>) | null, here: (job
   interface Ask {
     job: J
     done: (made: M) => void
+    transfer: Transferable[]
   }
   let worker: WorkerLike<J, M> | null = null
   let busy: Ask | null = null // with the worker
@@ -56,7 +60,7 @@ export function builder<J, M>(start: (() => WorkerLike<J, M>) | null, here: (job
   const send = (a: Ask): void => {
     busy = a
     try {
-      worker!.postMessage(a.job)
+      worker!.postMessage(a.job, a.transfer)
     } catch (e) {
       fall(e)
     }
@@ -82,11 +86,11 @@ export function builder<J, M>(start: (() => WorkerLike<J, M>) | null, here: (job
     }
   }
   return {
-    ask(job, done) {
+    ask(job, done, transfer = []) {
       if (destroyed) return
       if (worker === null) done(here(job))
-      else if (busy === null) send({ job, done })
-      else next = { job, done }
+      else if (busy === null) send({ job, done, transfer })
+      else next = { job, done, transfer }
     },
     destroy() {
       if (destroyed) return

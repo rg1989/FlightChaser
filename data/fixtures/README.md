@@ -14,6 +14,15 @@
 
 Top-level `*.jsonl` — curated replay fixtures (cruise, arrival, MLAT) promoted from `data/recordings/` (gitignored).
 
+`eumetview/` — what EUMETSAT's EUMETView (`view.eumetsat.int/geoserver`) says of its own pictures, recorded on 2026-10-04, for `client/scene/satellite.test.ts`. No satellite picture is kept here: only the service's descriptions of them.
+
+| File | What |
+|---|---|
+| `legend-cth.png` | GetLegendGraphic of `msg_fes:cth` (cloud top height): the colour bar, 320 m to 16,000 m. The layer's style holds no colour map, so the heights' colours are checked against this |
+| `legend-clm.png` | GetLegendGraphic of `msg_fes:clm` (cloud mask): clear over water, clear over land, cloud |
+| `capabilities-cth.xml` | GetCapabilities of the one layer `msg_fes:cth`: its time dimension's default is the newest frame |
+| `no-frame.xml` | the answer to a GetMap at a time the layer has no frame near: a ServiceException, sent with HTTP 200 |
+
 **Privacy:** aircraft flagged PIA or LADD (`dbFlags & 12`) have their identity replaced with unallocated ICAO addresses `000001`, `000002` and their callsign, registration and type removed. The app hides such aircraft anyway.
 
 **License:** adsb.lol data is © adsb.lol contributors, ODbL 1.0 (https://opendatacommons.org/licenses/odbl/1-0/).

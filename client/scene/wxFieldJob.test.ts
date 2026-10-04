@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PUFF_FILL, SEV, type CloudSpec } from './cloudField.ts'
 import { noiseAtlas } from './cloudNoise.ts'
+import type { SatGrid } from './satGrid.ts'
 import { BANDS, FIELD_N, buildField, fieldAtlas, fieldTile } from './wxField.ts'
 import { SPEC_NUMBERS, makeField, packSpecs, transfers, unpackSpecs, type FieldJob } from './wxFieldJob.ts'
 import { survey } from './wxSurvey.ts'
@@ -26,18 +27,33 @@ const CB = puff(1000, 11_000, { eastKm: 60, northKm: 60, wide: 9000, tower: 0, s
 const SKY = [CU, RAIN, CB]
 const job = (specs: readonly CloudSpec[], o: Partial<FieldJob> = {}): FieldJob => ({ id: 1, specs: packSpecs(specs), lat: LAT, lon: LON, noise: false, ...o })
 
-test('packSpecs: the cloud specs as numbers, seven each (what a field reads of a spec: its place, its height, its billboard, its severity and whether it is a tower\'s); read back, they build the very same field', () => {
+test('packSpecs: the cloud specs as numbers, eight each (what a field reads of a spec: its place, its height, its billboard, its severity, whether it is a tower\'s and whether it is masked by the satellite); read back, they build the very same field', () => {
   const packed = packSpecs(SKY)
   assert.ok(packed instanceof Float64Array)
-  assert.equal(SPEC_NUMBERS, 7)
+  assert.equal(SPEC_NUMBERS, 8)
   assert.equal(packed.length, 3 * SPEC_NUMBERS)
   const back = unpackSpecs(packed)
   assert.equal(back.length, 3)
   assert.deepEqual(back.map((s) => [s.lon, s.lat, s.heightM, s.scale[0], s.scale[1]]), SKY.map((s) => [s.lon, s.lat, s.heightM, s.scale[0], s.scale[1]]), 'to the last bit: doubles')
   assert.deepEqual(back.map((s) => s.tower === undefined), [true, true, false], 'a tower is a tower, whatever its number')
   assert.deepEqual(back.map((s) => s.sev ?? 0), [0, 1, 3], 'no severity is cloud')
+  assert.deepEqual(back.map((s) => s.masked === true), [false, false, false])
   assert.deepEqual(buildField(back, LAT, LON), buildField(SKY, LAT, LON))
   assert.deepEqual(unpackSpecs(packSpecs([])), [])
+  assert.deepEqual(unpackSpecs(packSpecs([{ ...CU, masked: true }, RAIN])).map((s) => s.masked === true), [true, false])
+})
+
+test('makeField: with the satellite\'s grid in the job, the field is the specs\' and the grid\'s (buildField\'s with it), and its images follow', () => {
+  const n = 128
+  const sat: SatGrid = { timeMs: 0, n, cover: new Float32Array(n * n).fill(1), topM: new Float32Array(n * n).fill(6000), baseM: new Float32Array(n * n).fill(5000), seen: new Uint8Array(n * n).fill(1) }
+  const specs = [{ ...CU, masked: true }, CB]
+  const made = makeField(job(specs, { sat }))
+  const f = buildField(specs, LAT, LON, sat)
+  assert.deepEqual(made.field, f)
+  assert.equal(f.cov[2][0], 1) // the satellite's deck, everywhere
+  assert.deepEqual(made.tiles.map((t) => t !== null), [true, false, true, false, true])
+  assert.deepEqual(made.tiles[2], fieldTile(f, 2))
+  assert.deepEqual(makeField(job(specs, { sat: null })).field, buildField(specs, LAT, LON))
 })
 
 test('makeField: the field of the job\'s specs round its place, its image for the GPU as a tile for each band with cloud, the clear-air map and which bands rain: what buildField, fieldTile and survey give; and the ask\'s number, and how long it took', () => {

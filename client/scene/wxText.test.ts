@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import type { Cloud, Sigmet } from '../../shared/wx.ts'
 import { DEFAULT_UNITS, type Units } from '../ui/units.ts'
 import {
-  CONDITION, altText, cloudText, compass, hhmm, pressureText, sigmetColor, sigmetLabel, sigmetLevels, sigmetTitle, speedText, stationName,
+  CONDITION, altText, cloudText, compass, hhmm, hhmmUtc, pressureText, sigmetColor, sigmetLabel, sigmetLevels, sigmetTitle, speedText, stationName,
   tempText, visibilityText, weatherText, windText,
 } from './wxText.ts'
 
@@ -237,4 +237,9 @@ test('sigmetLevels and sigmetLabel: heights in the frame\'s unit, "up to" withou
   assert.equal(sigmetLabel(sig({ hazard: 'TS', top: 35000 }), metric), 'Thunderstorms · up to 10,650 m')
   assert.equal(sigmetLabel(sig({ hazard: 'TURB', qualifier: 'SEV MTW', base: 0, top: 5500 }), ft), 'Severe turbulence (mountain waves) · surface to 5,500 ft')
   assert.equal(sigmetLabel(sig({ hazard: 'VA', qualifier: 'SANTA MARIA' }), ft), 'Volcanic ash (Santa Maria)')
+})
+
+test('hhmmUtc: the time of day in UTC, whatever the machine\'s zone', () => {
+  assert.equal(hhmmUtc(Date.UTC(2026, 9, 4, 4, 45)), '04:45')
+  assert.equal(hhmmUtc(Date.UTC(2026, 9, 4, 23, 5, 59)), '23:05')
 })
