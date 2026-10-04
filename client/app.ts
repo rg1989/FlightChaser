@@ -914,6 +914,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   /** The Weather menu's choices put to work (and, at the next frame, the status, the strip and the minute labels follow the aids). */
   const applyWxPrefs = (p: WxPrefs): void => {
     weather3d.look = p.look
+    weather3d.opacity = p.opacity
     weather3d.hazardStyle = p.hazard
     wxAids.track = p.track
     wxAids.slice = p.slice

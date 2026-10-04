@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { isDeepStrictEqual } from 'node:util'
 import v8 from 'node:v8'
 import vm from 'node:vm'
-import { Cartesian3, Cartographic, ClassificationType, Color, JulianDate, Math as CesiumMath, StripeMaterialProperty } from 'cesium'
+import { Cartesian3, Cartographic, Color, JulianDate, Math as CesiumMath } from 'cesium'
 import type { CustomDataSource, Entity, Viewer } from 'cesium'
 import { distanceNm } from '../../shared/geo.ts'
 import { geoidN } from '../../shared/geoid.ts'
@@ -21,7 +21,7 @@ import { radarPixel, windOf, type Fall } from './precip.ts'
 import { RadarSource, type SourceTile } from './radar.ts'
 import { radarCells } from './radarCells.ts'
 import { modelWindAt } from './modelWind.ts'
-import { REACH_KM } from './cloudShaders.ts'
+import { REACH_KM, VEIL } from './cloudShaders.ts'
 import { CloudVolume, type CloudLook, type HazardStyle } from './cloudVolume.ts'
 import { bytesImage } from './gpuImage.ts'
 import { countLayer } from './sculptGpu.ts'
@@ -115,7 +115,7 @@ function fakeSky() {
   return {
     clouds: {
       show: false, draws: [] as CloudSpec[][], ats: [] as { lat: number; lon: number }[], sats: [] as (SatGrid | null)[], frames: [] as [TerrainFrame, number][], fades: [] as Cartesian3[], destroyed: false,
-      look: 'severity' as CloudLook, field: null as WxField | null, failed: false, tier: 0, passMs: Number.NaN, drawn: true,
+      look: 'severity' as CloudLook, opacity: Number.NaN, field: null as WxField | null, failed: false, tier: 0, passMs: Number.NaN, drawn: true,
       hazardSets: [] as { hazards: Hazard[]; style: HazardStyle; color: (h: Hazard) => string }[], aheads: [] as { path: AheadPath | null; show: { track: boolean; slice: boolean } }[],
       draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }, sat: SatGrid | null = null) { this.draws.push([...specs]); this.ats.push({ ...at }); this.sats.push(sat) },
       setHazards(hazards: readonly Hazard[], style: HazardStyle, color: (h: Hazard) => string) { this.hazardSets.push({ hazards: [...hazards], style, color }) },
@@ -250,16 +250,7 @@ async function open(r: Rig, at: { lat: number; lon: number; altM: number; trackD
   await flush()
 }
 
-/** A footprint's two entities for a ring: its striped fill, and its outline. */
-const fill = (e: Entity): { ring: [number, number][]; even: Color; odd: Color; repeat: number; across: boolean; onGround: boolean; turned: number; terrainOnly: boolean } => {
-  const g = e.polygon!
-  const m = (g.material as StripeMaterialProperty).getValue(NOW) as { evenColor: Color; oddColor: Color; repeat: number; horizontal: boolean }
-  return {
-    ring: (g.hierarchy!.getValue(NOW) as { positions: Cartesian3[] }).positions.map(lonlat), even: m.evenColor, odd: m.oddColor, repeat: m.repeat, across: m.horizontal,
-    onGround: g.height === undefined && g.extrudedHeight === undefined, turned: g.stRotation!.getValue(NOW) as number,
-    terrainOnly: g.classificationType!.getValue(NOW) === ClassificationType.TERRAIN,
-  }
-}
+/** A ring's outline on the ground: what marks a hazard area once the cloud pass has failed. */
 const outline = (e: Entity): { ring: [number, number][]; color: Color; width: number; clamped: boolean } => {
   const g = e.polyline!
   return {
@@ -415,63 +406,45 @@ test('Weather3D: the hazard areas within 800 km are handed to the cloud pass, wh
   assert.ok(a.rings[0].some(([lon, lat]) => near(lon, AC.lon - 1, 1e-6) && near(lat, AC.lat + 300 / KM_PER_DEG, 1e-6)), 'the ring as the SIGMET gives it')
   assert.equal(got.style, 'box')
   assert.deepEqual(got.hazards, r.w.hazards)
-  assert.equal(r.footprints().length, 0, 'a box has no footprint, and no volume of Cesium\'s is drawn any more')
+  assert.equal(r.footprints().length, 0, 'nothing on the ground, and no volume of Cesium\'s is drawn any more')
   assert.equal(r.sources[0].show, true)
 })
 
-test('Weather3D: the style is handed to the cloud pass when it is set, with the areas it holds; a curtain and a fence have each ring\'s footprint on the ground (its outline clamped to it, and a fill in stripes 3 km wide whatever the ring\'s size, at low alpha), a box none', async () => {
+test('Weather3D: the style is handed to the cloud pass when it is set, with the areas it holds; in no style is anything laid on the ground under an area (the pass draws its edges and its roof: the map stays as it is)', async () => {
   const r = rig()
   r.w.hazardStyle = 'curtain'
   assert.deepEqual(r.sky.clouds.hazardSets.map((x) => [x.hazards.length, x.style]), [[0, 'curtain']], 'set before any area is known')
-  const small = northOf(300, 1) // 2 degrees of longitude by 1 of latitude: 188 km by 111
-  r.answers.sigmet = [sigmet({ rings: [small] }), sigmet({ hazard: 'ICE', qualifier: 'MOD', rings: [northOf(450, 2), northOf(700, 0.5)] })]
+  r.answers.sigmet = [sigmet({ rings: [northOf(300, 1)] }), sigmet({ hazard: 'ICE', qualifier: 'MOD', rings: [northOf(450, 2), northOf(700, 0.5)] })]
   await open(r)
-  assert.deepEqual([r.handed(), r.areas().length, r.sky.clouds.hazardSets.at(-1)!.style], [2, 2, 'curtain'])
-  const foot = r.footprints()
-  assert.equal(foot.length, 6, 'a fill and an outline for each of the three rings')
-  const fills = foot.filter((e) => e.polygon !== undefined).map(fill)
-  const lines = foot.filter((e) => e.polyline !== undefined).map(outline)
-  assert.deepEqual([fills.length, lines.length], [3, 3])
-  const [red, blue] = [Color.fromCssColorString(sigmetColor('TS')), Color.fromCssColorString(sigmetColor('ICE'))]
-  assert.ok(fills[0].even.equals(red.withAlpha(0.26)) && fills[0].odd.equals(red.withAlpha(0.09)), `${fills[0].even} ${fills[0].odd}`)
-  assert.ok(fills[1].even.equals(blue.withAlpha(0.26)) && fills[2].odd.equals(blue.withAlpha(0.09)))
-  assert.ok(fills.every((f) => f.onGround && f.terrainOnly && f.across && near(f.turned, Math.PI / 4, 1e-12)), 'on the ground; the stripes across the texture\'s upward axis, which is turned to the north-east: a diagonal hatch')
-  assert.deepEqual(fills[0].ring.map(([lon, lat]) => [+lon.toFixed(6), +lat.toFixed(6)]), small.map(([lon, lat]) => [+lon.toFixed(6), +lat.toFixed(6)]))
-  // the stripes are counted over the ring's extent north-eastward, each 3 km wide
-  const diagonal = (ring: Ring): number => {
-    const km = ring.map(([lon, lat]) => ((lon - ring[0][0]) * KM_PER_DEG * Math.cos((ring[0][1] * Math.PI) / 180) + (lat - ring[0][1]) * KM_PER_DEG) / Math.SQRT2)
-    return Math.max(...km) - Math.min(...km)
-  }
-  assert.ok(near(diagonal(small), 207, 4), `${diagonal(small)} km`)
-  assert.ok(near(fills[0].repeat, diagonal(small) / 3, 1e-9) && near(fills[1].repeat, diagonal(northOf(450, 2)) / 3, 1e-9) && near(fills[2].repeat, diagonal(northOf(700, 0.5)) / 3, 1e-9), `${fills.map((f) => f.repeat)}`)
-  assert.ok(fills[1].repeat > 1.3 * fills[0].repeat && fills[2].repeat < fills[0].repeat, 'more stripes on a larger ring, not wider ones')
-  assert.ok(lines.every((l) => l.clamped && l.width === 2.5))
-  assert.ok(lines[0].color.equals(red.withAlpha(0.9)) && lines[1].color.equals(blue.withAlpha(0.9)))
-  assert.deepEqual(lines[0].ring.length, small.length, 'closed, as the ring is')
+  assert.deepEqual([r.handed(), r.areas().length, r.sky.clouds.hazardSets.at(-1)!.style, r.footprints().length], [2, 2, 'curtain', 0])
   r.w.hazardStyle = 'fence'
-  assert.deepEqual([r.handed(), r.areas().length, r.sky.clouds.hazardSets.at(-1)!.style], [3, 2, 'fence'], 'the same areas, the new style')
-  assert.equal(r.footprints().length, 6)
+  assert.deepEqual([r.handed(), r.areas().length, r.sky.clouds.hazardSets.at(-1)!.style, r.footprints().length], [3, 2, 'fence', 0], 'the same areas, the new style')
   r.w.hazardStyle = 'fence'
   assert.equal(r.handed(), 3, 'the same style again: nothing handed')
   r.w.hazardStyle = 'box'
   assert.deepEqual([r.handed(), r.sky.clouds.hazardSets.at(-1)!.style, r.footprints().length], [4, 'box', 0])
-  r.w.hazardStyle = 'curtain'
-  assert.equal(r.footprints().length, 6)
   r.w.show = false
   assert.equal(r.sources[0].show, false, 'hidden with the weather')
   r.w.hazardStyle = 'fence'
   r.w.show = true
-  assert.deepEqual([r.sources[0].show, r.footprints().length, r.sky.clouds.hazardSets.at(-1)!.style], [true, 6, 'fence'])
+  assert.deepEqual([r.sources[0].show, r.footprints().length, r.sky.clouds.hazardSets.at(-1)!.style], [true, 0, 'fence'])
 })
 
-test('Weather3D: a ring given open is closed in its footprint\'s outline', async () => {
+test('Weather3D: once the cloud pass has failed each ring\'s outline marks its area on the ground, in the area\'s colour, clamped to it, and a ring given open is closed', async () => {
   const r = rig()
   r.w.hazardStyle = 'fence'
-  r.answers.sigmet = [sigmet({ rings: [northOf(300, 1).slice(0, 4)] })]
+  const small = northOf(300, 1)
+  r.answers.sigmet = [sigmet({ rings: [small.slice(0, 4)] }), sigmet({ hazard: 'ICE', qualifier: 'MOD', rings: [northOf(450, 2)] })]
   await open(r)
-  const line = outline(r.footprints().find((e) => e.polyline !== undefined)!)
-  assert.equal(line.ring.length, 5)
-  assert.ok(near(line.ring[4][0], line.ring[0][0], 1e-9) && near(line.ring[4][1], line.ring[0][1], 1e-9))
+  r.sky.clouds.failed = true
+  r.w.update(AC, 1000) // the next look
+  const foot = r.footprints()
+  assert.ok(foot.length === 2 && foot.every((e) => e.polygon === undefined), 'an outline for each ring, and no fill')
+  const lines = foot.map(outline)
+  assert.ok(lines.every((l) => l.clamped && l.width === 2.5))
+  assert.ok(lines[0].color.equals(Color.fromCssColorString(sigmetColor('TS')).withAlpha(0.9)) && lines[1].color.equals(Color.fromCssColorString(sigmetColor('ICE')).withAlpha(0.9)))
+  assert.equal(lines[0].ring.length, 5)
+  assert.ok(near(lines[0].ring[4][0], lines[0].ring[0][0], 1e-9) && near(lines[0].ring[4][1], lines[0].ring[0][1], 1e-9))
 })
 
 test('Weather3D: the reach is 800 km from the aircraft, and a ring across the far meridian is not in it (it was "inside")', async () => {
@@ -512,34 +485,33 @@ test('Weather3D: each hazard area\'s name and levels is a label at its ring\'s m
   assert.ok(near(lonlat(b.position)[1], AC.lat + 100 / KM_PER_DEG + 0.5, 0.05), 'an area with two rings in reach: the label is at the nearer')
 })
 
-test('Weather3D: the hazard areas are handed to the cloud pass, the footprints drawn and the labels given again only when what they show changes; picked again once the aircraft has moved 10 km', async () => {
+test('Weather3D: the hazard areas are handed to the cloud pass and the labels given again only when what they show changes; picked again once the aircraft has moved 10 km', async () => {
   const r = rig()
   r.w.hazardStyle = 'curtain'
   r.answers.sigmet = [sigmet({ rings: [northOf(300, 2)] }), sigmet({ rings: [northOf(797, 2)] })] // the second is 3 km from out of reach
   await open(r)
-  const first = r.footprints()
   const [calls, handed] = [r.labelCalls.length, r.handed()]
-  assert.deepEqual([r.areas().length, first.length], [2, 4])
+  assert.equal(r.areas().length, 2)
   r.w.update({ ...AC, lat: AC.lat + 0.05 }, 2000) // 5.6 km on, nearer the second: the same picks, nothing drawn again
-  assert.ok(r.handed() === handed && r.footprints().every((e, i) => e === first[i]), 'not handed again; the same entities, not new ones')
+  assert.equal(r.handed(), handed, 'not handed again')
   assert.equal(r.labelCalls.length, calls, 'no new labels for the same picks')
   r.w.update({ ...AC, lat: AC.lat - 0.05 }, 3000) // 5.6 km south, so the second is 803 km off; but less than 10 km from where it was picked
   assert.equal(r.handed(), handed, 'not picked again yet')
   r.w.update({ ...AC, lat: AC.lat - 0.1 }, 4000) // 11 km south of that place: picked again, and the second is out of reach
-  assert.deepEqual([r.handed(), r.areas().length, r.footprints().length], [handed + 1, 1, 2])
+  assert.deepEqual([r.handed(), r.areas().length], [handed + 1, 1])
   assert.equal(r.shown().length, 1)
   assert.equal(r.labelCalls.length, calls + 1)
-  const [foot, labelCalls] = [r.footprints(), r.labelCalls.length]
+  const labelCalls = r.labelCalls.length
   r.w.update({ ...AC, lat: AC.lat - 0.1 }, 10 * MIN + 1000) // a new list of SIGMETs with the same two areas: nothing drawn again
   await flush()
   assert.equal(r.asks('sigmet').length, 2)
-  assert.ok(r.handed() === handed + 1 && r.footprints()[0] === foot[0], 'the same entity')
+  assert.equal(r.handed(), handed + 1, 'not handed again')
   assert.equal(r.labelCalls.length, labelCalls)
   r.answers.sigmet = [sigmet({ rings: [northOf(300, 2)], top: 36000 }), sigmet({ rings: [northOf(797, 2)] })] // the next list: one top has changed
   r.w.update({ ...AC, lat: AC.lat - 0.1 }, 20 * MIN + 2000)
   await flush()
   assert.equal(r.asks('sigmet').length, 3)
-  assert.ok(r.handed() === handed + 2 && near(r.areas()[0].topM, 36000 * FT, 1e-9) && r.footprints()[0] !== foot[0], 'handed and drawn again')
+  assert.ok(r.handed() === handed + 2 && near(r.areas()[0].topM, 36000 * FT, 1e-9), 'handed again')
   assert.equal(r.labelCalls.length, labelCalls + 1)
   assert.match(r.shown()[0].text, /up to 36,000 ft/)
 })
@@ -629,12 +601,11 @@ test('Weather3D: the labels are worded in the frame\'s units, and again when the
   assert.equal(r.handed(), handed, 'the areas are not handed to the cloud pass again for words')
 })
 
-test('Weather3D: hiding takes the cloud pass, the footprints and the labels away and asks no more; showing again has them back at once, asking only what is due', async () => {
+test('Weather3D: hiding takes the cloud pass and the labels away and asks no more; showing again has them back at once, asking only what is due', async () => {
   const r = rig()
   r.w.hazardStyle = 'curtain'
   r.answers.sigmet = [sigmet({ rings: [northOf(300, 2)] })]
   await open(r)
-  const first = r.footprints()
   const handed = r.handed()
   assert.equal(r.shown().length, 1)
   r.w.show = false
@@ -649,7 +620,7 @@ test('Weather3D: hiding takes the cloud pass, the footprints and the labels away
   r.w.show = true
   assert.deepEqual([r.sources[0].show, r.sky.clouds.show], [true, true])
   assert.equal(r.shown().length, 1, 'the labels are back with it, from what it holds')
-  assert.ok(r.handed() === handed && r.areas().length === 1 && r.footprints().length === 2 && r.footprints()[0] === first[0], 'the pass kept its areas, the footprints were kept')
+  assert.ok(r.handed() === handed && r.areas().length === 1, 'the pass kept its areas')
   r.w.update(AC, 30 * MIN)
   await flush()
   assert.equal(r.asks('metar').length, 2, 'asked again at the first update after: it is due')
@@ -2215,10 +2186,10 @@ test('Weather3D: without ?wxdemo the clouds are drawn round the aircraft\'s plac
 test('Weather3D: the look is the cloud volume\'s, set on the fly and kept; the weather field is the one the volume built', async () => {
   const r = rig()
   assert.equal(r.w.look, 'severity')
-  r.w.look = 'blocks'
-  assert.deepEqual([r.w.look, r.sky.clouds.look], ['blocks', 'blocks'])
   r.w.look = 'natural'
   assert.deepEqual([r.w.look, r.sky.clouds.look], ['natural', 'natural'])
+  r.w.look = 'severity'
+  assert.deepEqual([r.w.look, r.sky.clouds.look], ['severity', 'severity'])
   assert.equal(r.w.field, null)
   const f = buildField([], AC.lat, AC.lon)
   r.sky.clouds.field = f
@@ -2268,17 +2239,17 @@ test('Weather3D: when the cloud pass has failed (a render error took it out for 
     r.answers.sigmet = [sigmet({ rings: [northOf(300, 2)] })]
     await open(r)
     assert.equal(r.lines.at(-1), `Clouds from 1 airport · 1 hazard area${CREDIT}`)
-    assert.deepEqual([r.w.hazardStyle, r.footprints().length, r.w.cloudsFailed, r.failedNotes.length], ['box', 0, false, 0], 'a box has no footprint while the pass draws it')
+    assert.deepEqual([r.w.hazardStyle, r.footprints().length, r.w.cloudsFailed, r.failedNotes.length], ['box', 0, false, 0], 'nothing on the ground while the pass draws the areas')
     const [fog, rain] = [r.sky.fog.sets.length, r.sky.precip.sets.length]
     r.sky.clouds.failed = true
     r.w.update(AC, 1000) // the next look
     assert.equal(r.lines.at(-1), `Clouds from 1 airport · 1 hazard area${CREDIT} · 3-D clouds stopped after a drawing error`)
     assert.equal(r.w.cloudsFailed, true)
     assert.deepEqual(r.failedNotes, ['3-D clouds stopped after a drawing error'])
-    assert.equal(r.footprints().length, 2, 'the box\'s ring on the ground now: its fill and its outline')
+    assert.equal(r.footprints().length, 1, 'the ring\'s outline on the ground now')
     r.w.hazardStyle = 'curtain'
     r.w.hazardStyle = 'box'
-    assert.equal(r.footprints().length, 2, 'whatever the style')
+    assert.equal(r.footprints().length, 1, 'whatever the style')
     r.w.update(AC, 2000)
     r.w.update(AC, 3000)
     assert.equal(r.failedNotes.length, 1, 'told once')
@@ -2677,7 +2648,7 @@ test('satelliteFor: the app\'s server\'s route first by default; ?wxsat=pictures
 
 // ---- the Sculpted look: another renderer behind the same seam ---------------------------------------------------------------
 
-test('Weather3D: to the Sculpted look and back the renderer changes: the one in use is destroyed, the other made, shown as the weather is, and given the hazard areas, the way ahead and the clouds last drawn; between the volume\'s three looks nothing is made', async () => {
+test('Weather3D: to the Sculpted look and back the renderer changes: the one in use is destroyed, the other made, shown as the weather is, and given the hazard areas, the way ahead and the clouds last drawn; between the volume\'s two looks nothing is made; the opacity chosen goes to the renderer in use, and to the one made after', async () => {
   const sky = fakeSky() as ReturnType<typeof fakeSky> & Pick<Sky, 'cloudsFor'>
   const made: { look: CloudLook; clouds: ReturnType<typeof fakeSky>['clouds'] }[] = []
   sky.cloudsFor = (look) => {
@@ -2690,10 +2661,17 @@ test('Weather3D: to the Sculpted look and back the renderer changes: the one in 
   r.w.update(AC, 16)
   r.w.setAhead(aheadPath({ ...AC }, 90, 400, 0), { track: true, slice: false })
   assert.deepEqual([first.draws.length, first.hazardSets.at(-1)!.hazards.length, first.show], [1, 1, true])
-  r.w.look = 'blocks'
   r.w.look = 'natural'
-  assert.deepEqual([made.length, first.look, first.destroyed], [0, 'natural', false], 'the volume draws all three: nothing is made')
+  assert.deepEqual([made.length, first.look, first.destroyed], [0, 'natural', false], 'the volume draws both: nothing is made')
+  assert.equal(r.w.opacity, VEIL, 'until set: the volume\'s own')
+  r.w.opacity = 0.3
+  assert.deepEqual([r.w.opacity, first.opacity], [0.3, 0.3])
+  r.w.opacity = 7
+  assert.equal(first.opacity, 1, 'no more than solid')
+  r.w.opacity = 0
+  assert.equal(first.opacity, 0, 'none: the hazard areas alone')
   r.w.look = 'sculpted'
+  assert.equal(made[0].clouds.opacity, 0, 'the renderer made is told')
   assert.deepEqual([made.map((m) => m.look), first.destroyed, sky.clouds === made[0].clouds], [['sculpted'], true, true])
   const second = made[0].clouds
   assert.deepEqual([second.show, second.look, second.hazardSets.at(-1)!.hazards.length, second.aheads.at(-1)!.show, second.fades.length], [true, 'sculpted', 1, { track: true, slice: false }, 1])
@@ -2720,8 +2698,8 @@ test('Weather3D: to the Sculpted look and back the renderer changes: the one in 
 test('Weather3D: the look it starts with is the one it is given, and a sky with one renderer is given every look', async () => {
   const r = rig({ demo: 0, look: 'sculpted' })
   assert.equal(r.w.look, 'sculpted')
-  r.w.look = 'blocks'
-  assert.deepEqual([r.sky.clouds.look, r.sky.clouds.destroyed], ['blocks', false])
+  r.w.look = 'natural'
+  assert.deepEqual([r.sky.clouds.look, r.sky.clouds.destroyed], ['natural', false])
 })
 
 test('Weather3D: the renderers themselves: in the Sculpted look there is no post-process stage in the scene, in the others no primitive, and nothing of the one left behind on the card', async () => {
@@ -2755,11 +2733,11 @@ test('Weather3D: the renderers themselves: in the Sculpted look there is no post
   assert.deepEqual([stages.length, primitives.length, images.every((i) => i.destroyed)], [0, 1, true], 'the bodies: no pass at all, no image left')
   assert.ok(layers[0].live > 0 && (sky.clouds as SkyClouds).stats!.triangles > 1000)
   assert.ok(r.w.field !== null && !r.w.field.empty, 'the status line has its field again')
-  r.w.look = 'blocks'
+  r.w.look = 'severity'
   frames(400)
   assert.deepEqual([stages.length, primitives.length, layers.reduce((n, l) => n + l.live, 0), layers.every((l) => l.destroyed)], [1, 0, 0, true], 'the volume again: no primitive, no body left')
   r.w.look = 'natural'
-  assert.deepEqual(renderers, ['severity', 'sculpted', 'blocks'], 'a renderer is made when its look is asked for, not before')
+  assert.deepEqual(renderers, ['severity', 'sculpted', 'severity'], 'a renderer is made when its look is asked for, not before')
   r.w.show = false
   assert.deepEqual([stages.length, primitives.length], [0, 0])
 })

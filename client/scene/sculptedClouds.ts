@@ -30,6 +30,7 @@ import { Cartesian3, Math as CesiumMath, Matrix4, Transforms, type Camera } from
 import { geoidN } from '../../shared/geoid.ts'
 import type { TerrainFrame } from '../types.ts'
 import { sunBrightness, type CloudSpec } from './cloudField.ts'
+import { VEIL as MARCH_VEIL } from './cloudShaders.ts'
 import type { CloudLook, HazardStyle } from './cloudVolume.ts'
 import { fieldBuilder, type FieldBuilder } from './fieldBuilder.ts'
 import type { SatGrid } from './satGrid.ts'
@@ -77,6 +78,7 @@ export interface SculptVeil {
 /** The bodies' shadow on the ground: an image over the field's square round lat, lon (sculptMesh.ts shadowImage), or none. In the app a picture draped on the terrain (sculptShadow.ts). */
 export interface SculptShadow {
   set(image: Bitmap | null, lat: number, lon: number): void
+  dim?(share: number): void // its strength from now on, as a share of its picture's own (0 … 1)
   destroy(): void
 }
 
@@ -110,7 +112,8 @@ export class SculptedClouds {
   readonly #builder: FieldBuilder
   readonly #makeLayer: MakeLayer
   readonly #unlisten: (() => void) | null // ends its listening for the scene's render errors
-  readonly #uniforms: SculptUniforms = { light: 1 }
+  readonly #uniforms: SculptUniforms = { light: 1, opacity: 1 }
+  #opacity = MARCH_VEIL
   readonly #camera: Camera
   readonly #veil: SculptVeil | null
   readonly #shadow: SculptShadow | null
@@ -222,6 +225,21 @@ export class SculptedClouds {
     return [-t.x, -t.y, -t.z]
   }
 
+  /**
+   * The clouds' opacity (the Weather menu's: 0 … 1, the other looks' cap, cloudShaders.ts VEIL until told). Here it is a share of the
+   * look's own: the bodies, their lines and their shadow are as much fainter or stronger, and so are the veil over the view and the
+   * aircraft's tint inside a body (never stronger than they are). At 0 no body is drawn: the hazard areas and the track line are.
+   */
+  get opacity(): number {
+    return this.#opacity
+  }
+
+  set opacity(o: number) {
+    this.#opacity = o
+    this.#uniforms.opacity = o / MARCH_VEIL
+    this.#shadow?.dim?.(this.#uniforms.opacity)
+  }
+
   /** The hazard areas whose edges are drawn, how (curtain, fence or box), and each area's CSS colour: handed to the aids while shown. */
   setHazards(hazards: readonly Hazard[], style: HazardStyle, color: (h: Hazard) => string): void {
     if (this.#destroyed) return
@@ -273,7 +291,7 @@ export class SculptedClouds {
       p.lon = aircraft.lon
       p.altM = aircraft.altM - this.#geoid(aircraft.lat, aircraft.lon)
       const km = cloudBetween(mesh, field, eye, p, TINT_SAMPLES, this.#at).depth
-      tint = TINT_MAX * (1 - Math.exp(-km / TINT_KM))
+      tint = TINT_MAX * (1 - Math.exp(-km / TINT_KM)) * Math.min(1, this.#uniforms.opacity)
       if (km > 0 && !(deep > 0)) this.#veilSev = this.#at.sev // (the camera outside, the aircraft in a body: that body's colour)
     }
     const t = this.#tint
@@ -402,7 +420,7 @@ export class SculptedClouds {
   /** The veil told its colour and strength, when they are others than it was last told (the strength in steps of half a hundredth). */
   #lay(): void {
     if (this.#veil === null) return
-    const opacity = Math.round(this.#deep * VEIL_MAX * 200) / 200
+    const opacity = Math.round(this.#deep * VEIL_MAX * Math.min(1, this.#uniforms.opacity) * 200) / 200
     if (opacity === 0 && this.#veilWritten === '') return // (the usual frame: outside every body, and the veil knows)
     const css = `rgb(${this.#tint.color.map((v) => Math.round(v * 255)).join(' ')})`
     const told = opacity === 0 ? '' : `${css} ${opacity}`

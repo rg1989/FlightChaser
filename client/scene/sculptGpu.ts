@@ -57,6 +57,7 @@ export interface SculptBody {
 /** The shader's numbers, read each frame as Cesium draws. */
 export interface SculptUniforms {
   light: number // the Sun's brightness (cloudField.ts sunBrightness)
+  opacity: number // the opacity chosen, as a share of the look's own (1); 0: nothing is drawn
 }
 
 /** What draws the bodies: a primitive of the scene's. */
@@ -119,7 +120,7 @@ export function gpuLayers(context: unknown): MakeLayer {
     // The layer's own image, the size of the view: made at the first frame, and again when the view's size changes.
     let image: { framebuffer: { destroy(): void }; texture: unknown; width: number; height: number } | null = null
     const clear = new ClearCommand({ color: new Color(1, 1, 1, 1), depth: 1, pass: Pass.OPAQUE })
-    const uniformMap = { u_light: (): number => uniforms.light, u_nearest: (): unknown => image!.texture }
+    const uniformMap = { u_light: (): number => uniforms.light, u_opacity: (): number => uniforms.opacity, u_nearest: (): unknown => image!.texture }
     const commands = new Map<SculptBody, { nearest: { framebuffer: unknown }; drawn: unknown }>()
     let used: { nearest: { framebuffer: unknown }; drawn: unknown }[] = []
     let destroyed = false
@@ -164,7 +165,7 @@ export function gpuLayers(context: unknown): MakeLayer {
       },
       update(frameState) {
         const fs = frameState as { passes: { render: boolean }; commandList: unknown[] }
-        if (destroyed || !fs.passes.render || used.length === 0) return
+        if (destroyed || !fs.passes.render || used.length === 0 || !(uniforms.opacity > 0)) return
         size()
         fs.commandList.push(clear)
         for (const c of used) fs.commandList.push(c.nearest)

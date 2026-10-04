@@ -7,7 +7,7 @@
 // given: by its builder (fieldBuilder.ts), in the app a worker, so that the frames do not wait for it. Until the builder answers, the
 // field made last is drawn, and asked by the HUD; then the new one is taken (the field, its two images, and with the first the noise).
 // The pass is a PostProcessStageComposite of two stages, the march at half the size and the mix at full size: cloudShaders.ts has
-// their shaders and says what each draws (the clouds in three looks, the rain, the shadows; the hazard areas' edges and the level
+// their shaders and says what each draws (the clouds in two looks, the rain, the shadows; the hazard areas' edges and the level
 // slice, sorted with the cloud; the track line). This file makes the pass and gives the shaders their numbers.
 // The march is walked at a tier (tier: marchPace.ts MARCH_TIERS, the first until told; Weather3D tells it the pace's start tier at
 // once): its step budget, whether it reads the noise's finest octave, whether the ground has the clouds' shadows, and its size.
@@ -43,7 +43,7 @@ import { geoidN } from '../../shared/geoid.ts'
 import type { TerrainFrame } from '../types.ts'
 import { sunBrightness, type CloudSpec } from './cloudField.ts'
 import { NOISE_KM } from './cloudNoise.ts'
-import { ATLAS_H, ATLAS_W, BOX_PAD_KM, MARCH_SHADER, MIX_SHADER, PATH_N, R_KM } from './cloudShaders.ts'
+import { ATLAS_H, ATLAS_W, BOX_PAD_KM, MARCH_SHADER, MIX_SHADER, PATH_N, R_KM, VEIL } from './cloudShaders.ts'
 import { fieldBuilder, type FieldBuilder } from './fieldBuilder.ts'
 import { bytesImage, textureImages, type GpuImage, type MakeImage } from './gpuImage.ts'
 import { MARCH_TIERS } from './marchPace.ts'
@@ -56,10 +56,10 @@ import { NEAR_N } from './wxSurvey.ts'
 import { packSpecs, type FieldMade } from './wxFieldJob.ts'
 import type { Hazard } from './wxGeo.ts'
 
-export type CloudLook = 'natural' | 'severity' | 'blocks' | 'sculpted' // (sculpted is not this pass's: sculptedClouds.ts draws it, as bodies)
+export type CloudLook = 'natural' | 'severity' | 'sculpted' // (sculpted is not this pass's: sculptedClouds.ts draws it, as bodies)
 /** How a hazard area's edge is drawn: a curtain hung from its top, a fence (lines and posts), or the box of today (a faint fill and its edges). */
 export type HazardStyle = 'curtain' | 'fence' | 'box'
-const LOOK: Record<CloudLook, number> = { natural: 0, severity: 1, blocks: 2, sculpted: 1 } // u_look
+const LOOK: Record<CloudLook, number> = { natural: 0, severity: 1, sculpted: 1 } // u_look
 const HAZARD: Record<HazardStyle, number> = { curtain: 0, fence: 1, box: 2 } // u_hazard
 const KM_PER_DEG = 111.195 // of latitude on the sphere the heights curve over (R_KM): the field's map
 const RAD = Math.PI / 180
@@ -174,6 +174,11 @@ interface Held {
 export class CloudVolume {
   /** The look, read each frame: changing it costs nothing. */
   look: CloudLook = 'severity'
+  /**
+   * The clouds' opacity (the Weather menu's), read each frame: the most a cloud or its rain hides of what is behind it, 0 … 1 (VEIL
+   * until told). Their shadow on the ground is as much darker or lighter. At 0 neither is drawn: the hazard areas and the aids are.
+   */
+  opacity = VEIL
   readonly #stages: PostProcessStageCollection
   readonly #camera: Camera
   readonly #geoid: (lat: number, lon: number) => number
@@ -547,7 +552,6 @@ export class CloudVolume {
       this.#edgeImage.write(this.#edges, 0, 0)
     }
     this.#writeNoise()
-    const look = (): number => LOOK[this.look] ?? LOOK.severity
     const shared = {
       u_field: () => this.#shown!.field.texture,
       u_eyeToLocal: () => eyeToLocal(this.#camera.inverseViewMatrix, this.#frame, this.#eyeToLocal),
@@ -555,7 +559,6 @@ export class CloudVolume {
       u_lo: () => this.#lo,
       u_hi: () => this.#hi,
       u_plane: () => this.#plane,
-      u_look: look,
       u_aids: () => this.#aids,
     }
     const march = new PostProcessStage({
@@ -565,12 +568,13 @@ export class CloudVolume {
         ...shared, u_noise: () => (this.#noiseImage ?? this.#shown!.near).texture, u_near: () => this.#shown!.near.texture, u_noiseFrame: () => this.#noiseFrame,
         u_floor: () => this.#floor, u_top: () => this.#top, u_light: () => this.#light, u_box: () => this.#box,
         u_steps: () => MARCH_TIERS[this.#tier].steps, u_detail: () => MARCH_TIERS[this.#tier].detail,
+        u_look: () => LOOK[this.look] ?? LOOK.severity, u_veil: () => this.opacity,
         u_edges: () => this.#edgeImage!.texture, u_edgeCount: () => this.#edgeCount, u_edgeBound: () => this.#edgeBound, u_hazard: () => HAZARD[this.#style] ?? HAZARD.box, u_aircraft: () => this.#aircraft,
       },
     })
     const mix = new PostProcessStage({
       name: `fh_cloud_mix_${n}`, fragmentShader: MIX_SHADER,
-      uniforms: { ...shared, u_march: march.name, u_shadow: () => this.#shadow, u_path: () => this.#path },
+      uniforms: { ...shared, u_march: march.name, u_shadow: () => Math.min(1, this.#shadow * (this.opacity / VEIL)), u_path: () => this.#path },
     })
     this.#timer?.watch([march, mix] as unknown as Parameters<PassTimer['watch']>[0])
     return new PostProcessStageComposite({ name: `fh_cloud_${n}`, stages: [march, mix], inputPreviousStageTexture: false })

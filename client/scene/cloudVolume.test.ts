@@ -5,7 +5,7 @@ import { Cartesian3, Event, Matrix4, PostProcessStage, PostProcessStageComposite
 import { geoidN } from '../../shared/geoid.ts'
 import { PUFF_FILL, SEV, sunBrightness, type CloudSpec } from './cloudField.ts'
 import { noiseAtlas } from './cloudNoise.ts'
-import { BOX_PAD_KM, MARCH_SHADER, MIX_SHADER } from './cloudShaders.ts'
+import { BOX_PAD_KM, MARCH_SHADER, MIX_SHADER, VEIL } from './cloudShaders.ts'
 import { CloudVolume, eyeToLocal, localFrame, localToMap, mapScale, resumeRendering, tileUv } from './cloudVolume.ts'
 import type { FieldBuilder } from './fieldBuilder.ts'
 import { MARCH_TIERS } from './marchPace.ts'
@@ -499,7 +499,7 @@ test('CloudVolume: the frame is at the field\'s middle at sea level (the geoid t
   assert.ok(Math.max(...Matrix4.toArray(r.call<Matrix4>(0, 'u_noiseFrame')).map(Math.abs)) <= 1, 'no large number')
 })
 
-test('CloudVolume: the look as a number (0 natural, 1 severity colours, 2 blocks), changed on the fly; the light by the Sun\'s night, as the puffs\' was; the ground shadows gone by night', () => {
+test('CloudVolume: the look as a number (0 natural, 1 severity colours), changed on the fly; the opacity as the march\'s cap, the shadows fainter or stronger with it, none at none; the light by the Sun\'s night, as the puffs\' was; the ground shadows gone by night', () => {
   const r = rig()
   r.vol.show = true
   r.vol.draw([CU], HERE)
@@ -508,8 +508,7 @@ test('CloudVolume: the look as a number (0 natural, 1 severity colours, 2 blocks
   assert.equal(look(), 1)
   r.vol.look = 'natural'
   assert.equal(look(), 0)
-  r.vol.look = 'blocks'
-  assert.equal(look(), 2)
+  assert.deepEqual([r.call<number>(0, 'u_veil'), r.vol.opacity], [VEIL, VEIL], 'until told: a little over half')
   const tf = { fSampled: 1, fNow: 1, relHM: 0 }
   assert.equal(r.call<number>(0, 'u_light'), 1)
   assert.equal(r.call<number>(1, 'u_shadow'), 0.3, 'a see-through cloud\'s shadow: light enough to read the map in')
@@ -518,11 +517,18 @@ test('CloudVolume: the look as a number (0 natural, 1 severity colours, 2 blocks
   assert.equal(r.call<number>(1, 'u_shadow'), 0.15)
   r.vol.frame(tf, 1)
   assert.deepEqual([r.call<number>(0, 'u_light'), r.call<number>(1, 'u_shadow')], [sunBrightness(1), 0])
+  r.vol.frame(tf, 0)
+  r.vol.opacity = VEIL / 2
+  assert.deepEqual([r.call<number>(0, 'u_veil'), r.call<number>(1, 'u_shadow')], [VEIL / 2, 0.15], 'half as much: half the shadow')
+  r.vol.opacity = 0
+  assert.deepEqual([r.call<number>(0, 'u_veil'), r.call<number>(1, 'u_shadow')], [0, 0], 'none: no cloud, no shadow')
+  r.vol.opacity = 1
+  assert.ok(r.call<number>(1, 'u_shadow') > 0.5 && r.call<number>(1, 'u_shadow') <= 1, 'solid: a darker shadow')
   r.vol.frame(tf, Number.NaN)
   assert.equal(r.call<number>(0, 'u_light'), 1, 'no night known: day')
   r.vol.draw([CU, RAIN], HERE)
   r.vol.frame({ fSampled: 0, fNow: 0, relHM: 300 }, 0.5)
-  assert.deepEqual([look(), r.call<number>(0, 'u_light')], [2, sunBrightness(0.5)], 'a new pass keeps the look and the night')
+  assert.deepEqual([look(), r.call<number>(0, 'u_veil'), r.call<number>(0, 'u_light')], [0, 1, sunBrightness(0.5)], 'a new pass keeps the look, the opacity and the night')
   assert.deepEqual(r.call<number[]>(1, 'u_lo').slice(0, 1), [1.5], 'the clouds stand at their true heights, whatever the relief drawn')
 })
 

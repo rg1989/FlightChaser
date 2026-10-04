@@ -19,6 +19,7 @@ const OVERLAP_MS = 800 // the shadow before stays this long after the next is ad
 export function groundShadow(viewer: Viewer): SculptShadow {
   const layers = viewer.imageryLayers
   let shown: ImageryLayer | null = null
+  let alpha = 1 // the shadow's strength, as a share of its picture's own
   let gone = false
   const drop = (layer: ImageryLayer): void => {
     if (!viewer.isDestroyed() && layers.contains(layer)) layers.remove(layer, true)
@@ -43,9 +44,13 @@ export function groundShadow(viewer: Viewer): SculptShadow {
       const dLat = FIELD_KM / 2 / KM_PER_DEG
       const dLon = FIELD_KM / 2 / (KM_PER_DEG * Math.max(0.01, Math.cos((lat * Math.PI) / 180)))
       const rectangle = Rectangle.fromDegrees(lon - dLon, Math.max(-89.9, lat - dLat), lon + dLon, Math.min(89.9, lat + dLat))
-      const layer = new ImageryLayer(new SingleTileImageryProvider({ url: canvas.toDataURL('image/png'), rectangle, tileWidth: image.width, tileHeight: image.height }))
+      const layer = new ImageryLayer(new SingleTileImageryProvider({ url: canvas.toDataURL('image/png'), rectangle, tileWidth: image.width, tileHeight: image.height }), { alpha })
       shown = layer // (before it is added: the listener above then leaves it be)
       layers.add(layer)
+    },
+    dim(share) {
+      alpha = Math.min(1, Math.max(0, share))
+      if (shown !== null) shown.alpha = alpha
     },
     destroy() {
       if (gone) return
