@@ -235,3 +235,16 @@ test('satGrid: inside a cloud whose top slopes the cover stays whole (the pixels
   }
   assert.ok(least > 0.97 && most <= 1, `the cover inside the deck: ${least} … ${most}`)
 })
+
+test('satGrid: a deck whose top slopes through a wind that grows with height is not torn into strips (the drift is read between the heights\' steps, not a step at a time)', () => {
+  // The wind from the west: 10 kt up to 9 km, 60 kt at 11.8 km. A top that climbs from 9.6 to 12.5 km over 90 km eastward is carried 7 to 40 km in 30 minutes.
+  const sheared = model(32, 35, [])
+  for (const l of sheared.winds) {
+    l.kt.fill(l.hPa <= 200 ? 60 : l.hPa <= 250 ? 30 : 10)
+    l.deg.fill(270)
+  }
+  const g = satGrid(frame(32, 35, (east) => ({ cloud: 255, top: 320 * Math.round((9600 + 32 * Math.min(90, Math.max(0, east + 60))) / 320) })), job(32, 35, { epochMs: T0 + 30 * 60_000, model: sheared }))
+  let least = 1
+  for (let east = -100; east <= 100; east += CELL_KM) for (const north of [-60, 0, 60]) least = Math.min(least, g.cover[cellAt(g, east, north)])
+  assert.ok(least > 0.97, `the least cover inside the deck: ${least}`)
+})

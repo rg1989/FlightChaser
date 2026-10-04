@@ -375,7 +375,13 @@ export function satGrid(whole: SatFrame, job: SatGridJob): SatGrid {
       if (f.seen[p] === 0) continue
       const top = tops[p]
       const by = moved[p] // the height it is moved by, m
-      const d = (drifts[Math.min(LEVELS, Math.max(1, Math.round(by / SAT_STEP_M)))] ??= driftOf(Math.min(LEVELS, Math.max(1, Math.round(by / SAT_STEP_M)))))
+      // Its drift is read between the two levels round that height: taken a level at a time, a wind that grows with height would
+      // carry each step of a sloping top apart from the next (3 km a step under a jet), and tear the deck into strips.
+      const level = Math.min(LEVELS, Math.max(1, by / SAT_STEP_M))
+      const l0 = Math.min(LEVELS - 1, Math.floor(level))
+      const tl = level - l0
+      const d0 = (drifts[l0] ??= driftOf(l0))
+      const d1 = (drifts[l0 + 1] ??= driftOf(l0 + 1))
       const na = (i + 0.5) / n * (NODES - 1)
       const a0 = Math.min(NODES - 2, Math.floor(na))
       const ta = na - a0
@@ -384,8 +390,10 @@ export function satGrid(whole: SatFrame, job: SatGridJob): SatGrid {
       const w10 = ta * (1 - tb)
       const w01 = (1 - ta) * tb
       const w11 = ta * tb
-      const moveE = w00 * (by * parallax[k] + d[k]) + w10 * (by * parallax[k + 2] + d[k + 2]) + w01 * (by * parallax[k + 2 * NODES] + d[k + 2 * NODES]) + w11 * (by * parallax[k + 2 * NODES + 2] + d[k + 2 * NODES + 2])
-      const moveN = w00 * (by * parallax[k + 1] + d[k + 1]) + w10 * (by * parallax[k + 3] + d[k + 3]) + w01 * (by * parallax[k + 2 * NODES + 1] + d[k + 2 * NODES + 1]) + w11 * (by * parallax[k + 2 * NODES + 3] + d[k + 2 * NODES + 3])
+      /** The move's part e (0 east, 1 north) at node k + o: the parallax of the height, and the drift between the two levels. */
+      const at = (o: number, e: number): number => by * parallax[k + o + e] + (1 - tl) * d0[k + o + e] + tl * d1[k + o + e]
+      const moveE = w00 * at(0, 0) + w10 * at(2, 0) + w01 * at(2 * NODES, 0) + w11 * at(2 * NODES + 2, 0)
+      const moveN = w00 * at(0, 1) + w10 * at(2, 1) + w01 * at(2 * NODES, 1) + w11 * at(2 * NODES + 2, 1)
       const u = (wrapLon(west + (i + 0.5) * dLonPx + dLon - job.lon) * kx + moveE + FIELD_KM / 2) / CELL_KM - 0.5
       const v = (y0 + moveN + FIELD_KM / 2) / CELL_KM - 0.5
       if (!(u > -1 && u < N && v > -1 && v < N)) continue
