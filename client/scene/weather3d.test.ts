@@ -22,7 +22,9 @@ import { radarCells } from './radarCells.ts'
 import { modelWindAt } from './modelWind.ts'
 import { REACH_KM } from './cloudShaders.ts'
 import type { CloudLook, HazardStyle } from './cloudVolume.ts'
-import { HAZARD_KM, HttpError, MODEL_DWELL_MS, Weather3D, echoShade, parseWxAt, parseWxBreak, parseWxDemo, parseWxTier, statusText3d } from './weather3d.ts'
+import { SAT_GRID_N, type SatGrid } from './satGrid.ts'
+import { SAT_CHECK_MS, SAT_KEEP_MS, SAT_LAYER, SatelliteSource, satBox, satCapsUrl, type SatFetch } from './satellite.ts'
+import { HAZARD_KM, HttpError, MODEL_DWELL_MS, Weather3D, echoShade, parseWxAt, parseWxBreak, parseWxDemo, parseWxSat, parseWxTier, statusText3d } from './weather3d.ts'
 import { aheadPath, type AheadPath } from './wxAhead.ts'
 import { gatherer, type GatherJob, type Gathered } from './wxGather.ts'
 import { demoSky } from './wxDemo.ts'
@@ -95,10 +97,10 @@ interface LabelCall { key: string; rank: number; labels: LayerLabel[] }
 function fakeSky() {
   return {
     clouds: {
-      show: false, draws: [] as CloudSpec[][], ats: [] as { lat: number; lon: number }[], frames: [] as [TerrainFrame, number][], fades: [] as Cartesian3[], destroyed: false,
+      show: false, draws: [] as CloudSpec[][], ats: [] as { lat: number; lon: number }[], sats: [] as (SatGrid | null)[], frames: [] as [TerrainFrame, number][], fades: [] as Cartesian3[], destroyed: false,
       look: 'severity' as CloudLook, field: null as WxField | null, failed: false, tier: 0, passMs: Number.NaN,
       hazardSets: [] as { hazards: Hazard[]; style: HazardStyle; color: (h: Hazard) => string }[], aheads: [] as { path: AheadPath | null; show: { track: boolean; slice: boolean } }[],
-      draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }) { this.draws.push([...specs]); this.ats.push({ ...at }) },
+      draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }, sat: SatGrid | null = null) { this.draws.push([...specs]); this.ats.push({ ...at }); this.sats.push(sat) },
       setHazards(hazards: readonly Hazard[], style: HazardStyle, color: (h: Hazard) => string) { this.hazardSets.push({ hazards: [...hazards], style, color }) },
       setAhead(path: AheadPath | null, show: { track: boolean; slice: boolean }) { this.aheads.push({ path, show: { ...show } }) },
       frame(tf: TerrainFrame, night: number) { this.frames.push([{ ...tf }, night]) },
@@ -150,7 +152,7 @@ function geoOf(url: string): ModelGeo {
  * was asked, answered from `answers` (or failed, or held until release()). The model is asked at the first look (no dwell) unless
  * `dwell` asks for the real 10 s; `network` has it use its own getJson, over the global fetch; `demo`: ?wxdemo's km.
  */
-function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: boolean; demo?: number; tier?: number; gather?: Builder<GatherJob, Gathered> } = {}) {
+function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: boolean; demo?: number; tier?: number; gather?: Builder<GatherJob, Gathered>; satellite?: SatelliteSource } = {}) {
   const asked: string[] = []
   const answers: Record<'metar' | 'sigmet' | 'radar', unknown> = { metar: [], sigmet: [], radar: INDEX }
   const failing = new Set<Kind>()
@@ -198,7 +200,7 @@ function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: 
   const failedNotes: string[] = [] // what the app was told when the cloud pass failed
   const w = new Weather3D(viewer, {
     apiBase: '/api', labels, getJson: o.network ? undefined : getJson, onStatus: (t) => lines.push(t), units: () => units, at: o.at, sky, tile, epochMs: () => epoch.now,
-    onShade: (s) => shades.push(s), dwellMs: o.dwell ? undefined : 0, demo: o.demo, onCloudsFailed: (note) => failedNotes.push(note), tier: o.tier, gather: o.gather,
+    onShade: (s) => shades.push(s), dwellMs: o.dwell ? undefined : 0, demo: o.demo, onCloudsFailed: (note) => failedNotes.push(note), tier: o.tier, gather: o.gather, satellite: o.satellite ?? null, // (no satellite unless a test brings one: the default asks EUMETSAT)
   })
   return {
     w, asked, answers, model, epoch, failing, hold, sources, removed, labelCalls, lines, shades, failedNotes, sky, tiles, tileAsks, tileHold, frameTiles,
@@ -2344,4 +2346,164 @@ test('parseWxBreak, parseWxTier: ?wxbreak=1 breaks the cloud pass\'s shader on p
   for (const off of ['', '?wxbreak=0', '?wxbreak=', '?wxbreak=true', '?wx=1']) assert.equal(parseWxBreak(off), false, off)
   assert.deepEqual(['?wxtier=0', '?wxtier=3', '?wx=1&wxtier=5'].map(parseWxTier), [0, 3, 5])
   for (const off of ['', '?wxtier=', '?wxtier=6', '?wxtier=-1', '?wxtier=1.5', '?wxtier=half', '?wxscale=0.5']) assert.equal(parseWxTier(off), null, off)
+})
+
+// ---- the weather satellite ------------------------------------------------------------------------------------------------------
+
+test('parseWxSat: ?wxsat=0 turns the satellite off for a load; anything else leaves it on', () => {
+  assert.equal(parseWxSat('?wxsat=0'), false)
+  assert.equal(parseWxSat('?hex=a831b2&wx=1&wxsat=0&chase=1'), false)
+  for (const on of ['', '?wx=1', '?wxsat=1', '?wxsat=', '?wxsat=off']) assert.equal(parseWxSat(on), true, on)
+})
+
+const SAT_T0 = GRID_HOUR_MS + 10 * MIN // the satellite's newest frame: 20 min before the rig's wall clock
+/** A stand-in for EUMETView: a frame at `newest`, cloud (3,840 m) over the picture's western half; what was asked of it. */
+function eumetview(o: { mask?: [number, number, number] } = {}): SatFetch & { asked: string[]; newest: number; fail: boolean } {
+  const s = {
+    asked: [] as string[], newest: SAT_T0, fail: false,
+    text(url: string): Promise<string> {
+      s.asked.push(url)
+      return s.fail ? Promise.reject(new Error('HTTP 503')) : Promise.resolve(`<Dimension name="time" default="${new Date(s.newest).toISOString()}">`)
+    },
+    pixels(url: string, n: number): Promise<{ rgba: Uint8ClampedArray; bytes: number }> {
+      s.asked.push(url)
+      if (s.fail) return Promise.reject(new Error('HTTP 503'))
+      const rgba = new Uint8ClampedArray(n * n * 4)
+      for (let p = 0; p < n * n; p++) {
+        const cloudy = p % n < n / 2
+        if (url.includes(SAT_LAYER.top)) rgba.set(cloudy ? [0, 0, 255, 255] : [0, 0, 0, 0], 4 * p)
+        else rgba.set([...(cloudy ? (o.mask ?? [255, 255, 255]) : [0, 192, 0]), 255], 4 * p)
+      }
+      return Promise.resolve({ rgba, bytes: 4000 })
+    },
+  }
+  return s
+}
+/** The looks of the seconds from `from` to `to`, each given time to be answered. */
+async function looks(r: Rig, from: number, to: number, at: { lat: number; lon: number; altM: number } = AC): Promise<void> {
+  for (let t = from; t <= to; t += 1000) {
+    r.w.update(at, t)
+    await flush()
+  }
+}
+
+test('Weather3D with the satellite: its newest frame is asked for round the aircraft; when it has come the sky is gathered again with its pictures, and the cloud volume is given the satellite\'s grid with the clouds', async () => {
+  const server = eumetview()
+  const r = rig({ satellite: new SatelliteSource({ fetch: server }) })
+  r.answers.metar = [metar('LLBG', 32.01, 34.89, { clouds: [layer('BKN', 3000)] })]
+  assert.equal(r.w.satellite, null)
+  await open(r)
+  const box = satBox(AC.lat, AC.lon)
+  assert.deepEqual(server.asked.slice(0, 3).map((u) => u.split('&bbox=')[0]), [satCapsUrl(), ...[SAT_LAYER.mask, SAT_LAYER.top].map((l) => `https://view.eumetsat.int/geoserver/ows?service=WMS&version=1.3.0&request=GetMap&layers=${l}&styles=&format=image/png&transparent=true&crs=EPSG:4326`)])
+  assert.ok(server.asked[1].includes(`&bbox=${box.join(',')}&`))
+  await looks(r, 1000, 3000)
+  const g = r.sky.clouds.sats.at(-1)!
+  assert.ok(g !== null && g.n === SAT_GRID_N && g.timeMs === SAT_T0)
+  assert.deepEqual(r.sky.clouds.ats.at(-1), fieldCentre(AC.lat, AC.lon, undefined))
+  assert.ok(r.sky.clouds.draws.at(-1)!.some((c) => c.masked === true), 'the airport\'s broken layer stands where the satellite sees cloud')
+  const sat = r.w.satellite!
+  assert.deepEqual([sat.timeMs, sat.time, sat.used, sat.bytes], [SAT_T0, '08:10 UTC', true, 8000])
+  assert.ok(sat.cloudy! > 0.3 && sat.cloudy! < 0.7, String(sat.cloudy))
+  assert.equal(r.w.known, true)
+  assert.equal(server.asked.length, 3, 'two pictures for the frame')
+})
+
+test('Weather3D with the satellite: the pictures are read where the weather is (?wxat: the aircraft\'s place less the shift), and the job says by how much they are moved', async () => {
+  const asks: GatherJob[] = []
+  const gather = gatherer()
+  const server = eumetview()
+  const SFO = { lat: 37.6, lon: -122.4, altM: 3000 }
+  const r = rig({ at: { lat: 50, lon: 8 }, satellite: new SatelliteSource({ fetch: server }), gather: { ask: (job, done) => { asks.push(job); done(gather(job)) }, destroy: () => {} } })
+  await open(r, SFO)
+  await looks(r, 1000, 3000, SFO)
+  assert.ok(server.asked[1].includes(`&bbox=${satBox(50, 8).join(',')}&`))
+  const job = asks.at(-1)!
+  assert.deepEqual(job.sat!.box, satBox(50, 8))
+  assert.ok(near(job.shift.dLat, 37.6 - 50, 1e-9) && near(job.shift.dLon, -122.4 - 8, 1e-9))
+  assert.equal(job.epochMs, r.epoch.now)
+  assert.ok(r.sky.clouds.sats.at(-1) !== null)
+  // Without ?wxat an aircraft at San Francisco is outside the satellite's view: nothing is asked of it.
+  const far = eumetview()
+  const out = rig({ satellite: new SatelliteSource({ fetch: far }) })
+  await open(out, SFO)
+  await looks(out, 1000, 3000, SFO)
+  assert.deepEqual(far.asked, [])
+  assert.equal(out.sky.clouds.sats.at(-1), null)
+  assert.equal(out.w.satellite, null)
+})
+
+test('Weather3D with the satellite: a newer frame builds the sky again; with no satellite (?wxsat=0), in the demo sky and while hidden nothing is asked of it', async () => {
+  const server = eumetview()
+  const r = rig({ satellite: new SatelliteSource({ fetch: server }) })
+  await open(r)
+  await looks(r, 1000, 3000)
+  const before = r.sky.clouds.draws.length
+  server.newest = SAT_T0 + 15 * MIN
+  r.epoch.now += 5 * MIN
+  await looks(r, SAT_CHECK_MS, SAT_CHECK_MS + 3000)
+  assert.ok(r.sky.clouds.draws.length > before, 'built again (the reports, asked again at the same minute, build it once more)')
+  assert.equal(r.sky.clouds.sats.at(-1)!.timeMs, SAT_T0 + 15 * MIN)
+  assert.equal(r.w.satellite!.time, '08:25 UTC')
+  r.w.show = false
+  const asked = server.asked.length
+  for (let t = 2 * SAT_CHECK_MS; t < 4 * SAT_CHECK_MS; t += 1000) r.w.update(AC, t)
+  await flush()
+  assert.equal(server.asked.length, asked, 'hidden')
+  const off = rig() // ?wxsat=0: no source
+  await open(off)
+  await looks(off, 1000, 3000)
+  assert.deepEqual([off.w.satellite, off.sky.clouds.sats.at(-1)], [null, null])
+  const demoServer = eumetview()
+  const demo = rig({ demo: 0, satellite: new SatelliteSource({ fetch: demoServer }) })
+  await open(demo)
+  await looks(demo, 1000, 3000)
+  assert.deepEqual(demoServer.asked, [])
+  assert.equal(demo.sky.clouds.sats.at(-1), null, 'the demo sky is untouched by the satellite')
+})
+
+test('Weather3D with the satellite: a frame the source has not answered for in 45 min is used no longer: the sky is built again as it is without a satellite, and the line notes the outage', async () => {
+  const server = eumetview()
+  const r = rig({ satellite: new SatelliteSource({ fetch: server }) })
+  r.answers.metar = [metar('LLBG', 32.01, 34.89, { clouds: [layer('BKN', 3000)] })]
+  const warn = console.warn
+  console.warn = () => {}
+  try {
+    await open(r)
+    await looks(r, 1000, 3000)
+    assert.ok(r.sky.clouds.sats.at(-1) !== null)
+    server.fail = true
+    r.epoch.now += 5 * MIN
+    await looks(r, SAT_CHECK_MS, SAT_CHECK_MS + 2000)
+    assert.ok(r.sky.clouds.sats.at(-1) !== null, 'a failed ask keeps the last frame')
+    assert.equal(r.w.satellite!.used, true)
+    assert.match(r.lines.at(-1)!, /some weather unavailable/)
+    const before = r.sky.clouds.draws.length
+    r.epoch.now += SAT_KEEP_MS
+    await looks(r, 2 * SAT_CHECK_MS, 2 * SAT_CHECK_MS + 3000)
+    assert.equal(r.sky.clouds.draws.length, before + 1, 'built again')
+    assert.equal(r.sky.clouds.sats.at(-1), null)
+    assert.ok(r.sky.clouds.draws.at(-1)!.every((c) => c.masked !== true))
+    assert.equal(r.w.satellite!.used, false)
+  } finally {
+    console.warn = warn
+  }
+})
+
+test('Weather3D with the satellite: pictures the gatherer cannot read are dropped: the sky is as without a satellite, the source is down', async () => {
+  const server = eumetview({ mask: [200, 40, 40] })
+  const source = new SatelliteSource({ fetch: server })
+  const r = rig({ satellite: source })
+  const warn = console.warn
+  console.warn = () => {}
+  try {
+    await open(r)
+    await looks(r, 1000, 4000)
+  } finally {
+    console.warn = warn
+  }
+  assert.equal(source.pictures, null)
+  assert.equal(source.down, true)
+  assert.equal(r.sky.clouds.sats.at(-1), null)
+  assert.equal(r.w.satellite, null)
+  assert.match(r.lines.at(-1)!, /some weather unavailable/)
 })

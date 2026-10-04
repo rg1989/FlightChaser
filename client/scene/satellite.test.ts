@@ -245,8 +245,9 @@ test('SatelliteSource: it checks for a newer frame every 5 min at most; the same
   eumetview.newest = T0 + 15 * 60_000
   sat.look(2 * SAT_CHECK_MS, T0 + 30 * 60_000, LAT, LON)
   await settle()
-  assert.equal(eumetview.asked.length, 3)
-  assert.ok(eumetview.asked[1].endsWith('&time=2026-10-04T05:00:00Z'))
+  const asked: string[] = [...eumetview.asked]
+  assert.equal(asked.length, 3)
+  assert.ok(asked[1].endsWith('&time=2026-10-04T05:00:00Z'))
   assert.equal(sat.pictures!.timeMs, T0 + 15 * 60_000)
   assert.equal(sat.gen, 2)
 })

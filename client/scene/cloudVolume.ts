@@ -2,7 +2,8 @@
 // The chase's weather as volumes: one post-process pass that walks every pixel's ray through the weather field (wxField.ts), so a cloud
 // is a body with a near side and a far side. The aircraft flies into it, fades in it and is gone in thick cloud (nothing is cleared round
 // it), and the terrain, the buildings and the aircraft hide the cloud behind them and are hidden by the cloud in front, as the depth
-// buffer says. Weather3D hands it the cloud specs of every source at once (draw), and it has the field of them made round the place
+// buffer says. Weather3D hands it the cloud specs of every source at once (draw), with the weather satellite's cloud over the same
+// square when a frame is in use (satGrid.ts: the field takes it as cover directly), and it has the field of them made round the place
 // given: by its builder (fieldBuilder.ts), in the app a worker, so that the frames do not wait for it. Until the builder answers, the
 // field made last is drawn, and asked by the HUD; then the new one is taken (the field, its two images, and with the first the noise).
 // The pass is a PostProcessStageComposite of two stages, the march at half the size and the mix at full size: cloudShaders.ts has
@@ -46,6 +47,7 @@ import { fieldBuilder, type FieldBuilder } from './fieldBuilder.ts'
 import { bytesImage, textureImages, type GpuImage, type MakeImage } from './gpuImage.ts'
 import { MARCH_TIERS } from './marchPace.ts'
 import { passTimer, type PassTimer } from './passTimer.ts'
+import type { SatGrid } from './satGrid.ts'
 import type { AheadPath } from './wxAhead.ts'
 import { EDGE_TEXELS, MAX_EDGES, edgeBound, hazardEdges, packEdges } from './wxEdges.ts'
 import { FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.ts'
@@ -304,12 +306,13 @@ export class CloudVolume {
 
   /**
    * These clouds in place of those drawn before, once their field is made and its images are written: the builder is asked for the
-   * field round `at`, and what is drawn stands until then (see the header).
+   * field round `at`, and what is drawn stands until then (see the header). sat: the weather satellite's cloud over the field's
+   * square (built round the same place), when a frame is in use.
    */
-  draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }): void {
+  draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }, sat: SatGrid | null = null): void {
     if (this.#destroyed) return
     this.#asking = true
-    this.#builder.ask({ id: ++this.#asked, specs: packSpecs(specs), lat: at.lat, lon: at.lon, noise: this.#noise === null }, (made) => this.#take(made))
+    this.#builder.ask({ id: ++this.#asked, specs: packSpecs(specs), lat: at.lat, lon: at.lon, noise: this.#noise === null, sat }, (made) => this.#take(made))
     this.#asking = false
   }
 

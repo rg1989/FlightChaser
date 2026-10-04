@@ -96,6 +96,8 @@ export interface CloudSpec {
   tower?: number // the tower it belongs to, numbered within its station; none: a layer's cloud
   sev?: number // 0 cloud … 3 thunderstorm (SEV); absent: 0
   clearKm?: number // while the aircraft is at the height this puff spans and within this far of it, cloudLayer.ts hides it (the camera must not sit inside a billboard); it comes back over as far again
+  small?: boolean // a FEW or SCT layer's cumulus: where it is low it is smaller than a pixel of the weather satellite, which then says nothing of it (wxGather.ts)
+  masked?: boolean // it stands only where the weather satellite sees cloud (wxField.ts: its cover times the satellite's); the gatherer marks the airports' layers so while a satellite's frame is in use
 }
 
 type Range = readonly [number, number]
@@ -275,6 +277,7 @@ export function metarClouds(m: Metar, seed = 0, cap = STATION_CAP): CloudSpec[] 
       out.push({
         lon, lat, heightM: base + (PUFF_FILL * h) / 2, groundM: ground, scale: [w, h], ...shapeAndSlice(r, look.shape, look.slice),
         brightness: between(r, look.brightness) * SHADE ** above, tint: between(r, look.tint), farKm: farKmOf(Math.max(w, h)),
+        ...(c.cover === 'FEW' || c.cover === 'SCT' ? { small: true } : {}),
       })
     }
   })

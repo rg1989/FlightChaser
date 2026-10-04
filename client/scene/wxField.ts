@@ -16,12 +16,19 @@
 // diagonal) beyond its rim, with no cover: wherever a mix has some cover, all four texels hold the cloud's heights. In a layer band that
 // write weighs EDGE_WEIGHT, so a texel the disc covers is unchanged to within rounding; in the towers' band the lowest and the highest
 // simply reach there. sampleField is exactly such a mix, times profile().
+// The weather satellite's cloud (satGrid.ts: a grid over the field's square, 2.5 km a cell, with a cover, a base and a top) joins a
+// layer band as one more disc does, texel by texel: its cover read between the grid's cells, its heights by the cells' cover, in the
+// band its base falls in at that texel (so a cloud whose base crosses a band's edge has no gap there: each texel is in one band), and
+// its heights written, with no cover, to the texels next to it that are not its own. And a spec that is `masked` (an airport's layer
+// the satellite could see) has its cover multiplied by the satellite's at each texel: it stands only where the satellite sees cloud;
+// where the satellite sees clear it leaves its heights and no cover, and where the satellite does not see at all it stands as it is.
 // profile() shapes a band's cloud upward: nothing at its base, full from 14 % of the way up, rounded over the top 45 %, but the base
 // rises over 300 m at most and the top is rounded over 900 m at most, so that a tall body is full between.
 // ponytail: in the towers' band a tower is a prism: at every height its cover is the join of all its puffs' footprints, so it is as wide
 // at 3 km as under its anvil and its flank is steeper than one puff's (a 10 km storm falls from 0.8 to nothing in under 2 km). Upgrade:
 // the towers' band in a few height slices, or a 3-D image.
 import { PUFF_FILL, type CloudSpec } from './cloudField.ts'
+import type { SatGrid } from './satGrid.ts'
 import { smoothstep } from './exaggeration.ts'
 import { wrapLon } from './wxGeo.ts'
 
@@ -62,8 +69,8 @@ export interface WxField {
   empty: boolean
 }
 
-/** What a field reads of a cloud spec: its place, its middle's height, its billboard's width and height, its severity, and whether it is a tower's. */
-export type FieldSpec = Pick<CloudSpec, 'lon' | 'lat' | 'heightM' | 'scale' | 'tower' | 'sev'>
+/** What a field reads of a cloud spec: its place, its middle's height, its billboard's width and height, its severity, whether it is a tower's, and whether it stands only where the satellite sees cloud. */
+export type FieldSpec = Pick<CloudSpec, 'lon' | 'lat' | 'heightM' | 'scale' | 'tower' | 'sev' | 'masked'>
 
 /** A spec as a disc on the map: its heights and severity, its middle and radius in texels. */
 interface Disc {
@@ -73,14 +80,78 @@ interface Disc {
   u: number
   v: number
   r: number
+  masked: boolean // its cover is times the satellite's
+}
+
+/** The satellite's grid as the field's texels read it: each texel's cover, base and top, the band it is in (−1: none), and what a masked spec's cover is multiplied by there; and each band's lowest base and highest top (lo > hi: none of it in the band). */
+interface SatTexels {
+  cover: Float32Array
+  base: Float32Array
+  top: Float32Array
+  band: Int8Array
+  times: Float32Array
+  lo: number[]
+  hi: number[]
+}
+
+const SAT_COVER_MIN = 1e-4 // less of the satellite's cover than this at a texel is none
+
+/**
+ * The grid read at every texel: the cover mixed plainly from the four cells round the texel's middle, the base and the top mixed by
+ * the cells' cover (a clear cell has no heights to give), the band by the base. A texel the satellite does not see (its nearest
+ * cell's word) leaves a masked spec as it is.
+ */
+function satTexels(g: SatGrid): SatTexels {
+  const N = FIELD_N
+  const n = g.n
+  const per = n / N
+  const t: SatTexels = {
+    cover: new Float32Array(N * N), base: new Float32Array(N * N), top: new Float32Array(N * N), band: new Int8Array(N * N).fill(-1), times: new Float32Array(N * N),
+    lo: Array.from({ length: BANDS }, () => HEIGHT_MAX_M), hi: Array.from({ length: BANDS }, () => 0),
+  }
+  for (let j = 0; j < N; j++) {
+    const gv = Math.min(n - 1, Math.max(0, (j + 0.5) * per - 0.5))
+    const j0 = Math.min(n - 2, Math.floor(gv))
+    const fy = gv - j0
+    const jn = Math.min(n - 1, Math.floor((j + 0.5) * per))
+    for (let i = 0; i < N; i++) {
+      const o = j * N + i
+      const gu = Math.min(n - 1, Math.max(0, (i + 0.5) * per - 0.5))
+      const i0 = Math.min(n - 2, Math.floor(gu))
+      const fx = gu - i0
+      const c = j0 * n + i0
+      const w0 = (1 - fx) * (1 - fy) * g.cover[c]
+      const w1 = fx * (1 - fy) * g.cover[c + 1]
+      const w2 = (1 - fx) * fy * g.cover[c + n]
+      const w3 = fx * fy * g.cover[c + n + 1]
+      const cover = w0 + w1 + w2 + w3
+      t.times[o] = g.seen[jn * n + Math.min(n - 1, Math.floor((i + 0.5) * per))] === 0 ? 1 : cover < SAT_COVER_MIN ? 0 : Math.min(1, cover)
+      if (cover < SAT_COVER_MIN) continue
+      const base = clampH((w0 * g.baseM[c] + w1 * g.baseM[c + 1] + w2 * g.baseM[c + n] + w3 * g.baseM[c + n + 1]) / cover)
+      const top = clampH((w0 * g.topM[c] + w1 * g.topM[c + 1] + w2 * g.topM[c + n] + w3 * g.topM[c + n + 1]) / cover)
+      let band = 0
+      while (band < BAND_TOP_M.length && base >= BAND_TOP_M[band]) band++
+      t.cover[o] = Math.min(1, cover)
+      t.base[o] = base
+      t.top[o] = top
+      t.band[o] = band
+      if (base < t.lo[band]) t.lo[band] = base
+      if (top > t.hi[band]) t.hi[band] = top
+    }
+  }
+  return t
 }
 
 const clampH = (m: number): number => (m > 0 ? (m < HEIGHT_MAX_M ? m : HEIGHT_MAX_M) : 0)
 const kmPerLon = (lat: number): number => KM_PER_DEG * Math.max(0.01, Math.cos(lat * RAD))
 
-/** The map of the specs round lat, lon. Specs that reach nowhere into the square are left out. */
-export function buildField(specs: readonly FieldSpec[], lat: number, lon: number): WxField {
+/**
+ * The map of the specs round lat, lon. Specs that reach nowhere into the square are left out. sat: the satellite's cloud over the
+ * square, if there is one (see the header): it joins the layer bands, and the masked specs stand only where it sees cloud.
+ */
+export function buildField(specs: readonly FieldSpec[], lat: number, lon: number, sat: SatGrid | null = null): WxField {
   const N = FIELD_N
+  const sky = sat === null ? null : satTexels(sat)
   const kx = kmPerLon(lat)
   const cells = N * N
   const f: WxField = {
@@ -105,11 +176,12 @@ export function buildField(specs: readonly FieldSpec[], lat: number, lon: number
       band = 0
       while (band < BAND_TOP_M.length && base >= BAND_TOP_M[band]) band++
     }
-    bands[band].push({ base, top: clampH(s.heightM + half), sev: s.sev ?? 0, u, v, r })
+    bands[band].push({ base, top: clampH(s.heightM + half), sev: s.sev ?? 0, u, v, r, masked: sky !== null && s.masked === true && band !== TOWER_BAND })
   }
   const weight = new Float32Array(cells) // per band: the discs' weights added up
   for (let b = 0; b < BANDS; b++) {
-    if (bands[b].length === 0) continue
+    const above = sky !== null && sky.lo[b] <= sky.hi[b] // the satellite has cloud in this band
+    if (bands[b].length === 0 && !above) continue
     const [cov, base, top, sev] = [f.cov[b], f.base[b], f.top[b], f.sev[b]]
     const tall = b === TOWER_BAND // lowest base, highest top, not averages
     cov.fill(1) // while the discs are laid: Π(1 − w)
@@ -126,9 +198,12 @@ export function buildField(specs: readonly FieldSpec[], lat: number, lon: number
           const o = j * N + i
           let w = EDGE_WEIGHT // past the rim: heights, no cover
           if (dist < d.r) {
-            w = dist <= solid ? 1 : 1 - smoothstep((dist - solid) / (d.r - solid))
-            cov[o] *= 1 - w
-            hit = true
+            const times = d.masked ? sky!.times[o] : 1
+            if (times > 0) {
+              w = (dist <= solid ? 1 : 1 - smoothstep((dist - solid) / (d.r - solid))) * times
+              cov[o] *= 1 - w
+              hit = true
+            } // (else the satellite sees clear here: the disc's heights, no cover)
           }
           wrote = true
           weight[o] += w
@@ -146,6 +221,32 @@ export function buildField(specs: readonly FieldSpec[], lat: number, lon: number
       if (hit) f.empty = false
       f.lo[b] = Math.min(f.lo[b], d.base)
       f.hi[b] = Math.max(f.hi[b], d.top)
+    }
+    if (above) {
+      // The satellite's cloud in this band, a texel at a time; and its heights to the texels next to it that are not this band's.
+      for (let j = 0; j < N; j++) {
+        for (let i = 0; i < N; i++) {
+          const o = j * N + i
+          if (sky.band[o] !== b) continue
+          const w = sky.cover[o]
+          cov[o] *= 1 - w
+          weight[o] += w
+          base[o] += w * sky.base[o]
+          top[o] += w * sky.top[o]
+          for (let y = Math.max(0, j - 1); y <= Math.min(N - 1, j + 1); y++) {
+            for (let x = Math.max(0, i - 1); x <= Math.min(N - 1, i + 1); x++) {
+              const q = y * N + x
+              if (sky.band[q] === b) continue
+              weight[q] += EDGE_WEIGHT
+              base[q] += EDGE_WEIGHT * sky.base[o]
+              top[q] += EDGE_WEIGHT * sky.top[o]
+            }
+          }
+        }
+      }
+      f.empty = false
+      f.lo[b] = Math.min(f.lo[b], sky.lo[b])
+      f.hi[b] = Math.max(f.hi[b], sky.hi[b])
     }
     for (let o = 0; o < cells; o++) {
       const w = weight[o]

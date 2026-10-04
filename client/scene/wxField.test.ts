@@ -2,6 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PUFF_FILL, sequence, tower, type CloudSpec } from './cloudField.ts'
+import type { SatGrid } from './satGrid.ts'
 import { BANDS, BAND_TOP_M, FIELD_KM, FIELD_N, HEIGHT_MAX_M, TOWER_BAND, buildField, columnAt, coverAt, coverIn, fieldAtlas, fieldColumn, profile, sampleField } from './wxField.ts'
 
 const KM_PER_DEG = 111.195
@@ -460,4 +461,107 @@ test('columnAt and coverIn: the field at a place worked out once for every heigh
     assert.equal(empty.n, 0, 'the column given before is cleared')
     assert.deepEqual(coverIn(empty, 1500, { cover: 0.7, sev: 3 }), { cover: 0, sev: 0 })
   }
+})
+
+// ---- the satellite's grid (satGrid.ts) ------------------------------------------------------------------------------------------
+
+/** A satellite's grid over the field's square, 2.5 km a cell: each cell painted by where its middle is, km east and north of the field's middle. */
+function satGridOf(paint: (eastKm: number, northKm: number) => { cover?: number; base?: number; top?: number; unseen?: boolean }): SatGrid {
+  const n = 128
+  const g: SatGrid = { timeMs: 0, n, cover: new Float32Array(n * n), topM: new Float32Array(n * n), baseM: new Float32Array(n * n), seen: new Uint8Array(n * n).fill(1) }
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const c = paint((i + 0.5) * 2.5 - 160, (j + 0.5) * 2.5 - 160)
+      g.cover[j * n + i] = c.cover ?? 0
+      g.baseM[j * n + i] = c.base ?? 0
+      g.topM[j * n + i] = c.top ?? 0
+      if (c.unseen) g.seen[j * n + i] = 0
+    }
+  }
+  return g
+}
+/** A square of the satellite's cloud, `half` km each way from the field's middle. */
+const satSquare = (half: number, base: number, top: number, cover = 1): SatGrid => satGridOf((e, n) => (Math.abs(e) < half && Math.abs(n) < half ? { cover, base, top } : {}))
+
+test('buildField with the satellite\'s grid: a cloudy cell is cover in the band its base falls in, with the grid\'s base and top; a clear cell is none', () => {
+  const f = buildField([], LAT, LON, satSquare(30, 1500, 2500))
+  assert.equal(f.empty, false)
+  for (const t of MIDDLE) assert.ok(near(f.cov[0][t], 1, 1e-6) && near(f.base[0][t], 1500, 0.01) && near(f.top[0][t], 2500, 0.01) && f.sev[0][t] === 0, `texel ${t}`)
+  assert.deepEqual([f.lo[0], f.hi[0]], [1500, 2500])
+  for (const b of [1, 2, 3, 4]) assert.ok(f.lo[b] > f.hi[b], `band ${b} is empty`)
+  assert.ok(sampleField(f, LAT, LON, 2000).cover > 0.9)
+  assert.equal(sampleField(f, LAT, LON, 3000).cover, 0)
+  assert.equal(sampleField(f, at(60, 0).lat, at(60, 0).lon, 2000).cover, 0)
+  assert.equal(f.cov[0][k(C + 100, C)], 0)
+  const high = buildField([], LAT, LON, satSquare(30, 9000, 10_000))
+  for (const t of MIDDLE) assert.ok(near(high.cov[3][t], 1, 1e-6) && near(high.top[3][t], 10_000, 0.01))
+  assert.ok(buildField([], LAT, LON, satGridOf(() => ({}))).empty)
+})
+
+test('buildField with the satellite\'s grid: the cover is read between the grid\'s cells, so a cloud\'s edge falls smoothly over the field\'s texels', () => {
+  const f = buildField([], LAT, LON, satGridOf((e) => (e < 0 ? { cover: 1, base: 1500, top: 2500 } : {})))
+  const row = Array.from({ length: 12 }, (_, x) => f.cov[0][k(C - 6 + x, C)])
+  assert.ok(near(row[0], 1, 1e-6) && row[11] === 0, String(row))
+  for (let x = 1; x < row.length; x++) assert.ok(row[x] <= row[x - 1] + 1e-6 && row[x - 1] - row[x] < 0.3, `no step at ${x}: ${row}`)
+})
+
+test('buildField with the satellite\'s grid: the texel just outside the satellite\'s cloud has its heights and no cover (the GPU\'s plain filtering)', () => {
+  const f = buildField([], LAT, LON, satGridOf((e) => (e < 0 ? { cover: 1, base: 1500, top: 2500 } : {})))
+  let first = C - 6
+  while (f.cov[0][k(first, C)] > 0) first++ // the first texel with no cover
+  assert.ok(near(f.base[0][k(first, C)], 1500, 0.5) && near(f.top[0][k(first, C)], 2500, 0.5))
+  assert.equal(f.top[0][k(first + 3, C)], 0)
+})
+
+test('buildField with the satellite\'s grid: where neighbouring cells\' bases fall in different bands each texel is in one of them, and the cloud has no gap between', () => {
+  const f = buildField([], LAT, LON, satGridOf((e) => (Math.abs(e) < 40 ? (e < 0 ? { cover: 1, base: 1500, top: 2500 } : { cover: 1, base: 2600, top: 3600 }) : {})))
+  for (let x = -20; x <= 20; x++) {
+    const t = k(C + x, C)
+    assert.ok(Math.max(f.cov[0][t], f.cov[1][t]) > 0.999, `texel ${x}: ${f.cov[0][t]}, ${f.cov[1][t]}`)
+    assert.ok(Math.min(f.cov[0][t], f.cov[1][t]) === 0, `texel ${x} is in one band`)
+  }
+  assert.ok(f.cov[0][k(C - 20, C)] > 0.999 && f.cov[1][k(C + 20, C)] > 0.999)
+})
+
+test('buildField with the satellite\'s grid: the satellite\'s cloud and a spec in one band join as two discs do', () => {
+  const spec = puff(1500, 2500, { wide: 20_000 })
+  const alone = buildField([spec], LAT, LON)
+  const f = buildField([spec], LAT, LON, satSquare(30, 1700, 2900, 0.5))
+  for (const t of MIDDLE) {
+    assert.ok(near(f.cov[0][t], 1 - (1 - alone.cov[0][t]) * 0.5, 1e-6))
+    assert.ok(near(f.base[0][t], (1500 + 0.5 * 1700) / 1.5, 0.1) && near(f.top[0][t], (2500 + 0.5 * 2900) / 1.5, 0.1))
+  }
+})
+
+test('buildField with the satellite\'s grid: a masked spec stands only where the satellite sees cloud: its cover times the satellite\'s; one not masked is not touched', () => {
+  const spec = puff(1500, 2500, { wide: 20_000 })
+  const alone = buildField([spec], LAT, LON)
+  const clear = satGridOf(() => ({}))
+  const gone = buildField([{ ...spec, masked: true }], LAT, LON, clear)
+  for (const t of MIDDLE) assert.equal(gone.cov[0][t], 0)
+  assert.equal(gone.empty, true)
+  assert.deepEqual(buildField([spec], LAT, LON, clear).cov[0], alone.cov[0])
+  // Under a high deck of the satellite's (another band) the masked spec stands whole; under half a cover, half.
+  const under = buildField([{ ...spec, masked: true }], LAT, LON, satSquare(60, 9000, 10_000))
+  for (const t of MIDDLE) assert.ok(near(under.cov[0][t], alone.cov[0][t], 1e-6) && near(under.base[0][t], 1500, 0.01))
+  const half = buildField([{ ...spec, masked: true }], LAT, LON, satSquare(60, 9000, 10_000, 0.5))
+  for (const t of MIDDLE) assert.ok(near(half.cov[0][t], 0.5 * alone.cov[0][t], 1e-6))
+  // Cut by the satellite's edge: the cloud ends where the satellite's does, and the texel beyond still has the spec's heights.
+  const cut = buildField([{ ...spec, masked: true }], LAT, LON, satGridOf((e) => (e < 0 ? { cover: 1, base: 9000, top: 10_000 } : {})))
+  assert.ok(near(cut.cov[0][k(C - 4, C)], alone.cov[0][k(C - 4, C)], 1e-6))
+  assert.equal(cut.cov[0][k(C + 5, C)], 0)
+  assert.ok(near(cut.top[0][k(C + 5, C)], 2500, 0.5))
+})
+
+test('buildField with the satellite\'s grid: where the satellite does not see, a masked spec stands as it is; with no grid the mark means nothing', () => {
+  const spec = puff(1500, 2500, { wide: 20_000 })
+  const alone = buildField([spec], LAT, LON)
+  assert.deepEqual(buildField([{ ...spec, masked: true }], LAT, LON, satGridOf(() => ({ unseen: true }))).cov[0], alone.cov[0])
+  assert.deepEqual(buildField([{ ...spec, masked: true }], LAT, LON), alone)
+  assert.deepEqual(buildField([{ ...spec, masked: true }], LAT, LON, null), alone)
+})
+
+test('buildField with the satellite\'s grid: a tower is not masked, whatever its mark', () => {
+  const cb = puff(1000, 9000, { wide: 9000, tower: 0, sev: 3, masked: true })
+  assert.deepEqual(buildField([cb], LAT, LON, satGridOf(() => ({}))).cov[TOWER_BAND], buildField([cb], LAT, LON).cov[TOWER_BAND])
 })

@@ -133,6 +133,12 @@ export function hhmm(ms: number): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
+/** HH:MM of the day in UTC. */
+export function hhmmUtc(ms: number): string {
+  const d = new Date(ms)
+  return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`
+}
+
 const HAZARD: Record<string, string> = { TS: 'Thunderstorms', TSGR: 'Thunderstorms with hail', TURB: 'Turbulence',
   ICE: 'Icing', MTW: 'Mountain waves', VA: 'Volcanic ash', TC: 'Tropical cyclone', DS: 'Dust storm',
   SS: 'Sandstorm', RDOACT: 'Radioactive cloud' }

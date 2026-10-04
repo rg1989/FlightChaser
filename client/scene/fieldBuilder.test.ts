@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { fieldBuilder, type WorkerLike } from './fieldBuilder.ts'
-import { makeField, packSpecs, type FieldJob, type FieldMade } from './wxFieldJob.ts'
+import { SPEC_NUMBERS, makeField, packSpecs, type FieldJob, type FieldMade } from './wxFieldJob.ts'
 
 const SPEC = { lon: 20.1, lat: 11.1, heightM: 2000, scale: [3000, 1300] as [number, number] }
 const job = (id: number): FieldJob => ({ id, specs: packSpecs([SPEC]), lat: 10 + id, lon: 20, noise: false })
@@ -52,7 +52,7 @@ test('fieldBuilder: with a worker the ask is sent to it, and the caller is told 
   b.ask(j, (m) => got.push(m.id))
   assert.deepEqual(got, [])
   assert.deepEqual(f.posted, [j])
-  assert.equal(j.specs.length, 7, 'the ask is kept whole (its numbers are copied to the worker, not handed over): should the worker fail, it is made here')
+  assert.equal(j.specs.length, SPEC_NUMBERS, 'the ask is kept whole (its numbers are copied to the worker, not handed over): should the worker fail, it is made here')
   f.answer(0)
   assert.deepEqual(got, [1])
 })

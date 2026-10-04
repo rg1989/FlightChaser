@@ -47,6 +47,14 @@
 // - ground fog round a station near the aircraft that sees little (groundFog.ts);
 // - rain or snow round the camera, from the radar under it or the nearest station's weather, below the cloud: a light
 //   screen overlay (precip.ts), leaned with the wind across the camera's view a few times a second.
+// - where the clouds really are, from the weather satellite (satellite.ts: Meteosat's cloud mask and cloud top height, a frame every
+//   15 minutes; a SatelliteSource, looked at once a second while the weather shows, which asks EUMETSAT only when a newer frame may
+//   exist or the aircraft has left what the frame held serves). While a frame may be used for the field's place (in the satellite's
+//   view, fresh enough: SatelliteSource.usable) its pictures go to the gatherer with the other sources, and the gatherer's answer
+//   brings the satellite's cloud as a grid over the field's square (satGrid.ts), which is handed to the cloud volume with the
+//   clouds: there the satellite says where cloud is and how high its top is, the airports' layers stand only where it sees cloud,
+//   and the model's clouds are not drawn (wxGather.ts says the rules). A frame that comes, or stops being usable, builds the sky
+//   again. With no usable frame the sky is as it was before there was a satellite;
 // Every frame the clouds and the fog are given the relief drawn and the Sun's night (setNight); the rest is looked at
 // once a second, when the clouds' reach is also centred on the aircraft.
 // It also hands the cloud volume the way ahead of the chased aircraft (wxAhead.ts aheadPath, given every frame by app.ts: setAhead)
@@ -75,7 +83,8 @@
 // storms in a hazard area), laid out once along the aircraft's track from its first place, the aircraft that many km into it.
 // ?wxbreak=1 is a third (parseWxBreak): the cloud pass is given a shader that does not compile, so that its failure is seen handled
 // on any machine (with ?wxdemo=1 the pass, and so the failure, comes at once). ?wxtier=0 … 5 is a fourth (parseWxTier):
-// the cloud march held at that tier, the frames' times not asked.
+// the cloud march held at that tier, the frames' times not asked. ?wxsat=0 is a fifth (parseWxSat): no satellite for this load, to
+// compare the sky with what the other sources alone make of it; `satellite` says what frame is held (for checks in the console).
 import { Cartesian3, ClassificationType, Color, CustomDataSource, Ellipsoid, Math as CesiumMath, StripeMaterialProperty, StripeOrientation, type Cartographic, type Viewer } from 'cesium'
 import { distanceNm } from '../../shared/geo.ts'
 import { geoidN } from '../../shared/geoid.ts'
@@ -94,13 +103,15 @@ import { fieldCentre, fieldDue } from './fieldPlace.ts'
 import type { LayerLabel, PlaceLabels } from './placeLabels.ts'
 import { Precipitation, cloudBaseM, nearestStation, precipFromDbz, precipFromWx, radarPixel, radarSample, windOf, type Fall } from './precip.ts'
 import { RADAR_INDEX, RADAR_SRC_MAX, RadarSource, type RadarIndex, type SourceTile } from './radar.ts'
+import type { SatGrid } from './satGrid.ts'
+import { SatelliteSource, type SatPictures } from './satellite.ts'
 import { radarCells, tilesAcross } from './radarCells.ts'
-import { gatherer, type GatherJob, type Gathered } from './wxGather.ts'
+import { gatherer, type GatherJob, type Gathered, type SatInfo } from './wxGather.ts'
 import { hazardsNear, ringCentre, shiftMetars, shiftModel, shiftSigmets, viewBox, wrapLon, type Hazard } from './wxGeo.ts'
 import { MIN_GS_KT, type AheadPath } from './wxAhead.ts'
 import { demoSky } from './wxDemo.ts'
 import type { WxField } from './wxField.ts'
-import { MODEL_CREDIT, sigmetColor, sigmetLabel } from './wxText.ts'
+import { MODEL_CREDIT, hhmmUtc, sigmetColor, sigmetLabel } from './wxText.ts'
 
 const BOX_DEG = 2 // the METAR box reaches this far from the aircraft each way, rounded out to whole degrees
 const METAR_EVERY_MS = 5 * 60_000
@@ -136,6 +147,8 @@ const RADAR_READ_KM = REACH_KM[1] + REBUILD_KM
 /** The browser's worker for the gathering of a sky's clouds (Vite bundles the file named here); none outside a page. */
 const startGatherer = typeof Worker === 'undefined' || typeof document === 'undefined' ? null
   : (): WorkerLike<GatherJob, Gathered> => new Worker(new URL('./wxGather.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike<GatherJob, Gathered>
+/** What tells one frame's pictures from another's ('' for none): the clouds are built again when it changes. */
+const satKey = (p: SatPictures | null): string => (p === null ? '' : `${p.timeMs}|${p.box.join()}`)
 /** A hazard area's colour: its edges', its footprint's and its label's. */
 const hazardColor = (h: Hazard): string => sigmetColor(h.sigmet.hazard)
 const PRECIP_OVER_BASE_M = 300 // rain or snow shows round a camera up to this far over its cloud's base,
@@ -199,6 +212,21 @@ export function parseWxDemo(search: string): number | null {
 /** ?wxbreak=1: the cloud pass's shader is made not to compile (a check aid: the failure's handling is then seen on any machine). */
 export const parseWxBreak = (search: string): boolean => new URLSearchParams(search).get('wxbreak') === '1'
 
+/** ?wxsat=0: no weather satellite for this load (a check aid: the sky as the other sources alone make it). */
+export const parseWxSat = (search: string): boolean => new URLSearchParams(search).get('wxsat') !== '0'
+
+/** What Weather3D.satellite says of the frame held (for checks in the console). */
+export interface SatelliteState {
+  timeMs: number // the frame's own time
+  time: string // "04:45 UTC"
+  used: boolean // the sky last gathered was built with it
+  cloudy: number | null // the share of the field's square it sees that is cloud; null until a gathering has read it
+  bytes: number // its two pictures, as sent
+  fetchMs: number // from asking for them to having their pixels
+  decodeMs: number | null // their colours read, in the gatherer
+  gridMs: number | null // and the grid for a field made of them
+}
+
 /** ?wxtier=0 … 5: the cloud march held at that tier of marchPace.ts, whatever the frames' times (a check aid); none when absent or no tier. */
 export function parseWxTier(search: string): number | null {
   const tier = new URLSearchParams(search).get('wxtier') ?? ''
@@ -249,6 +277,7 @@ export interface Weather3DOptions {
   demo?: number | null // ?wxdemo: the km along the demo sky the aircraft starts at; null or absent: the real weather
   broken?: boolean // ?wxbreak=1: the cloud pass's shader is made not to compile, to see the failure handled
   tier?: number | null // ?wxtier: the cloud march held at this tier; null or absent: by the frames' times (marchPace.ts)
+  satellite?: SatelliteSource | null // the weather satellite; null: none (?wxsat=0); absent: EUMETSAT's, fetched by the page
   onCloudsFailed?: (note: string) => void // told once, with the words for it, when the cloud pass has failed for good (the Weather menu's choices then do nothing)
 }
 
@@ -371,7 +400,12 @@ export class Weather3D {
   #builtGen = -1
   #centre = { lat: Number.NaN, lon: Number.NaN } // the place the clouds were last built round: the field's middle (fieldPlace.ts)
   #stations = 0 // the stations the clouds were built from
-  #pending: { clouds: CloudSpec[]; at: { lat: number; lon: number } } | null = null // built round a place, drawn at the next frame
+  #pending: { clouds: CloudSpec[]; at: { lat: number; lon: number }; sat: SatGrid | null } | null = null // built round a place, drawn at the next frame
+  readonly #sat: SatelliteSource | null // the weather satellite; null: none
+  #builtSat = '' // the frame the clouds were last built with (satKey)
+  #satInfo: SatInfo | null = null // what the gatherer said of the frame it was last given
+  #satUsed = false // the sky last gathered has the satellite's grid
+  readonly #satCost = { decodeMs: Number.NaN, gridMs: Number.NaN } // what the frame held took the gatherer
   #drawMs = 0 // how long the last draw took
   #staged = false // a look has found the clouds due, and the gathering is asked for at the next frame
   readonly #gather: Builder<GatherJob, Gathered>
@@ -412,6 +446,7 @@ export class Weather3D {
     this.#onShade = opts.onShade ?? (() => {})
     this.#dwellMs = opts.dwellMs ?? MODEL_DWELL_MS
     this.#demo = opts.demo ?? null
+    this.#sat = opts.satellite === undefined ? new SatelliteSource() : opts.satellite
     this.#look = this.#sky.clouds.look ?? 'severity'
     this.#footprints.show = false
     void viewer.dataSources.add(this.#footprints)
@@ -556,6 +591,22 @@ export class Weather3D {
     this.#heldTier = tier !== null && MARCH_TIERS[tier] !== undefined ? tier : null
   }
 
+  /**
+   * The weather satellite's frame held (for checks in the console): its time, whether the sky last gathered was built with it, its
+   * share of cloud, and what it cost. Null with no satellite (?wxsat=0, the demo sky), outside its view, or before a frame has come.
+   */
+  get satellite(): SatelliteState | null {
+    const p = this.#sat?.pictures ?? null
+    if (p === null) return null
+    const info = this.#satInfo !== null && this.#satInfo.timeMs === p.timeMs ? this.#satInfo : null
+    const stats = this.#sat!.stats
+    const ms = (v: number): number | null => (info !== null && Number.isFinite(v) ? v : null)
+    return {
+      timeMs: p.timeMs, time: `${hhmmUtc(p.timeMs)} UTC`, used: this.#satUsed && info !== null, cloudy: info?.cloudy ?? null, bytes: stats?.bytes ?? 0, fetchMs: stats?.fetchMs ?? 0,
+      decodeMs: ms(this.#satCost.decodeMs), gridMs: ms(this.#satCost.gridMs),
+    }
+  }
+
   /** What draws the sky (for checks in the console). */
   get sky(): Sky {
     return this.#sky
@@ -615,7 +666,7 @@ export class Weather3D {
     if (this.#sky.clouds.tier !== undefined && this.#sky.clouds.tier !== tier) this.#sky.clouds.tier = tier
     if (this.#pending !== null) {
       const t0 = performance.now()
-      this.#sky.clouds.draw(this.#pending.clouds, this.#pending.at)
+      this.#sky.clouds.draw(this.#pending.clouds, this.#pending.at, this.#pending.sat)
       this.#drawMs = performance.now() - t0
       this.#pending = null
     } else if (this.#staged) this.#askClouds() // one heavy piece of work a frame: the look, this, the draw
@@ -689,6 +740,7 @@ export class Weather3D {
     const lat = this.#here.lat - this.#shift.dLat // where the aircraft is in the weather's own place
     const lon = wrapLon(this.#here.lon - this.#shift.dLon)
     this.#askModel(nowMs, lat, lon)
+    this.#sat?.look(nowMs, this.#epochMs(), lat, lon)
     const b = this.#box
     if (b === null || nowMs >= this.#metarsDue || lat < b[0] || lat > b[2] || lon < b[1] || lon > b[3]) {
       // ponytail: the box stops at ±180° and the poles: stations across the antimeridian are not asked for. Upgrade: a second box there.
@@ -827,7 +879,8 @@ export class Weather3D {
       this.#modelOld = old
       this.#modelGen++ // the sky is built again without it, or with it
     }
-    if (this.#builtGen !== this.#metarGen || this.#builtRadar !== this.#radarGen || this.#builtModel !== this.#modelGen || fieldDue(this.#centre, a.lat, a.lon, this.#track)) this.#buildClouds()
+    const due = this.#builtGen !== this.#metarGen || this.#builtRadar !== this.#radarGen || this.#builtModel !== this.#modelGen || fieldDue(this.#centre, a.lat, a.lon, this.#track)
+    if (due || this.#builtSat !== satKey(this.#pictures(this.#centre))) this.#buildClouds() // (the satellite's frame has come, is another, or may be used no longer)
     const from = Cartesian3.fromDegrees(a.lon, a.lat, a.altM, Ellipsoid.WGS84, this.#hereWC)
     this.#sky.clouds.fade(from)
     this.#sky.fog.set(fogNear(this.#metars, a.lat, a.lon))
@@ -851,9 +904,10 @@ export class Weather3D {
       this.#builtGen = this.#metarGen
       this.#builtRadar = this.#radarGen
       this.#builtModel = this.#modelGen
-      this.#pending = { clouds: this.#demoSpecs, at: c }
+      this.#pending = { clouds: this.#demoSpecs, at: c, sat: null }
       return
     }
+    this.#builtSat = satKey(this.#pictures(c))
     this.#stations = observedClouds(this.#metars, c.lat, c.lon, { max: 0 }).stations // (counted here: no cloud is made)
     this.#builtGen = this.#metarGen
     this.#staged = true
@@ -863,8 +917,9 @@ export class Weather3D {
   /**
    * The gatherer asked for the sky round the field's middle: the observed clouds, the radar's from the tiles held (a tile within
    * RADAR_READ_KM that has not come is asked for, and the clouds are built again when it has; the radar is read at that place less
-   * the ?wxat shift, and its cells come out at their place plus it) and the model's (wxGather.ts). Its answer is drawn at the frame
-   * after it comes, unless a later ask has overtaken it.
+   * the ?wxat shift, and its cells come out at their place plus it), the model's, and the satellite's frame if one may be used
+   * for the place (its pictures, as they came: the gatherer reads them and moves them by the same shift) (wxGather.ts). Its answer
+   * is drawn at the frame after it comes, unless a later ask has overtaken it. Pictures the gatherer could not read are dropped.
    */
   #askClouds(): void {
     const at = this.#centre
@@ -877,16 +932,31 @@ export class Weather3D {
       return null
     }, at.lat - dLat, wrapLon(at.lon - dLon), this.#shift, RADAR_READ_KM)
     const id = ++this.#gatherAsk
+    const sat = this.#pictures(at)
     const job: GatherJob = {
       id, lat: at.lat, lon: at.lon, metars: this.#metars, metarGen: this.#metarGen, grid: this.#grid(), modelGen: this.#modelGen, tiles,
-      shift: { dLat, dLon }, readKm: RADAR_READ_KM, reachKm: REACH_KM[1], anew: this.#anew,
+      shift: { dLat, dLon }, readKm: RADAR_READ_KM, reachKm: REACH_KM[1], anew: this.#anew, sat, epochMs: this.#epochMs(),
     }
     this.#anew = false
     this.#builtRadar = this.#radarGen
     this.#builtModel = this.#modelGen
+    this.#builtSat = satKey(sat)
     this.#gather.ask(job, (got) => {
-      if (got.id === this.#gatherAsk && !this.#destroyed) this.#pending = { clouds: got.clouds, at }
+      if (this.#destroyed) return
+      if (sat !== null && got.satInfo?.bad === true) this.#sat?.reject(sat) // (the next look builds the sky again, without it)
+      if (got.id !== this.#gatherAsk) return
+      this.#satInfo = got.satInfo
+      this.#satUsed = got.sat !== null
+      if (got.satInfo !== null && got.satInfo.decodeMs > 0) this.#satCost.decodeMs = got.satInfo.decodeMs // (0: the frame was read at a job before)
+      if (got.satInfo !== null) this.#satCost.gridMs = got.satInfo.gridMs
+      if (got.sat !== null) this.#known = true // the satellite has said where cloud is
+      this.#pending = { clouds: got.clouds, at, sat: got.sat }
     })
+  }
+
+  /** The satellite's pictures that may be used now for a field round a place of the drawn sky (the pixels are where the weather is: the place less the ?wxat shift); null: none. */
+  #pictures(at: { lat: number; lon: number }): SatPictures | null {
+    return this.#sat === null || this.#demo !== null ? null : this.#sat.usable(this.#epochMs(), at.lat - this.#shift.dLat, wrapLon(at.lon - this.#shift.dLon))
   }
 
   /** Whether any tile held has an echo (else the radar has no clouds to build). */
@@ -1081,7 +1151,7 @@ export class Weather3D {
   /** The panel's line, written when it changes; hidden, the app owns it. */
   #status(): void {
     if (!this.#show) return
-    const note = [this.#down.size > 0 ? NOTE : '', this.#sky.clouds.failed ? NO_CLOUDS : ''].filter((n) => n !== '').join(' · ')
+    const note = [this.#down.size > 0 || this.#sat?.down === true ? NOTE : '', this.#sky.clouds.failed ? NO_CLOUDS : ''].filter((n) => n !== '').join(' · ')
     const text = statusText3d({ airports: this.#stations, areas: this.#hazards.length, model: this.#grid() !== null, note })
     if (text === this.#line) return
     this.#line = text
