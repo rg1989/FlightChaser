@@ -144,3 +144,79 @@ test('passTimer: times read while the card says its timer was disturbed (a disjo
   assert.equal(t.ms, 9, 'only c is watched now; a is drawn untimed')
   assert.ok(f.left() <= 2)
 })
+
+test('passTimer: the last timed frame\'s time is there stage by stage too, in the order the stages were given (the bench\'s line says the march and the mix apart)', () => {
+  const f = fakeGl()
+  const t = passTimer(f.gl)!
+  assert.deepEqual(t.parts, [], 'none yet')
+  const [march, mix] = [stage('march', f, 6.5), stage('mix', f, 0.75)]
+  t.watch([march, mix])
+  for (let k = 0; k < 8; k++) {
+    t.poll()
+    f.poll()
+    march.execute()
+    mix.execute()
+  }
+  assert.deepEqual(t.parts, [6.5, 0.75])
+  assert.equal(t.ms, 7.25)
+})
+
+test('passTimer: a card that never answers (its queries are never there to read) is given up on: the queries waiting are few, however long it runs, no more are made, and the time stays unknown', () => {
+  const f = fakeGl({ lag: Infinity })
+  const t = passTimer(f.gl)!
+  const s = stage('march', f, 2)
+  t.watch([s])
+  for (let k = 0; k < 4000; k++) {
+    t.poll()
+    f.poll()
+    s.execute()
+  }
+  assert.equal(s.drawn, 4000, 'every frame is drawn')
+  assert.ok(Number.isNaN(t.ms))
+  assert.equal(f.left(), 0, 'none is left on the card')
+  assert.ok(f.made() <= 64, `it stopped asking: ${f.made()} queries made`)
+  assert.equal(t.dead, true)
+})
+
+test('passTimer: a card that answers late but does answer is not given up on', () => {
+  const f = fakeGl({ lag: 100 })
+  const t = passTimer(f.gl)!
+  const s = stage('march', f, 2)
+  t.watch([s])
+  for (let k = 0; k < 600; k++) {
+    t.poll()
+    f.poll()
+    s.execute()
+  }
+  assert.equal(t.ms, 2)
+  assert.equal(t.dead, false)
+  assert.ok(f.left() <= 27, 'the queries in flight, no more')
+})
+
+test('passTimer: when other stages are watched (a new pass, or none) the time of the ones before is not theirs: it is unknown until the new ones have been timed, and an answer still on its way for the old ones is not taken', () => {
+  const f = fakeGl({ lag: 3 })
+  const t = passTimer(f.gl)!
+  const [a, b] = [stage('a', f, 3), stage('b', f, 7)]
+  t.watch([a])
+  const frames = (n: number, draw: () => void): void => {
+    for (let k = 0; k < n; k++) {
+      t.poll()
+      f.poll()
+      draw()
+    }
+  }
+  frames(9, () => a.execute())
+  assert.equal(t.ms, 3)
+  t.watch([b]) // (a query of a's is still on its way)
+  assert.ok(Number.isNaN(t.ms) && t.parts.length === 0, 'not known for the new ones yet')
+  frames(3, () => b.execute())
+  assert.ok(Number.isNaN(t.ms), 'the old one\'s late answer is not the new pass\'s time')
+  frames(8, () => b.execute())
+  assert.equal(t.ms, 7)
+  t.watch([])
+  assert.ok(Number.isNaN(t.ms), 'no pass: no time')
+  t.watch([])
+  frames(8, () => b.execute())
+  assert.ok(Number.isNaN(t.ms))
+  assert.ok(f.left() <= 1)
+})
