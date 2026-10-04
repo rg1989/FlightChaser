@@ -19,8 +19,9 @@
 // The shader works in a frame of its own, so that it holds no large number: km east, north and up from the field's middle at sea level
 // (localFrame; JS gives it u_eyeToLocal each frame, worked out in doubles). A point's height over the sea is z + (x² + y²) / 2R, and
 // its place on the field's flat map follows from x and y (localToMap, the shader's toMap: to 40 m within 150 km, 100 m in the corners).
-// Three textures, each an ImageData that Cesium uploads as it is (the atlas's alpha is data: nothing may premultiply it): the field's
-// atlas (wxField.ts fieldAtlas); a noise volume of 64³ packed as 64 tiles (noiseAtlas); the clear-air map (survey). The density at a point
+// Three images, the volume's own on the card (gpuImage.ts: their bytes are there as they are; the atlas's alpha is data, and nothing
+// may premultiply it): the field's atlas (wxField.ts fieldAtlas); a noise volume of 64³ packed as 64 tiles (noiseAtlas); the clear-air
+// map (survey). The density at a point
 // is wxField.ts sampleField's (each band whose heights hold the point, cover × profile, the largest winning and giving the severity),
 // taken where a domain warp puts the point and eroded by four octaves of the noise, as the approved mock does
 // (.planning/mocks/chase-weather-mocks.html). In the two volume looks it is drawn times 1.5 and capped at 1 (GAIN, the mock's: bodies
@@ -140,11 +141,11 @@ float reach(vec2 m) {
 }
 
 // Band b's texel at a place of the map, mixed from the four round it: cover, base and top (over HEIGHT_MAX), severity (over 3).
-// The image's first row is the top of the texture (cloudVolume.ts tileUv).
+// The image's first row is the texture's first, v = 0 (cloudVolume.ts tileUv).
 vec4 band(int b, vec2 m) {
   vec2 c = clamp(m * (FIELD_N / FIELD_KM) + (FIELD_N - 1.0) * 0.5, 0.0, FIELD_N - 1.0) + 0.5;
   vec2 px = vec2(mod(float(b), 3.0), floor(float(b) / 3.0)) * FIELD_N + c;
-  return textureLod(u_field, vec2(px.x / ATLAS.x, 1.0 - px.y / ATLAS.y), 0.0);
+  return textureLod(u_field, px / ATLAS, 0.0);
 }
 
 // The severity's colour: cloud, light rain, heavy rain, thunderstorm (#f2f5f8, #58a6ff, #ffbe3d, #ff4d3d).
@@ -302,7 +303,7 @@ float noise(vec3 q) {
   vec3 f = fract(q) * ${glsl(NOISE_N)};
   float z = min(floor(f.z), ${glsl(NOISE_N - 1)});
   vec2 px = vec2(mod(z, ${glsl(NOISE_COLS)}), floor(z / ${glsl(NOISE_COLS)})) * ${glsl(NOISE_TILE)} + 1.0 + f.xy;
-  vec2 v = textureLod(u_noise, vec2(px.x / ${glsl(NOISE_COLS * NOISE_TILE)}, 1.0 - px.y / ${glsl(NOISE_ROWS * NOISE_TILE)}), 0.0).rg;
+  vec2 v = textureLod(u_noise, px / vec2(${glsl(NOISE_COLS * NOISE_TILE)}, ${glsl(NOISE_ROWS * NOISE_TILE)}), 0.0).rg;
   return mix(v.r, v.g, f.z - z);
 }
 
@@ -555,7 +556,7 @@ void main() {
       vec3 p = ro + rd * t;
       vec3 m = toMap(p);
       float dh = rd.z + dot(p.xy, rd.xy) * INV_R; // the ray's climb here, km per km
-      vec4 nr = textureLod(u_near, vec2(m.x / FIELD_KM + 0.5, 0.5 - m.y / FIELD_KM), 0.0);
+      vec4 nr = textureLod(u_near, m.xy / FIELD_KM + 0.5, 0.0);
       float room, edge;
       int kind = meets(nr, m.z, dh, hs, PAD, room, edge);
       if (kind == 0) {
@@ -652,7 +653,7 @@ void main() {
       vec3 p = ro + rd * t;
       vec3 m = toMap(p);
       float dh = rd.z + dot(p.xy, rd.xy) * INV_R;
-      vec4 nr = textureLod(u_near, vec2(m.x / FIELD_KM + 0.5, 0.5 - m.y / FIELD_KM), 0.0);
+      vec4 nr = textureLod(u_near, m.xy / FIELD_KM + 0.5, 0.0);
       float room, edge, gap;
       int kind = meets(nr, m.z, dh, hs, 0.5 * CELL.z, room, edge);
       float sev;

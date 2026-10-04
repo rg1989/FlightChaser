@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PUFF_FILL, SEV, type CloudSpec } from './cloudField.ts'
 import { noiseAtlas } from './cloudNoise.ts'
-import { BANDS, FIELD_N, buildField, fieldAtlas } from './wxField.ts'
+import { BANDS, FIELD_N, buildField, fieldAtlas, fieldTile } from './wxField.ts'
 import { SPEC_NUMBERS, makeField, packSpecs, transfers, unpackSpecs, type FieldJob } from './wxFieldJob.ts'
 import { survey } from './wxSurvey.ts'
 
@@ -40,12 +40,20 @@ test('packSpecs: the cloud specs as numbers, seven each (what a field reads of a
   assert.deepEqual(unpackSpecs(packSpecs([])), [])
 })
 
-test('makeField: the field of the job\'s specs round its place, its image for the GPU, the clear-air map and which bands rain: what buildField, fieldAtlas and survey give; and the ask\'s number, and how long it took', () => {
+test('makeField: the field of the job\'s specs round its place, its image for the GPU as a tile for each band with cloud, the clear-air map and which bands rain: what buildField, fieldTile and survey give; and the ask\'s number, and how long it took', () => {
   const made = makeField(job(SKY, { id: 7 }))
   const f = buildField(SKY, LAT, LON)
   assert.equal(made.id, 7)
   assert.deepEqual(made.field, f)
-  assert.deepEqual(made.atlas, fieldAtlas(f))
+  assert.deepEqual(made.tiles.map((t) => t !== null), [true, false, true, false, true], 'the cumulus, the deck, the storm')
+  assert.deepEqual(made.tiles, [0, 1, 2, 3, 4].map((b) => fieldTile(f, b)))
+  const atlas = fieldAtlas(f)
+  made.tiles.forEach((t, b) => {
+    for (const row of [0, 100, 255, 511]) {
+      const o = ((Math.floor(b / 3) * FIELD_N + row) * atlas.width + (b % 3) * FIELD_N) * 4
+      assert.deepEqual(t === null ? new Uint8ClampedArray(FIELD_N * 4) : t.data.subarray(row * FIELD_N * 4, (row + 1) * FIELD_N * 4), atlas.data.subarray(o, o + FIELD_N * 4), `band ${b}, row ${row}: the atlas's tile`)
+    }
+  })
   const s = survey(f)
   assert.deepEqual(made.near, s.near)
   assert.deepEqual(made.wet, s.wet)
@@ -59,7 +67,7 @@ test('makeField: an empty sky has a field (empty) and no images; weather outside
     const made = makeField(job(specs))
     assert.equal(made.field.empty, true)
     assert.deepEqual([made.field.lat, made.field.lon], [LAT, LON])
-    assert.deepEqual([made.atlas, made.near], [null, null])
+    assert.deepEqual([made.tiles, made.near], [[null, null, null, null, null], null])
     assert.deepEqual(made.wet, [false, false, false, false, false])
   }
 })
@@ -73,21 +81,22 @@ test('makeField: the noise, when asked for: a copy of noiseAtlas\'s (the worker 
   assert.deepEqual(makeField(job([], { noise: true })).noise, n, 'and again')
 })
 
-test('transfers: every array of an answer, once each: the field\'s twenty, the atlas, the clear-air map and the noise; of an empty sky\'s, the field\'s alone', () => {
+test('transfers: every array of an answer, once each: the field\'s twenty, the tiles, the clear-air map and the noise; of an empty sky\'s, the field\'s alone', () => {
   const made = makeField(job(SKY, { noise: true }))
   const t = transfers(made)
-  assert.equal(t.length, 4 * BANDS + 3)
+  assert.equal(t.length, 4 * BANDS + 3 + 2)
   assert.equal(new Set(t).size, t.length, 'none twice: a buffer handed over twice is an error')
   for (const b of t) assert.ok(b instanceof ArrayBuffer && b.byteLength > 0)
   const all = new Set(t)
   for (const maps of [made.field.cov, made.field.base, made.field.top, made.field.sev]) for (const a of maps) assert.ok(all.has(a.buffer as ArrayBuffer))
-  assert.ok(all.has(made.atlas!.data.buffer as ArrayBuffer) && all.has(made.near!.data.buffer as ArrayBuffer) && all.has(made.noise!.data.buffer as ArrayBuffer))
+  for (const tile of made.tiles) assert.ok(tile === null || all.has(tile.data.buffer as ArrayBuffer))
+  assert.ok(all.has(made.near!.data.buffer as ArrayBuffer) && all.has(made.noise!.data.buffer as ArrayBuffer))
   assert.equal(made.field.cov[0].length, FIELD_N * FIELD_N)
   assert.equal(transfers(makeField(job([]))).length, 4 * BANDS)
   // handed over as a worker hands them: the answer arrives whole
   const sent = structuredClone(made, { transfer: t })
   assert.deepEqual(sent.field.lo, made.field.lo)
-  assert.equal(sent.atlas!.data.length, 3 * FIELD_N * 2 * FIELD_N * 4)
-  assert.equal(made.atlas!.data.length, 0, 'and is gone from the sender')
+  assert.equal(sent.tiles[0]!.data.length, FIELD_N * FIELD_N * 4)
+  assert.equal(made.tiles[0]!.data.length, 0, 'and is gone from the sender')
   assert.ok(noiseAtlas().data.length > 0, 'its own noise is not')
 })

@@ -8,6 +8,7 @@ import { noiseAtlas } from './cloudNoise.ts'
 import { MARCH_SHADER, MIX_SHADER } from './cloudShaders.ts'
 import { CloudVolume, eyeToLocal, localFrame, localToMap, mapScale, resumeRendering, tileUv } from './cloudVolume.ts'
 import type { FieldBuilder } from './fieldBuilder.ts'
+import { bytesImage, type MakeImage } from './gpuImage.ts'
 import { AHEAD_MIN, aheadPath } from './wxAhead.ts'
 import { hazardEdges, packEdges } from './wxEdges.ts'
 import { BANDS, FIELD_KM, FIELD_N, HEIGHT_MAX_M, TOWER_BAND, buildField, fieldAtlas, sampleField, type WxField } from './wxField.ts'
@@ -37,10 +38,10 @@ const middleOf = (i: number, j: number): [number, number] => [(i - (FIELD_N - 1)
 
 // ---- the pure helpers the shader mirrors -------------------------------------------------------------------------------------
 
-test('tileUv: a place of the map as the atlas\'s texture coordinate: band b\'s tile at column b % 3 and row ⌊b / 3⌋, the image\'s first row at the top of the texture (Cesium flips an image it uploads), the middle of a texel at its middle', () => {
+test('tileUv: a place of the map as the atlas\'s texture coordinate: band b\'s tile at column b % 3 and row ⌊b / 3⌋, the image\'s first row the texture\'s first (its bytes are written as they are: nothing is flipped), the middle of a texel at its middle', () => {
   const atlas = fieldAtlas(buildField([puff(1500, 2500, { eastKm: 20, northKm: -30 }), puff(1000, 9000, { eastKm: -50, northKm: 70, wide: 8000, tower: 1, sev: SEV.storm })], LAT, LON))
-  /** The image's pixel under a texture coordinate, as the GPU finds it in the flipped image. */
-  const pixel = ([u, v]: [number, number]): [number, number] => [u * atlas.width - 0.5, (1 - v) * atlas.height - 0.5]
+  /** The image's pixel under a texture coordinate, as the GPU finds it. */
+  const pixel = ([u, v]: [number, number]): [number, number] => [u * atlas.width - 0.5, v * atlas.height - 0.5]
   for (const [band, i, j] of [[0, 0, 0], [0, 287, 207], [1, 100, 400], [2, 511, 0], [3, 0, 511], [TOWER_BAND, 176, 367], [TOWER_BAND, 511, 511]]) {
     const [x, y] = pixel(tileUv(band, ...middleOf(i, j)))
     assert.ok(near(x, (band % 3) * FIELD_N + i, 1e-6) && near(y, Math.floor(band / 3) * FIELD_N + j, 1e-6), `band ${band} texel ${i},${j}: pixel ${x},${y}`)
@@ -63,7 +64,7 @@ test('tileUv: beyond the outer texels\' middles a place has their coordinate (no
   assert.deepEqual(tileUv(1, 500, -500), tileUv(1, ...edge))
   assert.deepEqual(tileUv(1, FIELD_KM / 2, -FIELD_KM / 2), tileUv(1, ...edge), 'the square\'s own corner is half a texel past the last middle')
   const [u, v] = tileUv(1, ...edge)
-  assert.ok(near(u * 3 * FIELD_N, 2 * FIELD_N - 0.5, 1e-9) && near((1 - v) * 2 * FIELD_N, 0.5, 1e-9), `${u}, ${v}`)
+  assert.ok(near(u * 3 * FIELD_N, 2 * FIELD_N - 0.5, 1e-9) && near(v * 2 * FIELD_N, 0.5, 1e-9), `${u}, ${v}`)
 })
 
 test('localFrame: world metres to the frame at a place: km east, north and up from it', () => {
@@ -135,7 +136,16 @@ const HERE = { lat: LAT, lon: LON }
 type Uniforms = Record<string, unknown>
 interface Image { data: Uint8ClampedArray; width: number; height: number }
 
-function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder } = {}) {
+const TF = { fSampled: 1, fNow: 1, relHM: 0 }
+/** A builder that keeps what it is asked, and answers when told: as a worker's does, after draw has returned. */
+function lateBuilder() {
+  const asks: { job: FieldJob; done: (made: FieldMade) => void }[] = []
+  let ended = 0
+  const builder: FieldBuilder = { ask: (job, done) => void asks.push({ job, done }), destroy: () => void ended++ }
+  return { builder, asks, ended: (): number => ended, answer: (n: number): void => asks[n].done(makeField(asks[n].job)) }
+}
+
+function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage } = {}) {
   const added: PostProcessStageComposite[] = []
   const removed: PostProcessStageComposite[] = []
   const stages = { add: (s: PostProcessStageComposite) => (added.push(s), s), remove: (s: PostProcessStageComposite) => (removed.push(s), true) } as unknown as PostProcessStageCollection
@@ -147,7 +157,9 @@ function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: ()
   const live = (): PostProcessStageComposite[] => added.filter((s) => !removed.includes(s))
   const stage = (i: number): PostProcessStage => live()[0].get(i) as PostProcessStage
   const call = <T>(i: number, name: string): T => ((stage(i).uniforms as Uniforms)[name] as () => T)()
-  return { vol, added, removed, live, stage, call, cameraWC, renderError, march: (): Uniforms => stage(0).uniforms as Uniforms, mix: (): Uniforms => stage(1).uniforms as Uniforms }
+  /** The image a sampler of the march is given now. */
+  const image = (name: string, i = 0): Image => call<Image>(i, name)
+  return { vol, added, removed, live, stage, call, image, cameraWC, renderError, march: (): Uniforms => stage(0).uniforms as Uniforms, mix: (): Uniforms => stage(1).uniforms as Uniforms }
 }
 
 test('CloudVolume: no stage while hidden, while the field is empty, or once destroyed; shown with weather, one pass in the scene', () => {
@@ -215,7 +227,7 @@ test('CloudVolume: the march is walked at half the view\'s size until told other
   assert.equal(r.added.length, 1, 'the same: the pass stands')
   r.vol.scale = 0.35
   assert.deepEqual([r.added.length, r.live().length, r.stage(0).textureScale, r.stage(1).textureScale], [2, 1, 0.35, 1], 'the march coarser, the mix at full size still')
-  assert.equal((r.march().u_field as Image).width, 3 * FIELD_N, 'with the field it had')
+  assert.deepEqual(r.image('u_field').data, fieldAtlas(r.vol.field!).data, 'with the field it had: the new pass reads the same images')
   r.vol.show = false
   r.vol.scale = 0.25
   assert.equal(r.live().length, 0, 'hidden: no pass for it')
@@ -225,49 +237,111 @@ test('CloudVolume: the march is walked at half the view\'s size until told other
   assert.equal(r.stage(0).textureScale, 0.25, 'a draw keeps it')
 })
 
-test('CloudVolume: each draw is a new pass in place of the last (a field given to a pass that runs would be gone for a frame), its stages named anew', () => {
-  const r = rig()
+test('CloudVolume: a draw keeps the pass: the new field is written into a second pair of images, which takes the first pair\'s place (the pass asks for its images each frame); the pass is made again only for another size of march', () => {
+  const made: ReturnType<typeof bytesImage>[] = []
+  const r = rig({ images: (w, h) => (made.push(bytesImage(w, h)), made.at(-1)!) })
   r.vol.show = true
   r.vol.draw([CU], HERE)
-  const first = r.live()[0]
+  const pass = r.live()[0]
   const names = [r.stage(0).name, r.stage(1).name]
+  const [field1, near1] = [r.image('u_field'), r.image('u_near')]
+  assert.deepEqual(field1.data, fieldAtlas(buildField([CU], LAT, LON)).data)
   r.vol.draw([CU, RAIN], HERE)
-  assert.deepEqual(r.removed, [first])
-  assert.equal(r.live().length, 1)
-  assert.ok(!names.includes(r.stage(0).name) && !names.includes(r.stage(1).name))
+  assert.deepEqual([r.added.length, r.removed.length, r.live()[0] === pass], [1, 0, true], 'the pass stands')
+  assert.deepEqual([r.stage(0).name, r.stage(1).name], names)
+  const [field2, near2] = [r.image('u_field'), r.image('u_near')]
+  assert.ok(field2 !== field1 && near2 !== near1, 'another pair of images')
+  assert.deepEqual(field2.data, fieldAtlas(buildField([CU, RAIN], LAT, LON)).data)
+  assert.deepEqual(near2.data, survey(buildField([CU, RAIN], LAT, LON)).near.data)
+  assert.equal(r.image('u_field', 1), field2, 'the mix reads the same field')
+  r.vol.draw([CB], HERE)
+  assert.ok(r.image('u_field') === field1 && r.image('u_near') === near1, 'and the first pair again: two pairs in all')
+  const sizes = made.map((im) => `${im.width}x${im.height}`).sort()
+  assert.deepEqual(sizes, ['1536x1024', '1536x1024', '240x1', '256x256', '256x256', '528x528'], 'two pairs, the edges and the noise: made once')
+  assert.ok(made.every((im) => !im.destroyed))
 })
 
-test('CloudVolume: the field is made by its builder (a worker\'s, in the app) and the frames do not wait for it: until the builder answers, the field made last stands, in the pass and for the HUD; then the new one is taken, and the noise that came with the first; an answer that comes after the volume is destroyed is not taken', () => {
-  const asks: { job: FieldJob; done: (made: FieldMade) => void }[] = []
-  let ended = 0
-  const r = rig({ builder: { ask: (job, done) => void asks.push({ job, done }), destroy: () => void ended++ } })
-  const answer = (n: number): void => asks[n].done(makeField(asks[n].job))
+test('CloudVolume: a field that comes from a worker is not written to the graphics card in one frame: a band at each frame, while the pass draws the field in use from its own images; with the last band the two change places, all at once: the field the HUD asks, the images, the heights and the frame', () => {
+  const b = lateBuilder()
+  const r = rig({ builder: b.builder })
+  r.vol.show = true
+  r.vol.draw([CU], HERE)
+  b.answer(0)
+  assert.deepEqual([r.vol.field, r.live().length], [null, 0], 'made, but not on the card yet')
+  r.vol.frame(TF, 0)
+  assert.deepEqual([r.vol.field!.lat, r.live().length], [LAT, 1], 'one band (the cumulus\'s): one frame')
+  const first = r.vol.field
+  const shown = r.image('u_field')
+  const there = at(10, 5)
+  r.vol.draw([CU, RAIN, CB], there) // three bands
+  b.answer(1)
+  const want = fieldAtlas(buildField([CU, RAIN, CB], there.lat, there.lon))
+  for (const frame of [1, 2]) {
+    r.vol.frame(TF, 0)
+    assert.equal(r.vol.field, first, `frame ${frame}: the field in use stands`)
+    assert.ok(r.image('u_field') === shown && r.call<number>(0, 'u_top') === 2.5, 'and so do its images and its heights')
+    assert.deepEqual(shown.data, fieldAtlas(first!).data, 'which nothing is written into')
+  }
+  r.vol.frame(TF, 0)
+  assert.deepEqual([r.vol.field!.lat, r.vol.field!.lon], [there.lat, there.lon], 'frame 3: the last band, and the new field is in use')
+  assert.notEqual(r.image('u_field'), shown)
+  assert.deepEqual(r.image('u_field').data, want.data)
+  assert.deepEqual(r.image('u_near').data, survey(r.vol.field!).near.data)
+  assert.equal(r.call<number>(0, 'u_top'), 11)
+  assert.equal(r.added.length, 1, 'one pass throughout')
+  // a field that comes while another is being written takes its place: the one between is never in use
+  r.vol.draw([CU, RAIN], HERE)
+  b.answer(2)
+  r.vol.frame(TF, 0)
+  r.vol.draw([CB], HERE)
+  b.answer(3)
+  for (let k = 0; k < 4; k++) r.vol.frame(TF, 0)
+  assert.equal(r.call<number>(0, 'u_top'), 11)
+  assert.deepEqual(r.call<number[]>(0, 'u_lo').map((lo, k) => lo < r.call<number[]>(0, 'u_hi')[k]), [false, false, false, false, true], 'the storm alone')
+  // an empty sky has nothing to write: in use at once
+  r.vol.draw([], HERE)
+  b.answer(4)
+  assert.equal(r.vol.field!.empty, true)
+  assert.equal(r.live().length, 0)
+})
+
+test('CloudVolume: the field is made by its builder (a worker\'s, in the app) and the frames do not wait for it: until the builder answers and the field\'s images are written, the field made last stands, in the pass and for the HUD; then the new one is in use, and the noise that came with the first; an answer that comes after the volume is destroyed is not taken', () => {
+  const b = lateBuilder()
+  const r = rig({ builder: b.builder })
+  const frames = (n = 6): void => {
+    for (let k = 0; k < n; k++) r.vol.frame(TF, 0)
+  }
   r.vol.show = true
   r.vol.draw([CU, CB], HERE)
-  assert.equal(asks.length, 1)
-  const first = asks[0].job
+  assert.equal(b.asks.length, 1)
+  const first = b.asks[0].job
   assert.deepEqual([first.lat, first.lon, first.noise], [LAT, LON, true], 'round the place given; the noise has not come: asked for')
   assert.deepEqual(unpackSpecs(first.specs).map((s) => [s.lon, s.lat, s.tower !== undefined]), [[CU.lon, CU.lat, false], [CB.lon, CB.lat, true]])
+  frames()
   assert.deepEqual([r.vol.field, r.live().length], [null, 0], 'not made yet: nothing to draw, and nothing waited for')
-  answer(0)
+  b.answer(0)
+  frames()
   const f = r.vol.field!
   assert.deepEqual([f.lat, f.lon, r.live().length], [LAT, LON, 1])
-  assert.deepEqual((r.march().u_noise as Image).data, noiseAtlas().data, 'the noise is the builder\'s')
+  assert.deepEqual(r.image('u_noise').data, noiseAtlas().data, 'the noise is the builder\'s')
   assert.ok(r.vol.madeMs >= 0)
   const pass = r.live()[0]
   r.vol.draw([CU, RAIN], at(10, 0))
-  assert.deepEqual([asks.length, asks[1].job.noise], [2, false], 'the noise is there: not asked for again')
+  frames()
+  assert.deepEqual([b.asks.length, b.asks[1].job.noise], [2, false], 'the noise is there: not asked for again')
   assert.equal(r.vol.field, f, 'the field made last stands for the HUD')
   assert.equal(r.live()[0], pass, 'and in the pass')
   assert.equal(r.call<number>(0, 'u_top'), 11)
-  answer(1)
+  b.answer(1)
+  frames()
   assert.deepEqual([r.vol.field!.lat, r.vol.field!.lon], [at(10, 0).lat, at(10, 0).lon])
   assert.equal(r.call<number>(0, 'u_top'), 8.7, 'the storm is gone with the old field')
   const second = r.vol.field
   r.vol.draw([CU], HERE)
   r.vol.destroy()
-  assert.equal(ended, 1, 'the builder is ended with the volume')
-  answer(2)
+  assert.equal(b.ended(), 1, 'the builder is ended with the volume')
+  b.answer(2)
+  frames()
   assert.equal(r.vol.field, second)
   assert.equal(r.live().length, 0)
 })
@@ -283,7 +357,7 @@ test('CloudVolume: each shader is given every uniform it declares, and no other'
   for (const src of [MARCH_SHADER, MIX_SHADER]) assert.match(src, /uniform\s+sampler2D\s+depthTexture/, 'each reads the depth')
 })
 
-test('CloudVolume: draw builds the field round the place and hands its atlas to both stages as it is (bytes, not through a canvas); the noise and the coarse map to the march', () => {
+test('CloudVolume: draw has the field made round the place and its atlas written, as it is (its bytes, tile by tile), into the image both stages read; the noise and the clear-air map into the march\'s', () => {
   const r = rig()
   r.vol.show = true
   r.vol.draw([CU, RAIN, CB], HERE)
@@ -291,13 +365,13 @@ test('CloudVolume: draw builds the field round the place and hands its atlas to 
   assert.deepEqual([f.lat, f.lon, f.empty], [LAT, LON, false])
   assert.ok(sampleField(f, CU.lat, CU.lon, 2000).cover > 0.9, 'the field the HUD asks')
   const want = fieldAtlas(buildField([CU, RAIN, CB], LAT, LON))
-  for (const u of [r.march(), r.mix()]) {
-    const image = u.u_field as Image
+  for (const stage of [0, 1]) {
+    const image = r.image('u_field', stage)
     assert.deepEqual([image.width, image.height], [want.width, want.height])
     assert.deepEqual(image.data, want.data)
   }
-  assert.deepEqual((r.march().u_noise as Image).data, noiseAtlas().data)
-  assert.deepEqual((r.march().u_near as Image).data, survey(f).near.data)
+  assert.deepEqual(r.image('u_noise').data, noiseAtlas().data)
+  assert.deepEqual(r.image('u_near').data, survey(f).near.data)
 })
 
 test('CloudVolume: the shader is told each band\'s heights in km (an empty band: none), the floor it is read down to (the sea under a band that rains, else the band\'s lowest base), and the highest top of all', () => {
@@ -408,7 +482,7 @@ const hazardOf = (rings: Ring[], o: { baseFt?: number | null; topFt?: number } =
 /** A corner of a ring in the field's frame, at sea level. */
 const inFrame = ([lon, lat]: [number, number]): Cartesian3 => Matrix4.multiplyByPoint(FRAME, Cartesian3.fromDegrees(lon, lat, N0), new Cartesian3())
 
-test('CloudVolume: hazard areas alone keep a pass in the scene: the march is given their edges as an image, how many, and the style as a number (0 curtain, 1 fence, 2 box), which changes on the fly with no new pass; a changed list is a new pass, the same again is not; no area and no cloud: no pass', () => {
+test('CloudVolume: hazard areas alone keep a pass in the scene: the march is given their edges as an image, how many, and the style as a number (0 curtain, 1 fence, 2 box), which changes on the fly; a changed list is written into the image the pass reads, with no new pass; no area and no cloud: no pass', () => {
   const r = rig()
   const h = hazardOf([ringKm([[100, 50], [140, 50], [140, 90], [100, 90]])], { topFt: 34000 })
   r.vol.show = true
@@ -416,7 +490,7 @@ test('CloudVolume: hazard areas alone keep a pass in the scene: the march is giv
   assert.equal(r.added.length, 0, 'before the first draw there is no frame to lay them in')
   r.vol.draw([], HERE)
   assert.equal(r.live().length, 1, 'no cloud, but a hazard area')
-  const edges = (): Image => r.march().u_edges as Image
+  const edges = (): Image => r.image('u_edges')
   assert.deepEqual(edges().data, packEdges(hazardEdges([h], FRAME, N0, RED)).data)
   assert.deepEqual([edges().width, edges().height], [240, 1])
   assert.equal(r.call<number>(0, 'u_edgeCount'), 4)
@@ -427,13 +501,13 @@ test('CloudVolume: hazard areas alone keep a pass in the scene: the march is giv
   assert.equal(r.call<number>(0, 'u_hazard'), 1)
   assert.equal(r.added.length, 1, 'the style and the same areas again: the pass stands')
   const other = hazardOf([circle(30, 20)], { topFt: 30000 })
-  const first = r.live()[0]
+  const image = edges()
   r.vol.setHazards([h, other], 'fence', RED)
-  assert.deepEqual([r.added.length, r.removed.length, r.removed[0] === first], [2, 1, true], 'other areas: a new pass (an image given to a pass that runs would be gone for a frame)')
-  assert.deepEqual(edges().data, packEdges(hazardEdges([h, other], FRAME, N0, RED)).data)
+  assert.deepEqual([r.added.length, r.removed.length, edges() === image], [1, 0, true], 'other areas: the same pass and the same image')
+  assert.deepEqual(edges().data, packEdges(hazardEdges([h, other], FRAME, N0, RED)).data, 'written anew')
   assert.deepEqual([r.call<number>(0, 'u_edgeCount'), r.call<number>(0, 'u_hazard')], [24, 1])
   r.vol.setHazards([h, other], 'fence', () => '#4fd1ff')
-  assert.equal(r.added.length, 3, 'another colour is another image')
+  assert.deepEqual(edges().data, packEdges(hazardEdges([h, other], FRAME, N0, () => '#4fd1ff')).data, 'another colour is other bytes')
   r.vol.setHazards([], 'fence', RED)
   assert.equal(r.live().length, 0, 'none left, and no cloud')
   r.vol.draw([CU], HERE)
@@ -456,17 +530,43 @@ test('CloudVolume: hazard areas alone keep a pass in the scene: the march is giv
   assert.equal(r.live().length, 0, 'hidden: no pass, whatever it holds')
 })
 
-test('CloudVolume: with no cloud the march is given blank images in place of the field, the coarse map and the noise (it reads none of them), and a top under the ground, so that no ray is walked', () => {
+test('CloudVolume: with no cloud the march has its images all the same, unwritten (it reads none of them), and a top under the ground, so that no ray is walked', () => {
   const r = rig()
   r.vol.show = true
   r.vol.setHazards([hazardOf([circle(30, 20)])], 'box', RED)
   r.vol.draw([], HERE)
-  for (const name of ['u_field', 'u_near', 'u_noise']) assert.deepEqual([(r.march()[name] as Image).width, (r.march()[name] as Image).data.length], [1, 4], name)
+  for (const name of ['u_field', 'u_near']) assert.ok(r.image(name).data.every((b) => b === 0), name)
+  assert.ok(r.image('u_noise') !== undefined, 'a sampler is never left without an image')
   assert.ok(r.call<number>(0, 'u_top') < -1)
   assert.deepEqual([r.call<number[]>(0, 'u_lo'), r.call<number[]>(0, 'u_hi'), r.call<number[]>(0, 'u_floor')], [[16, 16, 16, 16, 16], [0, 0, 0, 0, 0], [16, 16, 16, 16, 16]], 'every band empty')
   r.vol.draw([CU], HERE)
-  assert.equal((r.march().u_noise as Image).width, 528)
+  assert.equal(r.image('u_noise').width, 528)
   assert.equal(r.call<number>(0, 'u_top'), 2.5)
+})
+
+test('CloudVolume: hidden, it holds no image on the graphics card; shown again, the images are made again and the field it kept is written into them', () => {
+  const made: ReturnType<typeof bytesImage>[] = []
+  const r = rig({ images: (w, h) => (made.push(bytesImage(w, h)), made.at(-1)!) })
+  r.vol.setHazards([hazardOf([circle(30, 20)])], 'box', RED)
+  r.vol.draw([CU, CB], HERE)
+  assert.equal(made.length, 0, 'hidden: none made')
+  r.vol.show = true
+  assert.equal(r.live().length, 1)
+  const first = made.length
+  assert.ok(first >= 4 && made.every((im) => !im.destroyed))
+  const want = fieldAtlas(buildField([CU, CB], LAT, LON)).data
+  assert.deepEqual(r.image('u_field').data, want)
+  r.vol.show = false
+  assert.ok(made.every((im) => im.destroyed), 'every one given back')
+  r.vol.draw([CU, CB, RAIN], HERE) // hidden: the field is in use (the HUD may ask it), with no image
+  assert.deepEqual([made.length, r.vol.field!.lo[2] < r.vol.field!.hi[2]], [first, true])
+  r.vol.show = true
+  assert.ok(made.length > first && made.slice(first).every((im) => !im.destroyed))
+  assert.deepEqual(r.image('u_field').data, fieldAtlas(buildField([CU, CB, RAIN], LAT, LON)).data)
+  assert.deepEqual(r.image('u_edges').data, packEdges(hazardEdges([hazardOf([circle(30, 20)])], FRAME, N0, RED)).data)
+  assert.equal(r.image('u_noise').width, 528)
+  r.vol.destroy()
+  assert.ok(made.every((im) => im.destroyed))
 })
 
 test('CloudVolume: the way ahead is given to the mix, which draws the track line, in the frame (the aircraft, then each minute; its heights are above the sea, so the geoid of each place is added), and its first place to the march, for the level slice; both are told which aids show; an aid alone keeps a pass in the scene, and with none it goes', () => {

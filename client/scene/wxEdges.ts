@@ -107,7 +107,7 @@ export function hazardEdges(
  * The edges as the image the march reads (u_edges): one row, EDGE_TEXELS texels an edge, MAX_EDGES at most (the first ones), the rest
  * blank. A number is two bytes, the high one first. An edge's texels: its first end (east in R and G, north in B and A, over ± EDGE_KM);
  * its second end; its base (R, G) and top (B, A), over 0 … EDGE_TOP_KM; its colour (R, G, B) and in A 1 when it is the first of its
- * area plus 2 when the area is whole; alongKm (R, G), over 0 … POST_KM. One row, so the texture's flip changes nothing.
+ * area plus 2 when the area is whole; alongKm (R, G), over 0 … POST_KM. One row.
  */
 export function packEdges(edges: readonly HazardEdge[]): Bitmap {
   const data = new Uint8ClampedArray(MAX_EDGES * EDGE_TEXELS * 4)

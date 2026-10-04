@@ -236,6 +236,26 @@ export interface Bitmap {
 }
 
 /**
+ * Band b of the field as an image for the GPU, FIELD_N² texels as the field has them (row 0 the south): R the cover, G the base and
+ * B the top (each over HEIGHT_MAX_M), A the severity over 3, each 0 … 255; a texel just outside a cloud has no cover and has its
+ * heights and severity (see the header). Not premultiplied. None for an empty band. The atlas's tile of the band (fieldAtlas), on
+ * its own: what the cloud volume writes to the graphics card, a band at a time.
+ */
+export function fieldTile(f: WxField, b: number): Bitmap | null {
+  if (f.lo[b] > f.hi[b]) return null
+  const data = new Uint8ClampedArray(FIELD_N * FIELD_N * 4)
+  const [cov, base, top, sev] = [f.cov[b], f.base[b], f.top[b], f.sev[b]]
+  for (let t = 0, o = 0; t < FIELD_N * FIELD_N; t++, o += 4) {
+    if (!(cov[t] > 0 || top[t] > 0)) continue
+    data[o] = cov[t] * 255
+    data[o + 1] = (base[t] / HEIGHT_MAX_M) * 255
+    data[o + 2] = (top[t] / HEIGHT_MAX_M) * 255
+    data[o + 3] = (sev[t] / 3) * 255
+  }
+  return { data, width: FIELD_N, height: FIELD_N }
+}
+
+/**
  * The field as one image for the GPU: 3 × 2 tiles of FIELD_N², band b at column b % 3 and row ⌊b / 3⌋ (x = (b % 3) × FIELD_N,
  * y = ⌊b / 3⌋ × FIELD_N; the sixth tile is empty), a texel in a tile as in the field (row 0 the south). R the cover, G the base and B the
  * top (each over HEIGHT_MAX_M), A the severity over 3, each 0 … 255. A texel just outside a cloud has no cover and has its heights and

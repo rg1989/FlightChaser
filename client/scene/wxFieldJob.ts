@@ -1,12 +1,13 @@
 // client/scene/wxFieldJob.ts
 // The making of a weather field as one job, which a worker does while the frames go on (wxField.worker.ts; fieldBuilder.ts sends it) or,
 // where there is no worker, the caller's own thread: the field of the cloud specs round a place (wxField.ts buildField), its image for
-// the GPU (fieldAtlas), what the march asks of it before it walks it (wxSurvey.ts survey) and, when asked, the noise (cloudNoise.ts: 64³
-// values, the longest of it all to make). Pure (no Cesium, no DOM), so Node tests cover it.
+// the GPU, a tile for each band that has cloud (fieldTile: the cloud volume writes them to the card one at a time), what the march asks
+// of the field before it walks it (wxSurvey.ts survey) and, when asked, the noise (cloudNoise.ts: 64³ values, the longest of it all to
+// make). Pure (no Cesium, no DOM), so Node tests cover it.
 // The specs cross to the worker as numbers (packSpecs: what a field reads of a spec, no more), and the answer's arrays cross back
-// handed over, not copied (transfers): 21 MB of field, 6 MB of image.
+// handed over, not copied (transfers): 21 MB of field, up to 5 MB of image.
 import { noiseAtlas } from './cloudNoise.ts'
-import { BANDS, buildField, fieldAtlas, type Bitmap, type FieldSpec, type WxField } from './wxField.ts'
+import { BANDS, buildField, fieldTile, type Bitmap, type FieldSpec, type WxField } from './wxField.ts'
 import { survey } from './wxSurvey.ts'
 
 /** A spec's numbers in packSpecs: its longitude and latitude, its middle's height, its billboard's width and height, its severity, and 1 when it is a tower's. */
@@ -21,11 +22,11 @@ export interface FieldJob {
   noise: boolean
 }
 
-/** A field made: with its image and its clear-air map (none of an empty field), which bands rain, the noise if it was asked for, and how long the making took, ms. */
+/** A field made: with each band's tile of its image (none for a band with no cloud), its clear-air map (none of an empty field), which bands rain, the noise if it was asked for, and how long the making took, ms. */
 export interface FieldMade {
   id: number
   field: WxField
-  atlas: Bitmap | null
+  tiles: (Bitmap | null)[]
   near: Bitmap | null
   wet: boolean[]
   noise: Bitmap | null
@@ -61,11 +62,12 @@ export function unpackSpecs(packed: Float64Array): FieldSpec[] {
 export function makeField(job: FieldJob): FieldMade {
   const t0 = performance.now()
   const field = buildField(unpackSpecs(job.specs), job.lat, job.lon)
-  let [atlas, near]: (Bitmap | null)[] = [null, null]
+  let tiles: (Bitmap | null)[] = Array.from({ length: BANDS }, () => null)
+  let near: Bitmap | null = null
   let wet = Array.from({ length: BANDS }, () => false)
   if (!field.empty) {
     const s = survey(field)
-    atlas = fieldAtlas(field)
+    tiles = tiles.map((_, b) => fieldTile(field, b))
     near = s.near
     wet = s.wet
   }
@@ -74,13 +76,13 @@ export function makeField(job: FieldJob): FieldMade {
     const n = noiseAtlas()
     noise = { data: n.data.slice(), width: n.width, height: n.height }
   }
-  return { id: job.id, field, atlas, near, wet, noise, ms: performance.now() - t0 }
+  return { id: job.id, field, tiles, near, wet, noise, ms: performance.now() - t0 }
 }
 
 /** The answer's arrays, each once: what a worker hands over with it. */
 export function transfers(made: FieldMade): ArrayBuffer[] {
   const f = made.field
   const out = [...f.cov, ...f.base, ...f.top, ...f.sev].map((a) => a.buffer as ArrayBuffer)
-  for (const image of [made.atlas, made.near, made.noise]) if (image !== null) out.push(image.data.buffer as ArrayBuffer)
+  for (const image of [...made.tiles, made.near, made.noise]) if (image !== null) out.push(image.data.buffer as ArrayBuffer)
   return out
 }

@@ -12,20 +12,24 @@
 // The shader works in a frame of its own, so that it holds no large number: km east, north and up from the field's middle at sea level
 // (localFrame; JS gives it u_eyeToLocal each frame, worked out in doubles). A point's height over the sea is z + (x² + y²) / 2R, and
 // its place on the field's flat map follows from x and y (localToMap, the shader's toMap: to 40 m within 150 km, 100 m in the corners).
-// Three textures, each an ImageData that Cesium uploads as it is (the atlas's alpha is data: nothing may premultiply it): the field's
-// atlas (wxField.ts fieldAtlas); a noise volume of 64³ packed as 64 tiles (cloudNoise.ts noiseAtlas); the clear-air map (wxSurvey.ts
-// survey). The noise is fixed to the Earth, not to the field: a field built round another place keeps every cloud's detail.
-// The hazard areas' edges nearest the aircraft, at most 48, are given as an image too (wxEdges.ts hazardEdges, packEdges); an image,
-// like the field's, can only be given to a new pass, so other edges are a new pass.
+// Four images, the volume's own on the graphics card (gpuImage.ts: their bytes go up as they are, nothing premultiplied or flipped,
+// and the pass's samplers are asked for them each frame): the field's atlas (wxField.ts fieldAtlas, written a band's tile at a time);
+// the clear-air map (wxSurvey.ts survey); a noise volume of 64³ packed as 64 tiles (cloudNoise.ts noiseAtlas), fixed to the Earth, not
+// to the field: a field built round another place keeps every cloud's detail; and the hazard areas' edges nearest the aircraft, at
+// most 48 (wxEdges.ts hazardEdges, packEdges).
+// A field that comes is not drawn at once: the atlas is 6 MB, and written to the card in one frame it holds the frame up. The field
+// and the clear-air map have a second pair of images. A coming field's bands are written into that pair, one band a frame (frame();
+// all at once where the field was made within draw itself: no worker, so no frame was spared anyway), while the pass goes on drawing
+// the field in use from the first pair; when the last is written the pairs change places, and with them the field in use, its
+// frame, its heights and the edges laid in it: one frame draws the old field whole, the next the new one whole. The pass stands
+// through it all: it is made again only for another size of march.
 // ponytail: the 48 edges nearest the aircraft are picked when the hazard areas are given and at each draw (30 km of flight), not as
 // the aircraft moves: among more than 48, one that has become nearer since is not yet drawn. Upgrade: pick again every few km.
-// While hidden, while there is no cloud, no hazard area's edge and no aid to draw, and once destroyed there is no stage in the scene,
-// so nothing runs. With no cloud the march is given blank images and walks no ray.
+// While hidden, while there is no cloud, no hazard area's edge and no aid to draw, and once destroyed there is no stage in the scene
+// and no image on the card, so nothing runs and nothing is held. Shown again, the images are made and written again from the field
+// kept. With no cloud the images are there and are not read: the march walks no ray.
 // A shader that another graphics card will not compile would stop Cesium's render loop, and with it the whole viewer: a render error
 // while the pass is in the scene takes the pass out for good (failed, onFailed; resumeRendering starts Cesium's loop again).
-// Each draw makes a new pass in place of the last (the plan was to give the running stage the new image). An image given to a stage
-// that already runs is not uploaded until Cesium's next update, and the stage's sampler has nothing for that frame (the render fails);
-// a new stage's image is uploaded before its first run. (Read in Cesium's PostProcessStage.js and createUniform.js; not tried.)
 // ponytail: the clouds stand at their true heights when the relief is flattened or grown (the puffs moved with their station's ground).
 // Upgrade: the frame's relief in the height the shader takes.
 import { Cartesian2, Cartesian3, Ellipsoid, Matrix4, PostProcessStage, PostProcessStageComposite, Transforms, type Camera, type PostProcessStageCollection } from 'cesium'
@@ -35,10 +39,12 @@ import { sunBrightness, type CloudSpec } from './cloudField.ts'
 import { NOISE_KM } from './cloudNoise.ts'
 import { ATLAS_H, ATLAS_W, MARCH_SHADER, MIX_SHADER, PATH_N, R_KM } from './cloudShaders.ts'
 import { fieldBuilder, type FieldBuilder } from './fieldBuilder.ts'
+import { bytesImage, textureImages, type GpuImage, type MakeImage } from './gpuImage.ts'
 import { MARCH_SCALES } from './marchPace.ts'
 import type { AheadPath } from './wxAhead.ts'
-import { MAX_EDGES, hazardEdges, packEdges } from './wxEdges.ts'
+import { EDGE_TEXELS, MAX_EDGES, hazardEdges, packEdges } from './wxEdges.ts'
 import { FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.ts'
+import { NEAR_N } from './wxSurvey.ts'
 import { packSpecs, type FieldMade } from './wxFieldJob.ts'
 import type { Hazard } from './wxGeo.ts'
 
@@ -52,7 +58,7 @@ const RAD = Math.PI / 180
 const TEXEL_KM = FIELD_KM / FIELD_N
 const SHADOW = 0.5 // the ground under full cover is darkened by this, by day
 const NO_TOP_KM = -10 // the highest top given to the march when there is no cloud: under any ground, so no ray is walked
-const BLANK: Bitmap = { data: new Uint8ClampedArray(4), width: 1, height: 1 } // an image for a sampler the shader will not read
+const BANDS_A_FRAME = 1 // of a coming field, written to the graphics card in one frame (a band's tile is 1 MB)
 
 /** The numbers that turn a place of the frame into a place of the field's map (mapScale). */
 export interface MapScale {
@@ -103,11 +109,11 @@ export function localToMap(x: number, y: number, z: number, s: MapScale): [numbe
 /**
  * The atlas's texture coordinate of a place of the map (km east and north of the field's middle) in band b's tile. The shader's band().
  * A place beyond the outer texels' middles has theirs, as sampleField holds them out to the edge, so no bilinear mix reaches the next
- * tile. Cesium flips an image it uploads: the image's first row is the top of the texture.
+ * tile. The image's first row is the texture's first (v = 0): its bytes are written as they are (gpuImage.ts).
  */
 export function tileUv(band: number, eastKm: number, northKm: number): [number, number] {
   const inTile = (km: number): number => Math.min(FIELD_N - 1, Math.max(0, km / TEXEL_KM + (FIELD_N - 1) / 2)) + 0.5
-  return [((band % 3) * FIELD_N + inTile(eastKm)) / ATLAS_W, 1 - (Math.floor(band / 3) * FIELD_N + inTile(northKm)) / ATLAS_H]
+  return [((band % 3) * FIELD_N + inTile(eastKm)) / ATLAS_W, (Math.floor(band / 3) * FIELD_N + inTile(northKm)) / ATLAS_H]
 }
 
 /** What of Cesium's viewer resumeRendering touches. */
@@ -135,25 +141,27 @@ export function resumeRendering(viewer: RenderLoop, later: (f: () => void) => vo
   }))
 }
 
-/** Bytes as an image Cesium uploads as they are (an ImageData: no canvas, so nothing premultiplies them). Node has none: there the bytes stand in, for the tests. */
-function image(b: Bitmap): unknown {
-  return typeof ImageData === 'undefined' ? b : new ImageData(b.data as Uint8ClampedArray<ArrayBuffer>, b.width, b.height)
-}
-
 let passes = 0 // each pass's stages are named by its number: a stage's name is unique in the scene
 
-/** What of Cesium's scene the volume touches: its post-process stages, its camera, and the event it raises when a frame fails. */
+/** What of Cesium's scene the volume touches: its post-process stages, its camera, the event it raises when a frame fails, and its graphics context (private; the volume's images are made in it). */
 export interface VolumeScene {
   postProcessStages: PostProcessStageCollection
   camera: Camera
   renderError?: { addEventListener(listener: (scene: unknown, error: unknown) => void): () => void }
+  context?: unknown
+}
+
+/** A field's two images on the graphics card: its atlas and its clear-air map. */
+interface Held {
+  field: GpuImage
+  near: GpuImage
 }
 
 /**
  * Draws the weather field as volumes, and in the same pass the hazard areas' edges, the level slice and the track line. One pass in
  * the scene while it is shown and has cloud, an edge or an aid to draw; none otherwise, and none ever again after a render error
- * while its pass was in the scene (failed). The shader's numbers are read from this each frame as Cesium draws (its uniforms are
- * functions).
+ * while its pass was in the scene (failed). The shader's numbers and images are read from this each frame as Cesium draws (its
+ * uniforms are functions).
  */
 export class CloudVolume {
   /** The look, read each frame: changing it costs nothing. */
@@ -164,6 +172,7 @@ export class CloudVolume {
   readonly #onFailed: () => void
   readonly #broken: boolean
   readonly #builder: FieldBuilder
+  readonly #image: MakeImage
   readonly #unlisten: (() => void) | null // ends its listening for the scene's render errors
   readonly #frame = new Matrix4() // world metres to the field's frame
   readonly #eyeToLocal = new Matrix4()
@@ -176,12 +185,19 @@ export class CloudVolume {
   readonly #aircraft = new Cartesian3() // u_aircraft: the path's first place
   readonly #scratch = new Cartesian3()
   #pass: PostProcessStageComposite | null = null
-  #field: WxField | null = null
-  #images: { field: unknown; near: unknown } | null = null // the field's, for a pass made when it is shown again; null before the first field has come
+  #made: FieldMade | null = null // the field in use: what the pass draws and the HUD asks; kept for images made later (shown again)
+  #coming: FieldMade | null = null // a field whose images are being written: it is in use once they are
+  #writes: (() => void)[] = [] // what is still to write of them, a band each
+  #shown: Held | null = null // the images the pass's samplers are given; none while there is no pass to read them
+  #spare: Held | null = null // the pair a coming field is written into; the two then change places
+  #up = false // the images shown hold the field in use
   #noise: Bitmap | null = null // the noise, once the builder has given it (with the first field)
+  #noiseImage: GpuImage | null = null
+  #edgeImage: GpuImage | null = null
   #asked = 0 // fields asked of the builder
-  #madeMs = 0
-  #cloud = false // the field has cloud
+  #asking = false // inside draw(): a field that comes now was made here, with no worker
+  #late = false // the last field came after draw() had returned: a worker's, so the frames go on while its images are written
+  #cloud = false // the field in use has cloud
   #seaM = 0 // the frame's level: the geoid at the field's middle
   #scale: MapScale = { sx: 1, sy: 1, t: 0 }
   #lo: number[] = []
@@ -192,7 +208,7 @@ export class CloudVolume {
   #hazards: readonly Hazard[] = []
   #hazardColor: (h: Hazard) => string = () => '#ffffff'
   #style: HazardStyle = 'box'
-  #edges: Bitmap = packEdges([]) // the hazard areas' edges in the frame as it stands: a pass's u_edges
+  #edges: Bitmap = packEdges([]) // the hazard areas' edges in the frame as it stands: what the edge image holds
   #edgeCount = 0
   #ahead: AheadPath | null = null
   #light = 1
@@ -205,15 +221,17 @@ export class CloudVolume {
   /**
    * geoid: the sea's height above the ellipsoid at a place, m (default EGM96). onFailed: told once, when a render error has taken the
    * pass out for good. broken: the march is given a shader that cannot compile (?wxbreak=1: the failure seen handled on any machine).
-   * builder: who makes the fields (default: a worker in a page, this thread elsewhere).
+   * builder: who makes the fields (default: a worker in a page, this thread elsewhere). images: what makes its images (default:
+   * textures in the scene's context; with no context, bytes).
    */
-  constructor(scene: VolumeScene, opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder } = {}) {
+  constructor(scene: VolumeScene, opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage } = {}) {
     this.#stages = scene.postProcessStages
     this.#camera = scene.camera
     this.#geoid = opts.geoid ?? geoidN
     this.#onFailed = opts.onFailed ?? (() => {})
     this.#broken = opts.broken === true
     this.#builder = opts.builder ?? fieldBuilder()
+    this.#image = opts.images ?? (scene.context === undefined ? bytesImage : textureImages(scene.context))
     this.#unlisten = scene.renderError?.addEventListener((_scene, error) => this.#fail(error)) ?? null
   }
 
@@ -224,12 +242,14 @@ export class CloudVolume {
   set show(on: boolean) {
     if (this.#destroyed || on === this.#show) return
     this.#show = on
-    this.#sync(false)
+    if (!on) this.#away()
+    else if (this.#made !== null && !this.#made.field.empty && !this.#failed) this.#load(this.#made, !this.#late)
+    else this.#sync()
   }
 
   /**
    * The share of the view's width and height the march is walked at: a half until told (marchPace.ts says when the frames ask for a
-   * coarser one). A stage's size is fixed when it is made, so another size is a new pass.
+   * coarser one). A stage's size is fixed when it is made, so another size is a new pass (which reads the same images).
    */
   get scale(): number {
     return this.#marchScale
@@ -241,14 +261,14 @@ export class CloudVolume {
     this.#sync(true)
   }
 
-  /** The field last made: what the pass draws, and what the HUD asks (wxField.ts sampleField). Null until the first has come. */
+  /** The field in use: what the pass draws, and what the HUD asks (wxField.ts sampleField). Null until the first has come. */
   get field(): WxField | null {
-    return this.#field
+    return this.#made?.field ?? null
   }
 
   /** How long the making of that field took, ms, where it was made (the bench's line says it). */
   get madeMs(): number {
-    return this.#madeMs
+    return this.#made?.ms ?? 0
   }
 
   /** Whether a render error has taken the pass out of the scene: for good, until the page is loaded again. The field is still built. */
@@ -257,58 +277,47 @@ export class CloudVolume {
   }
 
   /**
-   * These clouds in place of those drawn before, once their field is made: the builder is asked for the field round `at`, and what
-   * is drawn stands until it answers (at once where there is no worker).
+   * These clouds in place of those drawn before, once their field is made and its images are written: the builder is asked for the
+   * field round `at`, and what is drawn stands until then (see the header).
    */
   draw(specs: readonly CloudSpec[], at: { lat: number; lon: number }): void {
     if (this.#destroyed) return
+    this.#asking = true
     this.#builder.ask({ id: ++this.#asked, specs: packSpecs(specs), lat: at.lat, lon: at.lon, noise: this.#noise === null }, (made) => this.#take(made))
+    this.#asking = false
   }
 
   /**
-   * A field the builder has made, in place of the one drawn: the frame laid at its middle, the hazard areas' edges and the way ahead
-   * laid in that frame, and a pass for it all. With no cloud the field's images are blank.
+   * A field the builder has made. Shown, and with cloud: its images are written first (at once when it was made within draw, else a
+   * band a frame), and then it is in use. Hidden, failed, or an empty field (which has no images): in use at once.
    */
   #take(made: FieldMade): void {
     if (this.#destroyed) return
-    if (made.noise !== null) this.#noise = made.noise
-    const f = made.field
-    this.#field = f
-    this.#madeMs = made.ms
-    this.#cloud = !f.empty
-    this.#lo = f.lo.map((m) => m / 1000)
-    this.#hi = f.hi.map((m) => m / 1000)
-    if (made.atlas === null || made.near === null) {
-      this.#images = { field: image(BLANK), near: image(BLANK) }
-      this.#top = NO_TOP_KM
-    } else {
-      this.#images = { field: image(made.atlas), near: image(made.near) }
-      this.#top = Math.max(...this.#hi)
+    this.#late = !this.#asking
+    if (made.noise !== null) {
+      this.#noise = made.noise
+      this.#writeNoise()
     }
-    this.#floor = this.#lo.map((km, b) => (made.wet[b] ? 0 : km))
-    const seaM = this.#geoid(f.lat, f.lon)
-    this.#seaM = seaM
-    localFrame(f.lat, f.lon, seaM, this.#frame)
-    this.#scale = mapScale(f.lat, f.lon, seaM)
-    Cartesian3.fromElements(this.#scale.sx, this.#scale.sy, this.#scale.t, this.#map)
-    this.#anchorNoise(f.lat, f.lon, seaM)
-    this.#place()
-    this.#layEdges()
-    this.#placeAhead()
-    this.#sync(true)
+    if (this.#show && !this.#failed && !made.field.empty) this.#load(made, this.#asking)
+    else {
+      this.#coming = null
+      this.#writes.length = 0
+      this.#use(made, false)
+    }
   }
 
   /**
-   * The hazard areas whose edges are drawn (the nearest MAX_EDGES of them to the aircraft, picked when they are given and at each
-   * draw), how (curtain, fence or box: changed on the fly), and each area's CSS colour. Other edges are a new pass; the same again,
-   * or another style, are not.
+   * The hazard areas whose edges are drawn (the nearest MAX_EDGES of them to the aircraft, picked when they are given and when a
+   * field comes into use), how (curtain, fence or box: changed on the fly), and each area's CSS colour. Other edges are written into
+   * the edge image the pass reads.
    */
   setHazards(hazards: readonly Hazard[], style: HazardStyle, color: (h: Hazard) => string): void {
     if (this.#destroyed) return
     this.#hazards = hazards
     this.#style = style
     this.#hazardColor = color
-    this.#sync(this.#layEdges())
+    this.#layEdges()
+    this.#sync()
   }
 
   /**
@@ -321,14 +330,18 @@ export class CloudVolume {
     this.#aids.x = path !== null && show.track ? 1 : 0
     this.#aids.y = path !== null && show.slice ? 1 : 0
     this.#placeAhead()
-    this.#sync(false)
+    this.#sync()
   }
 
-  /** Every frame while the weather shows: the Sun's night. (The relief drawn is not followed: see the header.) */
+  /**
+   * Every frame while the weather shows: the Sun's night (the relief drawn is not followed: see the header); and of a coming
+   * field's images, a band written, the field coming into use with the last.
+   */
   frame(_tf: TerrainFrame, night: number): void {
     const n = Number.isFinite(night) ? Math.min(1, Math.max(0, night)) : 0
     this.#light = sunBrightness(n)
     this.#shadow = SHADOW * (1 - n)
+    if (this.#coming !== null) this.#write(BANDS_A_FRAME)
   }
 
   /** Each look: the aircraft, which the reach's fade is centred on. */
@@ -342,23 +355,82 @@ export class CloudVolume {
     if (this.#destroyed) return
     this.#destroyed = true
     this.#show = false
-    this.#images = null
     this.#builder.destroy()
     this.#unlisten?.()
-    this.#sync(false)
+    this.#away()
   }
 
   /**
-   * The pass in the scene when it should be (shown, a frame laid, and cloud, a hazard area's edge or an aid to draw), and not otherwise;
-   * `fresh`: an image is new (the field's, the edges'), so a pass that stands is replaced.
+   * `made` is to come into use once its images are written into the spare pair: a band's tile at each write (#write), the clear-air
+   * map with the last. now: all of it at once.
    */
-  #sync(fresh: boolean): void {
-    const wanted = this.#show && !this.#destroyed && !this.#failed && this.#images !== null && (this.#cloud || this.#edgeCount > 0 || this.#aids.x > 0 || this.#aids.y > 0)
+  #load(made: FieldMade, now: boolean): void {
+    this.#spare ??= { field: this.#image(ATLAS_W, ATLAS_H), near: this.#image(NEAR_N, NEAR_N) }
+    const into = this.#spare
+    this.#coming = made
+    this.#writes = made.tiles.flatMap((tile, b) => (tile === null ? [] : [() => into.field.write(tile, (b % 3) * FIELD_N, Math.floor(b / 3) * FIELD_N)]))
+    if (now) this.#write(Infinity)
+  }
+
+  /** At most n of the coming field's bands written; after the last, its clear-air map, and the field is in use from the images written. */
+  #write(n: number): void {
+    for (let k = 0; k < n && this.#writes.length > 0; k++) this.#writes.shift()!()
+    const made = this.#coming
+    if (this.#writes.length > 0 || made === null || this.#spare === null) return
+    if (made.near !== null) this.#spare.near.write(made.near, 0, 0)
+    ;[this.#shown, this.#spare] = [this.#spare, this.#shown]
+    this.#coming = null
+    this.#use(made, true)
+  }
+
+  /**
+   * `made` in place of the field in use: the frame laid at its middle, the hazard areas' edges and the way ahead laid in that frame,
+   * its heights for the shader. up: the images shown hold it.
+   */
+  #use(made: FieldMade, up: boolean): void {
+    const f = made.field
+    this.#made = made
+    this.#up = up
+    this.#cloud = !f.empty
+    this.#lo = f.lo.map((m) => m / 1000)
+    this.#hi = f.hi.map((m) => m / 1000)
+    this.#top = f.empty ? NO_TOP_KM : Math.max(...this.#hi)
+    this.#floor = this.#lo.map((km, b) => (made.wet[b] ? 0 : km))
+    const seaM = this.#geoid(f.lat, f.lon)
+    this.#seaM = seaM
+    localFrame(f.lat, f.lon, seaM, this.#frame)
+    this.#scale = mapScale(f.lat, f.lon, seaM)
+    Cartesian3.fromElements(this.#scale.sx, this.#scale.sy, this.#scale.t, this.#map)
+    this.#anchorNoise(f.lat, f.lon, seaM)
+    this.#place()
+    this.#layEdges()
+    this.#placeAhead()
+    this.#sync()
+  }
+
+  /**
+   * The pass in the scene when it should be (shown, a field in use whose images are written if it has cloud, and cloud, a hazard
+   * area's edge or an aid to draw), and not otherwise; `fresh`: a pass that stands is replaced (another size of march).
+   */
+  #sync(fresh = false): void {
+    const wanted = this.#show && !this.#destroyed && !this.#failed && this.#made !== null && ((this.#cloud && this.#up) || this.#edgeCount > 0 || this.#aids.x > 0 || this.#aids.y > 0)
     if (this.#pass !== null && (!wanted || fresh)) {
       this.#stages.remove(this.#pass) // and destroys it
       this.#pass = null
     }
-    if (wanted && this.#pass === null) this.#stages.add((this.#pass = this.#build(this.#images!)))
+    if (wanted && this.#pass === null) this.#stages.add((this.#pass = this.#build()))
+  }
+
+  /** Hidden, failed or destroyed: no pass, and no image on the card. A field that was coming is in use (its images are written when it is shown again). */
+  #away(): void {
+    const coming = this.#coming
+    this.#coming = null
+    this.#writes.length = 0
+    this.#up = false
+    if (coming !== null && !this.#destroyed) this.#use(coming, false)
+    this.#sync()
+    for (const image of [this.#shown?.field, this.#shown?.near, this.#spare?.field, this.#spare?.near, this.#noiseImage, this.#edgeImage]) image?.destroy()
+    this.#shown = this.#spare = this.#noiseImage = this.#edgeImage = null
   }
 
   /**
@@ -370,26 +442,33 @@ export class CloudVolume {
     if (this.#pass === null) return
     this.#failed = true
     console.warn('FlightHopper: the cloud pass is taken out of the scene after a render error; the 3-D clouds are off until the page is loaded again:', error)
-    this.#sync(false)
+    this.#away()
     this.#onFailed()
   }
 
-  /** The hazard areas' edges in the frame as it stands (none before the first draw has laid it), packed for a pass; whether they are others than before. */
-  #layEdges(): boolean {
-    if (this.#field === null) return false
+  /** The hazard areas' edges in the frame as it stands (none before the first field has laid it), packed, and written to the edge image when they are others than it holds. */
+  #layEdges(): void {
+    if (this.#made === null) return
     const edges = hazardEdges(this.#hazards, this.#frame, this.#seaM, this.#hazardColor, this.#from === null ? undefined : this.#local)
     const packed = packEdges(edges)
     const was = this.#edges.data
     const same = packed.data.every((b, i) => b === was[i])
     this.#edges = packed
     this.#edgeCount = Math.min(edges.length, MAX_EDGES)
-    return !same
+    if (!same) this.#edgeImage?.write(packed, 0, 0)
+  }
+
+  /** The noise on the card, once it has come and while there are images at all. */
+  #writeNoise(): void {
+    if (this.#noise === null || this.#noiseImage !== null || this.#shown === null) return
+    this.#noiseImage = this.#image(this.#noise.width, this.#noise.height)
+    this.#noiseImage.write(this.#noise, 0, 0)
   }
 
   /** The way ahead's places in the frame, for the aids that show: each at its height above the sea there. */
   #placeAhead(): void {
     const points = this.#ahead?.points
-    if (points === undefined || points.length === 0 || this.#field === null || (this.#aids.x === 0 && this.#aids.y === 0)) return
+    if (points === undefined || points.length === 0 || this.#made === null || (this.#aids.x === 0 && this.#aids.y === 0)) return
     for (let i = 0; i < PATH_N; i++) {
       const p = points[Math.min(i, points.length - 1)]
       const l = Matrix4.multiplyByPoint(this.#frame, Cartesian3.fromDegrees(p.lon, p.lat, p.altM + this.#geoid(p.lat, p.lon), Ellipsoid.WGS84, this.#scratch), this.#scratch)
@@ -400,12 +479,18 @@ export class CloudVolume {
     Cartesian3.fromElements(this.#path[0], this.#path[1], this.#path[2], this.#aircraft)
   }
 
-  #build(images: { field: unknown; near: unknown }): PostProcessStageComposite {
+  /** A pass, and the images its samplers are given if they are not there yet (a field's pair, unwritten where the field in use has no cloud; the edges; the noise once it has come). */
+  #build(): PostProcessStageComposite {
     const n = ++passes
+    this.#shown ??= { field: this.#image(ATLAS_W, ATLAS_H), near: this.#image(NEAR_N, NEAR_N) }
+    if (this.#edgeImage === null) {
+      this.#edgeImage = this.#image(MAX_EDGES * EDGE_TEXELS, 1)
+      this.#edgeImage.write(this.#edges, 0, 0)
+    }
+    this.#writeNoise()
     const look = (): number => LOOK[this.look] ?? LOOK.severity
-    const edgeCount = this.#edgeCount // of the image this pass is given
     const shared = {
-      u_field: images.field,
+      u_field: () => this.#shown!.field.texture,
       u_eyeToLocal: () => eyeToLocal(this.#camera.inverseViewMatrix, this.#frame, this.#eyeToLocal),
       u_map: () => this.#map,
       u_lo: () => this.#lo,
@@ -418,9 +503,9 @@ export class CloudVolume {
       name: `fh_cloud_march_${n}`, fragmentShader: this.#broken ? `${MARCH_SHADER}\n?wxbreak=1: this line is not a shader's, so the march does not compile.\n` : MARCH_SHADER,
       textureScale: this.#marchScale,
       uniforms: {
-        ...shared, u_noise: image(this.#cloud && this.#noise !== null ? this.#noise : BLANK), u_near: images.near, u_noiseFrame: () => this.#noiseFrame, u_floor: () => this.#floor,
-        u_top: () => this.#top, u_light: () => this.#light,
-        u_edges: image(this.#edges), u_edgeCount: () => edgeCount, u_hazard: () => HAZARD[this.#style] ?? HAZARD.box, u_aircraft: () => this.#aircraft,
+        ...shared, u_noise: () => (this.#noiseImage ?? this.#shown!.near).texture, u_near: () => this.#shown!.near.texture, u_noiseFrame: () => this.#noiseFrame,
+        u_floor: () => this.#floor, u_top: () => this.#top, u_light: () => this.#light,
+        u_edges: () => this.#edgeImage!.texture, u_edgeCount: () => this.#edgeCount, u_hazard: () => HAZARD[this.#style] ?? HAZARD.box, u_aircraft: () => this.#aircraft,
       },
     })
     const mix = new PostProcessStage({
@@ -432,7 +517,7 @@ export class CloudVolume {
 
   /** The aircraft's place on the field's map. */
   #place(): void {
-    if (this.#from === null || this.#field === null) return
+    if (this.#from === null || this.#made === null) return
     const l = Matrix4.multiplyByPoint(this.#frame, this.#from, this.#local)
     const [x, y] = localToMap(l.x, l.y, l.z, this.#scale)
     this.#plane.x = x

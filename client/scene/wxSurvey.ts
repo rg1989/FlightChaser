@@ -3,7 +3,7 @@
 // Pure (no Cesium, no DOM), so Node tests cover it.
 import { BANDS, FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.ts'
 
-const NEAR_N = 256 // the clear-air map's side: cells of 1.25 km
+export const NEAR_N = 256 // the clear-air map's side: cells of 1.25 km
 export const NEAR_KM = FIELD_KM / NEAR_N
 /** The farthest the clear-air map tells, km: a byte's step is 0.2 km. */
 export const NEAR_MAX_KM = 51
