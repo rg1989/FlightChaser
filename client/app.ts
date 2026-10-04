@@ -948,7 +948,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     Math.min(MAX_DELAY_S, Math.max(registry.delayTargetS(selected), (status.chaseEveryS ?? 0) + p90(arrivalAgesS) + 0.5))
   const bench = params.bench ? new BenchRecorder(viewer, { label: params.hex ?? 'browse' }) : null
   bench?.mountOverlay(div('fh-bench', ui))
-  // ?bench=1: User Timing measures fh:frame, fh:fleet, fh:table (each frame) and fh:ingest (each poll), and two marks
+  // ?bench=1: User Timing measures fh:frame, fh:fleet, fh:table, fh:wx (each frame) and fh:ingest (each poll), and two marks
   // under the chased aircraft for gate GE: fh:no-ground for each undefined terrain reading, and fh:ground-unknown for
   // each frame whose ground is still unknown after the memo. Read them with performance.getEntriesByName(name) or in
   // DevTools. ponytail: entries pile up (~200 per second) until performance.clearMeasures(); fine for runs of minutes.
@@ -1951,6 +1951,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     buildings.update(chasing && sf === null ? chased : null, tf) // around the chased aircraft; hidden in browse and scenarios
     // The weather round the chased aircraft, before the names that carry its labels. Shown in a live chase with the switch on
     // only (applyLayers): nothing of it runs otherwise. Its sky follows the relief drawn and the Sun's night (as the buildings').
+    const tWx = bench === null ? 0 : performance.now()
     if (weather3d.show) {
       if (chased !== null) {
         wxAircraft.lat = chased.lat
@@ -1962,6 +1963,10 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       weather3d.update(chased !== null ? wxAircraft : null, now, tf)
     }
     lookAhead(chased, now)
+    if (bench !== null) {
+      measure?.('fh:wx', tWx)
+      bench.work(performance.now() - tWx)
+    }
     // The names over the 3-D view, after the camera moved; none over the flight-data frame's cards and flight ID, nor
     // over the chased aircraft itself (its outline as drawn this frame; the rest of its brackets' square is ground).
     // ponytail: every sphere of the outline is projected every frame (about 150); only when a name reaches the square,
