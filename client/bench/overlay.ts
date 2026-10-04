@@ -3,6 +3,8 @@
  * G3 bench: frame timing, camera clearance, long tasks, the chase weather's main-thread time and heap for one chase, shown as a
  * small text overlay (?bench=1, wired by WP-A2) and downloadable as JSON. Browser-only APIs are touched only inside methods that
  * need them and are feature-checked, so importing this module in node is safe.
+ * The overlay also says how the chase's clouds are drawn (CloudsBench: the march's tier, the pass's time on the graphics card, the
+ * march's size) and how many WebGL textures are alive (countTextures), so that one screenshot of a slow machine tells why.
  * Unknown numbers are NaN (JSON null), never 0: a Safari run cannot pass the "long tasks: 0" bar by accident.
  */
 import type { Viewer } from 'cesium'
@@ -43,18 +45,84 @@ export function summarizeFrames(frameMs: number[]): { fpsP50: number; fpsP5: num
 
 const num = (x: number | null, digits: number): string => (x === null || Number.isNaN(x) ? 'n/a' : x.toFixed(digits))
 
-/** The overlay's text: one line per fact, unknown values as n/a. */
-export function overlayText(r: BenchReport, state: RenderState | null, canvas?: { width: number; height: number }): string {
+/** How the chase's clouds are drawn now (scene/cloudVolume.ts, scene/marchPace.ts), for the overlay's line. */
+export interface CloudsBench {
+  tier: number // the march's tier: 0 the finest
+  passMs: number // the cloud pass's time on the graphics card, ms; not a number: no timer (the browser has none, or the card does not answer it)
+  parts: readonly number[] // that time stage by stage, the march and the mix; none: not known
+  march: readonly [number, number] // the march's size, pixels
+  drawn: boolean // the pass is in the scene (there is something to draw)
+}
+
+/**
+ * The overlay's line for the clouds (null: the chase's weather is not shown): the tier, the march's size, the pass's time with the
+ * march's and the mix's in brackets. Short, and the tier first: the search box covers the overlay's right end.
+ */
+function cloudsText(clouds: CloudsBench | null): string {
+  if (clouds === null) return 'clouds off'
+  const parts = clouds.parts.length === 0 ? '' : ` (${clouds.parts.map((ms) => num(ms, 1)).join(' + ')})`
+  const pass = !clouds.drawn ? 'no pass' : Number.isFinite(clouds.passMs) ? `pass ${num(clouds.passMs, 1)} ms${parts}` : 'pass: no timer'
+  return `clouds tier ${clouds.tier} · march ${clouds.march[0]}×${clouds.march[1]} px · ${pass}`
+}
+
+/**
+ * The overlay's text: one line per fact, unknown values as n/a. clouds: how the chase's clouds are drawn (null: its weather is not
+ * shown; absent: no such line); textures: the WebGL textures alive (absent: not said), with the heap.
+ */
+export function overlayText(r: BenchReport, state: RenderState | null, canvas?: { width: number; height: number }, clouds?: CloudsBench | null, textures?: number): string {
   const alt = state?.onGround ? 'ground' : `${num(state?.altBaroFt ?? null, 0)} ft`
   return [
     `bench ${r.label} · ${r.frames} frames${canvas ? ` · ${canvas.width}×${canvas.height} px` : ''}`,
     `fps p50 ${num(r.fpsP50, 1)} · p5 ${num(r.fpsP5, 1)} · frame p95 ${num(r.frameMsP95, 1)} ms`,
     `long tasks ${num(r.longTasks, 0)} · max ${num(r.longTaskMsMax, 0)} ms`,
     `weather max ${num(r.wxMsMax, 1)} ms · over ${WX_OVER_MS} ms ${r.wxOver}`,
+    ...(clouds === undefined ? [] : [cloudsText(clouds)]),
     `clearance min ${num(r.minClearanceM, 0)} m · violations ${r.clearanceViolations}`,
-    `heap ${num(r.heapMB, 0)} MB`,
+    `heap ${num(r.heapMB, 0)} MB${textures === undefined ? '' : ` · textures ${num(textures, 0)}`}`,
     state ? `${state.hex} ${state.mode} ${alt}` : 'no aircraft',
   ].join('\n')
+}
+
+/** What of a WebGL context's class the texture count wraps. */
+interface TextureMaker {
+  createTexture(): unknown
+  deleteTexture(texture: never): void
+}
+
+const counted = new WeakMap<object, { alive: number; live: WeakSet<object> }>() // a context class whose textures are counted, and its count
+
+/**
+ * The WebGL textures alive in the page, counted from when this is first called (call it before the viewer makes its context, and
+ * every texture is in it): each one made is one more, each one deleted one less. The count is asked of the function it gives; not a
+ * number where there is no WebGL to count in. protos: the context classes' prototypes (default: the browser's WebGL 2 and WebGL 1).
+ * ponytail: it puts its own functions in place of the classes' createTexture and deleteTexture, for the page's life (a bench run's
+ * only: app.ts calls it with ?bench=1). Upgrade: none needed while it is a check aid.
+ */
+export function countTextures(protos?: readonly object[]): () => number {
+  const g = globalThis as { WebGL2RenderingContext?: { prototype: object }; WebGLRenderingContext?: { prototype: object } }
+  const classes = protos ?? [g.WebGL2RenderingContext?.prototype, g.WebGLRenderingContext?.prototype].filter((p): p is object => p !== undefined)
+  const counts = classes.map((proto) => {
+    const had = counted.get(proto)
+    if (had !== undefined) return had
+    const count = { alive: 0, live: new WeakSet<object>() }
+    counted.set(proto, count)
+    const p = proto as TextureMaker
+    const [make, drop] = [p.createTexture, p.deleteTexture as (this: unknown, texture: unknown) => void]
+    p.createTexture = function (this: unknown): unknown {
+      const texture = make.call(this)
+      if (texture !== null && typeof texture === 'object') {
+        count.live.add(texture)
+        count.alive++
+      }
+      return texture
+    }
+    p.deleteTexture = function (this: unknown, texture: unknown): void {
+      if (texture !== null && typeof texture === 'object' && count.live.delete(texture)) count.alive--
+      drop.call(this, texture)
+    } as TextureMaker['deleteTexture']
+    return count
+  })
+  return () => (counts.length === 0 ? Number.NaN : counts.reduce((n, c) => n + c.alive, 0))
 }
 
 /** Frames the overlay summarises: about 2 s at 60 Hz, so its fps reads "now", not the whole run. */
@@ -139,8 +207,12 @@ export class BenchRecorder {
     setTimeout(() => URL.revokeObjectURL(url), 1000)
   }
 
-  /** A small fixed-position text box, refreshed at 2 Hz, summarising the last ~2 s of frames. Mount once. */
-  mountOverlay(root: HTMLElement): void {
+  /**
+   * A small fixed-position text box, refreshed at 2 Hz, summarising the last ~2 s of frames. Mount once. clouds: asked at each
+   * refresh how the chase's clouds are drawn (null: its weather is not shown); textures: asked for the WebGL textures alive
+   * (countTextures). With neither, the box has no line for them.
+   */
+  mountOverlay(root: HTMLElement, clouds?: () => CloudsBench | null, textures?: () => number): void {
     const el = document.createElement('pre')
     el.style.cssText =
       'position:fixed;top:8px;left:8px;z-index:10;margin:0;padding:6px 8px;border-radius:4px;pointer-events:none;' +
@@ -148,7 +220,7 @@ export class BenchRecorder {
     root.append(el)
     const tick = (): void => {
       const c = this.#viewer.canvas
-      el.textContent = overlayText(this.recent(), this.#state, { width: c.width, height: c.height })
+      el.textContent = overlayText(this.recent(), this.#state, { width: c.width, height: c.height }, clouds?.(), textures?.())
     }
     tick()
     this.#overlay = el

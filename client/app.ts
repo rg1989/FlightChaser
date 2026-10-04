@@ -39,7 +39,7 @@ import { countryOf, flagEmoji } from '../shared/icaoCountry.ts'
 import type { AircraftInfo, RoutePlace } from '../shared/info.ts'
 import type { ReadsbAircraft, Sample } from '../shared/types.ts'
 import { ApiClient } from './api.ts'
-import { BenchRecorder } from './bench/overlay.ts'
+import { BenchRecorder, countTextures, type CloudsBench } from './bench/overlay.ts'
 import { Fleet, heightM } from './browse/fleet.ts'
 import { BROWSE_HEIGHT_M, browseDrag, browsePinch, containsDeg, enterBrowse, exitBrowse, heightToFit, isBrowsing, viewRectangleDeg } from './scene/browseCamera.ts'
 import type { RectDeg } from './scene/browseCamera.ts'
@@ -453,6 +453,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // Cesium ion failing at start (its token refused, or ion down): the keyless terrain or imagery took its place.
   const ionFell: { what: 'terrain' | 'imagery'; why: string }[] = []
   const tv = tvMode(location.search)
+  // ?bench=1: the WebGL textures alive, counted from before the viewer makes its first (the overlay says how many).
+  const texturesAlive = params.bench ? countTextures() : undefined
   const viewerWithTopography = async (): Promise<[Viewer, Topography]> => {
     const v = await createViewer(root, cfg, { onIonFallback: (what, why) => ionFell.push({ what, why }) })
     // The TV (?tv=1) draws the 3-D view at device pixels, as sharp as its overlays at any device scale: Cesium's
@@ -982,7 +984,16 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const delayTargetS = (): number =>
     Math.min(MAX_DELAY_S, Math.max(registry.delayTargetS(selected), (status.chaseEveryS ?? 0) + p90(arrivalAgesS) + 0.5))
   const bench = params.bench ? new BenchRecorder(viewer, { label: params.hex ?? 'browse' }) : null
-  bench?.mountOverlay(div('fh-bench', ui))
+  // The overlay's line for the chase's clouds: the march's tier, the pass's time on the graphics card, the march's size in pixels.
+  const cloudsBench = (): CloudsBench | null => {
+    if (!weather3d.show) return null
+    const clouds = weather3d.sky.clouds
+    return {
+      tier: weather3d.tier, passMs: clouds.passMs ?? Number.NaN, parts: clouds.passParts ?? [], drawn: clouds.drawn ?? false,
+      march: clouds.marchSize?.(viewer.canvas.width, viewer.canvas.height) ?? [0, 0],
+    }
+  }
+  bench?.mountOverlay(div('fh-bench', ui), cloudsBench, texturesAlive)
   // ?bench=1: User Timing measures fh:frame, fh:fleet, fh:table, fh:wx and its part fh:wx-ahead (each frame) and fh:ingest (each poll), and two marks
   // under the chased aircraft for gate GE: fh:no-ground for each undefined terrain reading, and fh:ground-unknown for
   // each frame whose ground is still unknown after the memo. Read them with performance.getEntriesByName(name) or in

@@ -1,17 +1,18 @@
 // client/scene/cloudVolume.ts
 // The chase's weather as volumes: one post-process pass that walks every pixel's ray through the weather field (wxField.ts), so a cloud
-// is a body with a near side and a far side. The aircraft flies into it, fades in it and is gone in thick cloud (nothing is cleared round
-// it), and the terrain, the buildings and the aircraft hide the cloud behind them and are hidden by the cloud in front, as the depth
-// buffer says. Weather3D hands it the cloud specs of every source at once (draw), with the weather satellite's cloud over the same
+// is a body with a near side and a far side. The aircraft flies into it and is veiled in it (nothing is cleared round it; a cloud
+// hides a little over half of what is behind it and no more: cloudShaders.ts VEIL), and the terrain, the buildings and the aircraft
+// hide the cloud behind them and are veiled by the cloud in front, as the depth buffer says. Weather3D hands it the cloud specs of every source at once (draw), with the weather satellite's cloud over the same
 // square when a frame is in use (satGrid.ts: the field takes it as cover directly), and it has the field of them made round the place
 // given: by its builder (fieldBuilder.ts), in the app a worker, so that the frames do not wait for it. Until the builder answers, the
 // field made last is drawn, and asked by the HUD; then the new one is taken (the field, its two images, and with the first the noise).
 // The pass is a PostProcessStageComposite of two stages, the march at half the size and the mix at full size: cloudShaders.ts has
 // their shaders and says what each draws (the clouds in three looks, the rain, the shadows; the hazard areas' edges and the level
 // slice, sorted with the cloud; the track line). This file makes the pass and gives the shaders their numbers.
-// The march is walked at a tier (tier: marchPace.ts MARCH_TIERS, the first until told): its step budget, whether it reads the
-// noise's finest octave, whether the ground has the clouds' shadows, and its size. The pace that picks the tier judges by the pass's
-// own time on the graphics card, which the volume measures where the browser can (passMs: passTimer.ts).
+// The march is walked at a tier (tier: marchPace.ts MARCH_TIERS, the first until told; Weather3D tells it the pace's start tier at
+// once): its step budget, whether it reads the noise's finest octave, whether the ground has the clouds' shadows, and its size.
+// The pace that picks the tier judges by the pass's own time on the graphics card, which the volume measures where the browser
+// can (passMs, passParts: passTimer.ts), and is asked only while the pass is in the scene (drawn).
 // The shader works in a frame of its own, so that it holds no large number: km east, north and up from the field's middle at sea level
 // (localFrame; JS gives it u_eyeToLocal each frame, worked out in doubles). A point's height over the sea is z + (x² + y²) / 2R, and
 // its place on the field's flat map follows from x and y (localToMap, the shader's toMap: to 40 m within 150 km, 100 m in the corners).
@@ -63,7 +64,7 @@ const HAZARD: Record<HazardStyle, number> = { curtain: 0, fence: 1, box: 2 } // 
 const KM_PER_DEG = 111.195 // of latitude on the sphere the heights curve over (R_KM): the field's map
 const RAD = Math.PI / 180
 const TEXEL_KM = FIELD_KM / FIELD_N
-const SHADOW = 0.5 // the ground under full cover is darkened by this, by day
+const SHADOW = 0.3 // the ground under full cover is darkened by this, by day: a see-through cloud's shadow, light enough to read the map in (it was 0.5)
 const NO_TOP_KM = -10 // the highest top given to the march when there is no cloud: under any ground, so no ray is walked
 const BANDS_A_FRAME = 1 // of a coming field, written to the graphics card in one frame (a band's tile is 1 MB)
 
@@ -180,7 +181,7 @@ export class CloudVolume {
   readonly #broken: boolean
   readonly #builder: FieldBuilder
   readonly #image: MakeImage
-  readonly #timer: Pick<PassTimer, 'watch' | 'poll' | 'ms'> | null // the pass's time on the graphics card; none where it cannot be asked
+  readonly #timer: (Pick<PassTimer, 'watch' | 'poll' | 'ms'> & Partial<Pick<PassTimer, 'parts'>>) | null // the pass's time on the graphics card; none where it cannot be asked
   readonly #unlisten: (() => void) | null // ends its listening for the scene's render errors
   readonly #frame = new Matrix4() // world metres to the field's frame
   readonly #eyeToLocal = new Matrix4()
@@ -237,7 +238,7 @@ export class CloudVolume {
    * context, where there is one).
    */
   constructor(scene: VolumeScene, opts: {
-    geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage; timer?: Pick<PassTimer, 'watch' | 'poll' | 'ms'> | null
+    geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage; timer?: (Pick<PassTimer, 'watch' | 'poll' | 'ms'> & Partial<Pick<PassTimer, 'parts'>>) | null
   } = {}) {
     this.#stages = scene.postProcessStages
     this.#camera = scene.camera
@@ -284,9 +285,24 @@ export class CloudVolume {
     return MARCH_TIERS[this.#tier].scale
   }
 
-  /** The pass's time on the graphics card in the last frame timed, ms; not a number where the browser cannot tell it, or before it has. */
+  /** The pass's time on the graphics card in the last frame timed, ms; not a number where the browser cannot tell it, before it has, or while there is no pass. */
   get passMs(): number {
     return this.#timer?.ms ?? Number.NaN
+  }
+
+  /** That time stage by stage, ms: the march, the mix. None where it is not known. */
+  get passParts(): readonly number[] {
+    return this.#timer?.parts ?? []
+  }
+
+  /** Whether the pass is in the scene: there is something to draw, and it is drawn. (The pace is asked only then: with no pass there is no time of it.) */
+  get drawn(): boolean {
+    return this.#pass !== null
+  }
+
+  /** The march's size in pixels for a view of width × height pixels, at the tier in force (as Cesium sizes a stage's image: rounded up). */
+  marchSize(width: number, height: number): [number, number] {
+    return [Math.ceil(width * this.scale), Math.ceil(height * this.scale)]
   }
 
   /** The field in use: what the pass draws, and what the HUD asks (wxField.ts sampleField). Null until the first has come. */
@@ -458,6 +474,7 @@ export class CloudVolume {
     if (this.#pass !== null && (!wanted || fresh)) {
       this.#stages.remove(this.#pass) // and destroys it
       this.#pass = null
+      if (!wanted) this.#timer?.watch([]) // no pass: nothing to time, and the time of the one that was is nobody's
     }
     if (wanted && this.#pass === null) this.#stages.add((this.#pass = this.#build()))
   }
@@ -470,7 +487,6 @@ export class CloudVolume {
     this.#up = false
     if (coming !== null && !this.#destroyed) this.#use(coming, false)
     this.#sync()
-    this.#timer?.watch([])
     for (const image of [this.#shown?.field, this.#shown?.near, this.#spare?.field, this.#spare?.near, this.#noiseImage, this.#edgeImage]) image?.destroy()
     this.#shown = this.#spare = this.#noiseImage = this.#edgeImage = null
   }

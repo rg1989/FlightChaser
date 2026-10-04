@@ -147,7 +147,7 @@ function lateBuilder() {
   return { builder, asks, ended: (): number => ended, answer: (n: number): void => asks[n].done(makeField(asks[n].job)) }
 }
 
-function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage; timer?: Pick<PassTimer, 'watch' | 'poll' | 'ms'> } = {}) {
+function rig(opts: { geoid?: (lat: number, lon: number) => number; onFailed?: () => void; broken?: boolean; builder?: FieldBuilder; images?: MakeImage; timer?: Pick<PassTimer, 'watch' | 'poll' | 'ms'> & Partial<Pick<PassTimer, 'parts'>> } = {}) {
   const added: PostProcessStageComposite[] = []
   const removed: PostProcessStageComposite[] = []
   const stages = { add: (s: PostProcessStageComposite) => (added.push(s), s), remove: (s: PostProcessStageComposite) => (removed.push(s), true) } as unknown as PostProcessStageCollection
@@ -225,12 +225,12 @@ test('CloudVolume: the march is walked at a tier (marchPace.ts MARCH_TIERS: the 
   r.vol.show = true
   r.vol.draw([CU], HERE)
   const given = (): unknown[] => [r.vol.tier, r.call<number>(0, 'u_steps'), r.call<number>(0, 'u_detail'), r.call<number>(1, 'u_shadow'), r.stage(0).textureScale, r.vol.scale]
-  assert.deepEqual(given(), [0, 128, 0, 0.5, 0.5, 0.5])
   r.vol.tier = 0
+  assert.deepEqual(given(), [0, 128, 0, 0.3, 0.5, 0.5])
   r.vol.tier = 1
-  assert.deepEqual(given(), [1, MARCH_TIERS[1].steps, 0, 0.5, 0.5, 0.5], 'a smaller step budget')
+  assert.deepEqual(given(), [1, MARCH_TIERS[1].steps, 0, 0.3, 0.5, 0.5], 'a smaller step budget')
   r.vol.tier = 2
-  assert.deepEqual(given(), [2, MARCH_TIERS[2].steps, 1, 0.5, 0.5, 0.5], 'and the finest octave left out')
+  assert.deepEqual(given(), [2, MARCH_TIERS[2].steps, 1, 0.3, 0.5, 0.5], 'and the finest octave left out')
   r.vol.tier = 3
   assert.deepEqual(given(), [3, MARCH_TIERS[3].steps, 1, 0, 0.5, 0.5], 'and no ground shadows')
   r.vol.frame(TF, 0)
@@ -246,11 +246,14 @@ test('CloudVolume: the march is walked at a tier (marchPace.ts MARCH_TIERS: the 
   assert.equal(r.stage(0).textureScale, 0.25)
   r.vol.draw([CU, RAIN], HERE)
   assert.equal(r.stage(0).textureScale, 0.25, 'a draw keeps it')
-  for (const none of [-1, 6, 2.5, Number.NaN]) r.vol.tier = none
+  for (const none of [-1, MARCH_TIERS.length, 2.5, Number.NaN]) r.vol.tier = none
   assert.equal(r.vol.tier, 5, 'what is no tier is not taken')
+  const last = MARCH_TIERS.length - 1
+  r.vol.tier = last
+  assert.deepEqual(given(), [last, MARCH_TIERS[last].steps, 1, 0, MARCH_TIERS[last].scale, MARCH_TIERS[last].scale], 'the last tier')
   r.vol.tier = 0
   r.vol.frame(TF, 0)
-  assert.deepEqual(given(), [0, 128, 0, 0.5, 0.5, 0.5], 'and back to the first: everything as it was')
+  assert.deepEqual(given(), [0, 128, 0, 0.3, 0.5, 0.5], 'and back to the first: everything as it was')
 })
 
 test('CloudVolume: with a timer (passTimer.ts: the graphics card\'s own clock, where the browser has one) the pass\'s two stages are watched, a new pass\'s when it is made and none when there is no pass; the timer is asked every frame, and its time is the volume\'s; with none the time is not known', () => {
@@ -269,6 +272,25 @@ test('CloudVolume: with a timer (passTimer.ts: the graphics card\'s own clock, w
   r.vol.show = false
   assert.deepEqual(timer.watched.at(-1), [], 'no pass: nothing to time')
   assert.ok(Number.isNaN(rig().vol.passMs), 'no timer (no graphics context): not known')
+})
+
+test('CloudVolume: it says whether its pass is in the scene (drawn: the pace is asked only then), the pass\'s time stage by stage where the timer gives it (the march, the mix), and the march\'s size in pixels for a view; a pass taken out because there is nothing to draw is no longer timed', () => {
+  const timer = { watched: [] as unknown[][], ms: 4.25, parts: [3.5, 0.75], watch(stages: readonly unknown[]): void { this.watched.push([...stages]) }, poll(): void {} }
+  const r = rig({ timer })
+  assert.equal(r.vol.drawn, false)
+  r.vol.show = true
+  assert.equal(r.vol.drawn, false, 'no field yet: no pass')
+  r.vol.draw([CU], HERE)
+  assert.equal(r.vol.drawn, true)
+  assert.deepEqual(r.vol.passParts, [3.5, 0.75])
+  assert.deepEqual(rig().vol.passParts, [], 'no timer: none')
+  r.vol.tier = 0
+  assert.deepEqual(r.vol.marchSize(2000, 1030), [1000, 515])
+  r.vol.tier = 5
+  assert.deepEqual(r.vol.marchSize(2000, 1030), [500, 258], 'as Cesium sizes a stage\'s image: rounded up')
+  r.vol.draw([], HERE) // a clear sky: nothing to draw
+  assert.equal(r.vol.drawn, false)
+  assert.deepEqual(timer.watched.at(-1), [], 'and nothing to time')
 })
 
 test('CloudVolume: a draw keeps the pass: the new field is written into a second pair of images, which takes the first pair\'s place (the pass asks for its images each frame); the pass is made again only for another size of march', () => {
@@ -490,10 +512,10 @@ test('CloudVolume: the look as a number (0 natural, 1 severity colours, 2 blocks
   assert.equal(look(), 2)
   const tf = { fSampled: 1, fNow: 1, relHM: 0 }
   assert.equal(r.call<number>(0, 'u_light'), 1)
-  assert.equal(r.call<number>(1, 'u_shadow'), 0.5)
+  assert.equal(r.call<number>(1, 'u_shadow'), 0.3, 'a see-through cloud\'s shadow: light enough to read the map in')
   r.vol.frame(tf, 0.5)
   assert.equal(r.call<number>(0, 'u_light'), sunBrightness(0.5))
-  assert.equal(r.call<number>(1, 'u_shadow'), 0.25)
+  assert.equal(r.call<number>(1, 'u_shadow'), 0.15)
   r.vol.frame(tf, 1)
   assert.deepEqual([r.call<number>(0, 'u_light'), r.call<number>(1, 'u_shadow')], [sunBrightness(1), 0])
   r.vol.frame(tf, Number.NaN)

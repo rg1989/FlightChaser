@@ -45,4 +45,5 @@ for a in "$@"; do
   fi
   STEPS+=("shot shots/$name.png")
 done
-node ~/fhqa-cdp.mjs $CDP_P "${STEPS[@]}" "log" 2>&1 | tail -${TAIL:-80}
+# (steps.log has every line as it comes: a long run is read from it while it goes, `ssh … tail -f ~/<folder>/steps.log`)
+node ~/fhqa-cdp.mjs $CDP_P "${STEPS[@]}" "log" 2>&1 | tee steps.log | tail -${TAIL:-80}
