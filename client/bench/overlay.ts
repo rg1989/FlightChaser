@@ -1,7 +1,7 @@
 // client/bench/overlay.ts
 /**
- * G3 bench: frame timing, camera clearance, long tasks and heap for one chase, shown as a small text overlay
- * (?bench=1, wired by WP-A2) and downloadable as JSON. Browser-only APIs are touched only inside methods that
+ * G3 bench: frame timing, camera clearance, long tasks, the chase weather's main-thread time and heap for one chase, shown as a
+ * small text overlay (?bench=1, wired by WP-A2) and downloadable as JSON. Browser-only APIs are touched only inside methods that
  * need them and are feature-checked, so importing this module in node is safe.
  * Unknown numbers are NaN (JSON null), never 0: a Safari run cannot pass the "long tasks: 0" bar by accident.
  */
@@ -16,6 +16,8 @@ export interface BenchReport {
   frameMsP95: number
   longTasks: number                             // NaN where the Long Tasks API is missing (Safari, Firefox)
   longTaskMsMax: number                         // 0 with no long task; NaN where unsupported
+  wxMsMax: number                               // the longest the chase's weather held the main thread in one frame (work()), ms
+  wxOver: number                                // frames in which it held it more than WX_OVER_MS (the Long Tasks API sees only 50 ms and more)
   minClearanceM: number | null                  // null until a clearance was reported
   clearanceViolations: number                   // frames with clearance < minClearanceM
   heapMB: number | null                         // performance.memory.usedJSHeapSize (Chromium only) at report time
@@ -48,6 +50,7 @@ export function overlayText(r: BenchReport, state: RenderState | null, canvas?: 
     `bench ${r.label} · ${r.frames} frames${canvas ? ` · ${canvas.width}×${canvas.height} px` : ''}`,
     `fps p50 ${num(r.fpsP50, 1)} · p5 ${num(r.fpsP5, 1)} · frame p95 ${num(r.frameMsP95, 1)} ms`,
     `long tasks ${num(r.longTasks, 0)} · max ${num(r.longTaskMsMax, 0)} ms`,
+    `weather max ${num(r.wxMsMax, 1)} ms · over ${WX_OVER_MS} ms ${r.wxOver}`,
     `clearance min ${num(r.minClearanceM, 0)} m · violations ${r.clearanceViolations}`,
     `heap ${num(r.heapMB, 0)} MB`,
     state ? `${state.hex} ${state.mode} ${alt}` : 'no aircraft',
@@ -56,6 +59,8 @@ export function overlayText(r: BenchReport, state: RenderState | null, canvas?: 
 
 /** Frames the overlay summarises: about 2 s at 60 Hz, so its fps reads "now", not the whole run. */
 const RECENT_FRAMES = 120
+/** The chase's weather may hold the main thread this long in a frame (half a frame at 60 Hz); frames in which it takes more are counted. */
+const WX_OVER_MS = 8
 
 export class BenchRecorder {
   #viewer: Viewer
@@ -70,6 +75,8 @@ export class BenchRecorder {
   #violations = 0
   #longTasks = 0
   #longTaskMsMax = 0
+  #wxMsMax = 0
+  #wxOver = 0
   #observer: PerformanceObserver | null = null
   #state: RenderState | null = null
   #overlay: HTMLElement | null = null
@@ -101,6 +108,12 @@ export class BenchRecorder {
     if (clearanceM === null) return
     if (this.#minClearance === null || clearanceM < this.#minClearance) this.#minClearance = clearanceM
     if (clearanceM < this.#minClearanceM) this.#violations++
+  }
+
+  /** Call once per frame with how long the chase's weather held the main thread in it, ms (its update and what follows the aircraft's way ahead). */
+  work(ms: number): void {
+    if (ms > this.#wxMsMax) this.#wxMsMax = ms
+    if (ms > WX_OVER_MS) this.#wxOver++
   }
 
   report(): BenchReport {
@@ -159,6 +172,8 @@ export class BenchRecorder {
       ...summarizeFrames(frameMs),
       longTasks: this.#observer ? this.#longTasks : NaN,
       longTaskMsMax: this.#observer ? this.#longTaskMsMax : NaN,
+      wxMsMax: this.#wxMsMax,
+      wxOver: this.#wxOver,
       minClearanceM: this.#minClearance,
       clearanceViolations: this.#violations,
       heapMB: memory ? memory.usedJSHeapSize / 2 ** 20 : null,

@@ -60,6 +60,16 @@ test('BenchRecorder: label and clearance threshold are options; no clearance see
   assert.equal(none.report().clearanceViolations, 0)
 })
 
+test('BenchRecorder.work: the weather\'s main-thread time in a frame: the longest, and how many frames it took more than 8 ms', () => {
+  const b = new BenchRecorder(noViewer)
+  assert.deepEqual([b.report().wxMsMax, b.report().wxOver], [0, 0], 'none told: none')
+  for (const ms of [0.4, 8, 66.5, 2, 8.01]) b.work(ms)
+  assert.equal(b.report().wxMsMax, 66.5)
+  assert.equal(b.report().wxOver, 2, '66.5 and 8.01; 8 itself is not over')
+  assert.equal(b.recent().wxOver, 2, 'counted over the whole run, as the long tasks are')
+  b.destroy()
+})
+
 test('BenchRecorder.download needs a DOM', () => {
   assert.throws(() => new BenchRecorder(noViewer).download(), /DOM/)
 })
@@ -67,7 +77,7 @@ test('BenchRecorder.download needs a DOM', () => {
 test('overlayText: one line per fact; unknowns print n/a', () => {
   const r: BenchReport = {
     label: 'ksfo', frames: 1234, fpsP50: 59.94, fpsP5: 31.2, frameMsP95: 32.06, longTasks: NaN, longTaskMsMax: NaN,
-    minClearanceM: null, clearanceViolations: 0, heapMB: null,
+    wxMsMax: 0, wxOver: 0, minClearanceM: null, clearanceViolations: 0, heapMB: null,
   }
   const state = { hex: '71bd79', mode: 'interp', altBaroFt: 3000, onGround: false } as RenderState
   assert.equal(
@@ -76,14 +86,16 @@ test('overlayText: one line per fact; unknowns print n/a', () => {
       'bench ksfo · 1234 frames · 1920×1080 px',
       'fps p50 59.9 · p5 31.2 · frame p95 32.1 ms',
       'long tasks n/a · max n/a ms',
+      'weather max 0.0 ms · over 8 ms 0',
       'clearance min n/a m · violations 0',
       'heap n/a MB',
       '71bd79 interp 3000 ft',
     ].join('\n'),
   )
-  const full = overlayText({ ...r, longTasks: 2, longTaskMsMax: 87.4, minClearanceM: 212.46, clearanceViolations: 1, heapMB: 301.7 }, null)
+  const full = overlayText({ ...r, longTasks: 2, longTaskMsMax: 87.4, wxMsMax: 65.26, wxOver: 3, minClearanceM: 212.46, clearanceViolations: 1, heapMB: 301.7 }, null)
   assert.match(full, /^bench ksfo · 1234 frames$/m)
   assert.match(full, /long tasks 2 · max 87 ms/)
+  assert.match(full, /weather max 65.3 ms · over 8 ms 3/)
   assert.match(full, /clearance min 212 m · violations 1/)
   assert.match(full, /heap 302 MB/)
   assert.match(full, /no aircraft$/)

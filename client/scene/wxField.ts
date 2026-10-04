@@ -37,7 +37,7 @@ const KM_PER_DEG = 111.195 // of latitude, on a sphere of 6,371 km
 const RAD = Math.PI / 180
 const RADIUS = 0.36 // a disc's radius, of its spec's billboard width (a puff fills about PUFF_FILL of the billboard)
 const SOLID = 0.55 // inside this share of the radius a disc weighs 1
-// profile()'s four numbers are written into the weather pass's shader too (cloudVolume.ts), so the two cannot drift.
+// profile()'s four numbers are written into the weather pass's shader too (cloudShaders.ts), so the two cannot drift.
 export const RISE = 0.14 // profile: full from this share of the way up from the base …
 export const FALL = 0.55 // … to this, then rounded off to nothing at the top …
 export const RISE_MAX_M = 300 // … but the base rises over no more than this …
@@ -62,6 +62,9 @@ export interface WxField {
   empty: boolean
 }
 
+/** What a field reads of a cloud spec: its place, its middle's height, its billboard's width and height, its severity, and whether it is a tower's. */
+export type FieldSpec = Pick<CloudSpec, 'lon' | 'lat' | 'heightM' | 'scale' | 'tower' | 'sev'>
+
 /** A spec as a disc on the map: its heights and severity, its middle and radius in texels. */
 interface Disc {
   base: number
@@ -76,7 +79,7 @@ const clampH = (m: number): number => (m > 0 ? (m < HEIGHT_MAX_M ? m : HEIGHT_MA
 const kmPerLon = (lat: number): number => KM_PER_DEG * Math.max(0.01, Math.cos(lat * RAD))
 
 /** The map of the specs round lat, lon. Specs that reach nowhere into the square are left out. */
-export function buildField(specs: readonly CloudSpec[], lat: number, lon: number): WxField {
+export function buildField(specs: readonly FieldSpec[], lat: number, lon: number): WxField {
   const N = FIELD_N
   const kx = kmPerLon(lat)
   const cells = N * N
@@ -177,21 +180,34 @@ export interface Cover {
   sev: number
 }
 
-// coverAt's scratch: the four texels round a place and their weights. Reused, so a call allocates nothing (the HUD asks thousands a frame).
+/**
+ * The field at one place, for every height (columnAt): the bands that have cover there, in the bands' order, each with its cover,
+ * base, top and severity as a shader's texture() mixes them from the four texels round the place.
+ */
+export interface FieldColumn {
+  n: number // the bands with cover at the place: the first n of each array
+  cover: Float64Array
+  base: Float64Array
+  top: Float64Array
+  sev: Float64Array
+}
+
+/** A column to give columnAt. */
+export const fieldColumn = (): FieldColumn => ({ n: 0, cover: new Float64Array(BANDS), base: new Float64Array(BANDS), top: new Float64Array(BANDS), sev: new Float64Array(BANDS) })
+
+// columnAt's scratch: the four texels round a place and their weights. Reused, so a call allocates nothing (the HUD asks thousands a second).
 const cell = new Int32Array(4)
 const share = new Float64Array(4)
 const mix = (a: Float32Array): number => share[0] * a[cell[0]] + share[1] * a[cell[1]] + share[2] * a[cell[2]] + share[3] * a[cell[3]]
 
 /**
- * How much cloud there is at lat, lon, altM (metres above sea level), and how severe: for each band whose heights reach altM, the
- * four texels round the place mixed plainly (cover, base, top and severity each on its own, as a shader's texture() mixes the image),
- * the cover times the profile at altM; the highest wins and brings its band's severity. Nothing for no field, outside its square, or
- * at a height no band reaches. The answer is written into `out` (both numbers, always), which is returned: no allocation.
+ * The field at lat, lon, written into `out` (which is returned): for each band with cover there, the four texels round the place
+ * mixed plainly (cover, base, top and severity each on its own, as a shader's texture() mixes the image). Nothing for no field, an
+ * empty one, or a place outside its square. What every height of the place is then asked of (coverIn): the texels are read once.
  */
-export function coverAt(f: WxField | null, lat: number, lon: number, altM: number, out: Cover): Cover {
+export function columnAt(f: WxField | null, lat: number, lon: number, out: FieldColumn): FieldColumn {
   const N = FIELD_N
-  out.cover = 0
-  out.sev = 0
+  out.n = 0
   if (f === null || f.empty) return out
   const u = (wrapLon(lon - f.lon) * kmPerLon(f.lat) + HALF_KM) / TEXEL_KM - 0.5
   const v = ((lat - f.lat) * KM_PER_DEG + HALF_KM) / TEXEL_KM - 0.5
@@ -208,21 +224,78 @@ export function coverAt(f: WxField | null, lat: number, lon: number, altM: numbe
   share[2] = (1 - fx) * fy
   share[3] = fx * fy
   for (let b = 0; b < BANDS; b++) {
-    if (altM < f.lo[b] || altM > f.hi[b]) continue // (nothing is lost: wherever a band has cover, the mixed base and top lie inside its lo … hi)
+    if (f.lo[b] > f.hi[b]) continue // an empty band
     const cover = mix(f.cov[b])
     if (cover <= 0) continue
-    const c = cover * profile(altM, mix(f.base[b]), mix(f.top[b]))
+    const k = out.n++
+    out.cover[k] = cover
+    out.base[k] = mix(f.base[b])
+    out.top[k] = mix(f.top[b])
+    out.sev[k] = mix(f.sev[b])
+  }
+  return out
+}
+
+/**
+ * How much cloud a column has at altM (metres above sea level), and how severe: each band's cover times the profile at altM; the
+ * highest wins and brings its band's severity. Written into `out` (both numbers, always), which is returned.
+ */
+export function coverIn(col: FieldColumn, altM: number, out: Cover): Cover {
+  out.cover = 0
+  out.sev = 0
+  for (let k = 0; k < col.n; k++) {
+    if (!(altM > col.base[k] && altM < col.top[k])) continue // (the profile is nothing there)
+    const c = col.cover[k] * profile(altM, col.base[k], col.top[k])
     if (c > out.cover) {
       out.cover = c
-      out.sev = mix(f.sev[b])
+      out.sev = col.sev[k]
     }
   }
   return out
 }
 
+const column = fieldColumn() // coverAt's own
+
+/**
+ * How much cloud there is at lat, lon, altM (metres above sea level), and how severe: for each band that has cover at the place, the
+ * four texels round it mixed plainly (columnAt), the cover times the profile at altM; the highest wins and brings its band's
+ * severity (coverIn). Nothing for no field, outside its square, or at a height no band reaches. The answer is written into `out`
+ * (both numbers, always), which is returned: no allocation.
+ */
+export function coverAt(f: WxField | null, lat: number, lon: number, altM: number, out: Cover): Cover {
+  return coverIn(columnAt(f, lat, lon, column), altM, out)
+}
+
 /** coverAt, as an object of its own: for a place or two. A loop over many places gives coverAt one object to write into. */
 export function sampleField(f: WxField | null, lat: number, lon: number, altM: number): Cover {
   return coverAt(f, lat, lon, altM, { cover: 0, sev: 0 })
+}
+
+/** Bytes of an RGBA image, row by row from the first. */
+export interface Bitmap {
+  data: Uint8ClampedArray
+  width: number
+  height: number
+}
+
+/**
+ * Band b of the field as an image for the GPU, FIELD_N² texels as the field has them (row 0 the south): R the cover, G the base and
+ * B the top (each over HEIGHT_MAX_M), A the severity over 3, each 0 … 255; a texel just outside a cloud has no cover and has its
+ * heights and severity (see the header). Not premultiplied. None for an empty band. The atlas's tile of the band (fieldAtlas), on
+ * its own: what the cloud volume writes to the graphics card, a band at a time.
+ */
+export function fieldTile(f: WxField, b: number): Bitmap | null {
+  if (f.lo[b] > f.hi[b]) return null
+  const data = new Uint8ClampedArray(FIELD_N * FIELD_N * 4)
+  const [cov, base, top, sev] = [f.cov[b], f.base[b], f.top[b], f.sev[b]]
+  for (let t = 0, o = 0; t < FIELD_N * FIELD_N; t++, o += 4) {
+    if (!(cov[t] > 0 || top[t] > 0)) continue
+    data[o] = cov[t] * 255
+    data[o + 1] = (base[t] / HEIGHT_MAX_M) * 255
+    data[o + 2] = (top[t] / HEIGHT_MAX_M) * 255
+    data[o + 3] = (sev[t] / 3) * 255
+  }
+  return { data, width: FIELD_N, height: FIELD_N }
 }
 
 /**
@@ -231,7 +304,7 @@ export function sampleField(f: WxField | null, lat: number, lon: number, altM: n
  * top (each over HEIGHT_MAX_M), A the severity over 3, each 0 … 255. A texel just outside a cloud has no cover and has its heights and
  * severity (see the header). Not premultiplied: upload the bytes as they are, not through a canvas.
  */
-export function fieldAtlas(f: WxField): { data: Uint8ClampedArray; width: number; height: number } {
+export function fieldAtlas(f: WxField): Bitmap {
   const [width, height] = [3 * FIELD_N, 2 * FIELD_N]
   const data = new Uint8ClampedArray(width * height * 4)
   for (let b = 0; b < BANDS; b++) {

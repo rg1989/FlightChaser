@@ -50,8 +50,8 @@ import { makeMapLayer, makeReferenceLayers } from './scene/mapLayer.ts'
 import { NO_DISCS, outlineDiscs, type Discs } from './scene/modelOutline.ts'
 import { PlaceLabels, type LayerLabel } from './scene/placeLabels.ts'
 import { Weather } from './scene/weather.ts'
-import { Weather3D, parseWxAt, parseWxBreak, parseWxDemo, parseWxScale, type Aircraft as WxAircraft } from './scene/weather3d.ts'
-import { aheadPath, aheadProfile, aheadStatus, hazardWords } from './scene/wxAhead.ts'
+import { Weather3D, parseWxAt, parseWxBreak, parseWxDemo, parseWxTier, type Aircraft as WxAircraft } from './scene/weather3d.ts'
+import { aheadPath, aheadStatus, hazardWords, keepProfile, type KeptProfile } from './scene/wxAhead.ts'
 import { makePendingLayer } from './scene/pendingLayer.ts'
 import { RouteLine, type PathPoint } from './scene/routeLine.ts'
 import { dayState, legSpans, type DayState } from './history/aircraftDay.ts'
@@ -833,13 +833,13 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const aircraftDiscs: Discs = { n: 0, d: new Float64Array(0) } // the chased aircraft's outline on screen: no name over it
   const weather = new Weather(viewer, cfg.apiBase, ui, (text) => toggles.setWeather(text), { units: () => frameUnits, radarIndex: () => map.liftIndex })
   // The chase's weather: round the chased aircraft, its hazard areas' labels through the names overlay. Its overcast greys the sky and
-  // dims the Sun's light too (0 when it is hidden). ?wxat=, ?wxdemo=, ?wxbreak= and ?wxscale= are check aids: the weather of another place, a made-up sky
-  // in place of the real one, a cloud pass that fails on purpose, and the cloud march held at one size. The clouds' look and the other Weather-menu
+  // dims the Sun's light too (0 when it is hidden). ?wxat=, ?wxdemo=, ?wxbreak= and ?wxtier= are check aids: the weather of another place, a made-up sky
+  // in place of the real one, a cloud pass that fails on purpose, and the cloud march held at one tier. The clouds' look and the other Weather-menu
   // choices are applied below (applyWxPrefs). Should the cloud pass fail (a drawing error took it out: its choices then do nothing), the Weather
   // button and its panel go (applyLayers) and one toast says so.
   const weather3d = new Weather3D(viewer, {
     apiBase: cfg.apiBase, labels: placeLabels, onStatus: (text) => toggles.setWeather(text), units: () => frameUnits, at: parseWxAt(location.search),
-    demo: parseWxDemo(location.search), broken: parseWxBreak(location.search), scale: parseWxScale(location.search), onShade: (shade) => sun.setOvercast(shade),
+    demo: parseWxDemo(location.search), broken: parseWxBreak(location.search), tier: parseWxTier(location.search), onShade: (shade) => sun.setOvercast(shade),
     onCloudsFailed: (note) => {
       applyLayers()
       alertsUi.notice('Weather', note)
@@ -847,7 +847,10 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   })
   // What is ahead on this heading (scene/wxAhead.ts): the way the chased aircraft goes if it keeps its track, speed and climb is worked out
   // every frame, for the 3-D view's track line and level slice (Weather3D.setAhead); a few times a second (WX_LOOK_MS) the status line,
-  // the ahead strip (ui/wxHud.ts) and the track line's minute labels follow from it. Hidden with the weather: nothing is worked out.
+  // the ahead strip (ui/wxHud.ts) and the track line's minute labels follow from it; the strip's profile (8,000 cells of the field) is
+  // made again only when it would show something else, in the frame after a look, and the next look paints it: over a storm the
+  // profile takes up to 6 ms and the look's own work up to 5, which in one frame was a hold of 11 ms. So the strip shows the sky as
+  // it was a quarter second ago, and comes a quarter second after it is switched on. Hidden with the weather: nothing is worked out.
   // Until a source of clouds has answered (weather3d.known) the status line says "No weather data" and the strip has no cells.
   // wxAids are the Looking ahead choices of the Weather menu (wxPrefs: the track line, the level slice, the ahead strip).
   // ponytail: the minute labels are placed with the names (placeLabels.ts), a few times a second, so they trail the track line by up to
@@ -857,6 +860,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const wxAids = { track: wxPrefs.track, slice: wxPrefs.slice, strip: wxPrefs.strip }
   let wxLookMs = -Infinity
   let wxHudUp = false // the HUD shows something
+  let wxKept: KeptProfile | null = null // the ahead strip's profile, kept while it would show the same (scene/wxAhead.ts keepProfile)
+  let wxProfileDue = false // this frame is the one after a look: the strip's profile is made in it
   let wxMinutesUp = false // the names overlay holds the minute labels
   let wxHudRects: readonly Rect[] = NO_RECTS // the HUD's chips and strip on the canvas: no name of the 3-D view (a hazard area's label is one) goes under them
   const lookAhead = (s: RenderState | null, now: number): void => {
@@ -865,19 +870,29 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     if (path === null) {
       if (wxHudUp) wxHud.set(null, null, null, frameUnits)
       if (wxMinutesUp) placeLabels.setLayer(WX_MINUTES_KEY, WX_MINUTES_RANK, [])
-      wxHudUp = wxMinutesUp = false
+      wxHudUp = wxMinutesUp = wxProfileDue = false
       wxHudRects = NO_RECTS
+      wxKept = null
       return
     }
-    if (now - wxLookMs < WX_LOOK_MS) return
-    wxLookMs = now
-    const units = frameUnits
+    if (!wxProfileDue && now - wxLookMs < WX_LOOK_MS) return
     const hazards = weather3d.hazards
     const known = weather3d.known // no source has answered yet: the field (none, or an empty one) says nothing of the sky
     const field = known ? weather3d.field : null
-    wxHud.set(aheadStatus(path, field, hazards, (h) => hazardWords(h.sigmet, units), known), wxAids.strip ? aheadProfile(path, field, hazards) : null, path, units)
+    if (wxProfileDue) {
+      wxProfileDue = false
+      wxKept = keepProfile(wxKept, path, field, hazards)
+      return
+    }
+    wxLookMs = now
+    const units = frameUnits
+    // (where the HUD stands is read before it is written to, and only when it says it may have moved: a read after a write makes the
+    // browser lay the page out on the spot; the names overlay keeps off the chips as they stood a quarter second ago)
+    if (wxHudUp && wxHud.moved()) wxHudRects = measureRoom('.fh-wxhud-chip, .fh-wxhud-strip').covers.filter((r) => r.w > 0 && r.h > 0)
+    if (!wxAids.strip) wxKept = null
+    wxHud.set(aheadStatus(path, field, hazards, (h) => hazardWords(h.sigmet, units), known), wxKept?.profile ?? null, path, units)
+    wxProfileDue = wxAids.strip
     wxHudUp = true
-    wxHudRects = measureRoom('.fh-wxhud-chip, .fh-wxhud-strip').covers.filter((r) => r.w > 0 && r.h > 0)
     if (weather3d.aheadShow.track || wxMinutesUp) {
       const minutes: LayerLabel[] = !weather3d.aheadShow.track ? [] : path.points.slice(1).map((p, i) => ({
         text: `${i + 1} min`, position: Cartesian3.fromDegrees(p.lon, p.lat, p.altM + geoidN(p.lat, p.lon)), color: WX_MINUTES_COLOR,
@@ -957,7 +972,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     Math.min(MAX_DELAY_S, Math.max(registry.delayTargetS(selected), (status.chaseEveryS ?? 0) + p90(arrivalAgesS) + 0.5))
   const bench = params.bench ? new BenchRecorder(viewer, { label: params.hex ?? 'browse' }) : null
   bench?.mountOverlay(div('fh-bench', ui))
-  // ?bench=1: User Timing measures fh:frame, fh:fleet, fh:table (each frame) and fh:ingest (each poll), and two marks
+  // ?bench=1: User Timing measures fh:frame, fh:fleet, fh:table, fh:wx and its part fh:wx-ahead (each frame) and fh:ingest (each poll), and two marks
   // under the chased aircraft for gate GE: fh:no-ground for each undefined terrain reading, and fh:ground-unknown for
   // each frame whose ground is still unknown after the memo. Read them with performance.getEntriesByName(name) or in
   // DevTools. ponytail: entries pile up (~200 per second) until performance.clearMeasures(); fine for runs of minutes.
@@ -1969,17 +1984,25 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     buildings.update(chasing && sf === null ? chased : null, tf) // around the chased aircraft; hidden in browse and scenarios
     // The weather round the chased aircraft, before the names that carry its labels. Shown in a live chase with the switch on
     // only (applyLayers): nothing of it runs otherwise. Its sky follows the relief drawn and the Sun's night (as the buildings').
+    const tWx = bench === null ? 0 : performance.now()
     if (weather3d.show) {
       if (chased !== null) {
         wxAircraft.lat = chased.lat
         wxAircraft.lon = chased.lon
         wxAircraft.altM = chased.hM
         wxAircraft.trackDeg = chased.trackDeg ?? chased.headingDeg
+        wxAircraft.gsKt = chased.gsKt ?? undefined
       }
       weather3d.setNight(prefs.light && st !== null ? st.night : 0)
       weather3d.update(chased !== null ? wxAircraft : null, now, tf)
     }
+    const tAhead = bench === null ? 0 : performance.now()
     lookAhead(chased, now)
+    if (bench !== null) {
+      measure?.('fh:wx', tWx)
+      measure?.('fh:wx-ahead', tAhead)
+      bench.work(performance.now() - tWx)
+    }
     // The names over the 3-D view, after the camera moved; none over the flight-data frame's cards and flight ID, nor
     // over the chased aircraft itself (its outline as drawn this frame; the rest of its brackets' square is ground).
     // ponytail: every sphere of the outline is projected every frame (about 150); only when a name reaches the square,
@@ -2040,7 +2063,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     if (bench !== null && now >= benchSayMs) {
       benchSayMs = Infinity
       const b = bench.recent()
-      const wx = weather3d.show ? `${weather3d.look}, march at ${weather3d.sky.clouds.scale ?? '?'}, last draw ${weather3d.drawMs.toFixed(0)} ms` : 'off'
+      const pass = weather3d.sky.clouds.passMs ?? Number.NaN
+      const wx = weather3d.show ? `${weather3d.look}, march at tier ${weather3d.tier} (size ${weather3d.sky.clouds.scale ?? '?'}), the pass ${Number.isFinite(pass) ? `${pass.toFixed(1)} ms on the GPU` : 'not timed'}, last draw ${weather3d.drawMs.toFixed(0)} ms, its field made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms` : 'off'
       console.warn(`FlightHopper bench: frame p50 ${(1000 / b.fpsP50).toFixed(1)} ms, p95 ${b.frameMsP95.toFixed(1)} ms · weather ${wx}`)
     }
     measure?.('fh:frame', now)

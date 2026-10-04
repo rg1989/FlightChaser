@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { PUFF_FILL, sequence, tower, type CloudSpec } from './cloudField.ts'
-import { BANDS, BAND_TOP_M, FIELD_KM, FIELD_N, HEIGHT_MAX_M, TOWER_BAND, buildField, coverAt, fieldAtlas, profile, sampleField } from './wxField.ts'
+import { BANDS, BAND_TOP_M, FIELD_KM, FIELD_N, HEIGHT_MAX_M, TOWER_BAND, buildField, columnAt, coverAt, coverIn, fieldAtlas, fieldColumn, profile, sampleField } from './wxField.ts'
 
 const KM_PER_DEG = 111.195
 const TEXEL_KM = FIELD_KM / FIELD_N
@@ -435,4 +435,29 @@ test('coverAt: the answer sampleField gives, written into the caller\'s object (
   assert.deepEqual(coverAt(f, LAT + 3, LON, 1450, stale()), { cover: 0, sev: 0 }, 'outside the square')
   assert.deepEqual(coverAt(f, LAT, LON, 20000, stale()), { cover: 0, sev: 0 }, 'a height no band reaches')
   assert.notEqual(sampleField(f, LAT, LON, 5000), sampleField(f, LAT, LON, 5000), 'sampleField still gives an object of its own each time')
+})
+
+test('columnAt and coverIn: the field at a place worked out once for every height (the ahead strip asks fifty heights of each place): at each height coverIn gives what coverAt gives there, to the last bit; no field, an empty one, a place outside the square: no cover at any height', () => {
+  const { specs } = storm()
+  const f = buildField([...specs, puff(1200, 1800, { wide: 5000, eastKm: 8 }), puff(5000, 7000, { wide: 9000, eastKm: -20, northKm: 15, sev: 1 }), puff(1500, 2600, { eastKm: -20, northKm: 15 })], LAT, LON)
+  const col = fieldColumn()
+  const [got, want] = [{ cover: 0.7, sev: 3 }, { cover: 0, sev: 0 }]
+  let hits = 0
+  for (const [e, n] of [[0, 0], [8, 0], [-20, 15], [2.7, -1.9], [-9.3, 6.1], [-18.2, 13.9], [60, 60], [-159.9, 0], [0, 159.9], [170, 0]]) {
+    const p = at(e, n)
+    assert.equal(columnAt(f, p.lat, p.lon, col), col, 'the caller\'s own column')
+    for (let alt = 0; alt <= 13_000; alt += 125) {
+      coverAt(f, p.lat, p.lon, alt, want)
+      assert.equal(coverIn(col, alt, got), got)
+      assert.ok(got.cover === want.cover && got.sev === want.sev, `${e}, ${n} at ${alt} m: ${JSON.stringify(got)} for ${JSON.stringify(want)}`)
+      if (want.cover > 0) hits++
+    }
+  }
+  assert.ok(hits > 100, `the sweep reaches cloud: ${hits} hits`)
+  const two = at(-20, 15) // a cumulus under a deck: two bands in one column
+  assert.equal(columnAt(f, two.lat, two.lon, col).n, 2)
+  for (const empty of [columnAt(null, LAT, LON, col), columnAt(buildField([], LAT, LON), LAT, LON, col), columnAt(f, LAT + 3, LON, col)]) {
+    assert.equal(empty.n, 0, 'the column given before is cleared')
+    assert.deepEqual(coverIn(empty, 1500, { cover: 0.7, sev: 3 }), { cover: 0, sev: 0 })
+  }
 })

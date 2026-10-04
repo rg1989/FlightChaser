@@ -7,7 +7,7 @@
 // The severity scale, its names and colours are here, once, for everything that shows it (the status line, the strip, the menu's legend).
 import type { Sigmet } from '../../shared/wx.ts'
 import type { Units } from '../ui/units.ts'
-import { coverAt, type Cover, type WxField } from './wxField.ts'
+import { columnAt, coverAt, coverIn, fieldColumn, type Cover, type WxField } from './wxField.ts'
 import { ringContains, wrapLon, type Hazard } from './wxGeo.ts'
 import { sigmetColor, sigmetLabel } from './wxText.ts'
 
@@ -20,6 +20,7 @@ export const PROFILE_COLS = 160 // the strip's cells: along the path (AHEAD_KM /
 export const PROFILE_ROWS = 50 // … and up (PROFILE_TOP_M / PROFILE_ROWS = 250 m each)
 export const PROFILE_TOP_M = 12_500
 const WORST_KM = 8 // the severity named for the first weather is the worst of this much of it
+const KEPT_KM = (0.5 * AHEAD_KM) / PROFILE_COLS // a profile is kept while its path's ends have moved less than this: half a cell
 const STEP_KM = AHEAD_KM / PROFILE_COLS // the status looks along the path this often
 const R_KM = 6371 // the sphere the field and the hazard areas are laid on (wxGeo.ts, wxField.ts)
 const RAD = Math.PI / 180
@@ -151,15 +152,24 @@ export interface AheadProfile {
   hazards: { fromKm: number; toKm: number; baseM: number; topM: number; color: string }[] // each stretch of the path inside a hazard area's rings, nearest first, with the area's heights and its colour (wxText.ts sigmetColor)
 }
 
-/** The field along the path, in cells of 0.5 km by 250 m up to 80 km and 12,500 m; and where the path is inside a hazard area. */
-export function aheadProfile(path: AheadPath, field: WxField | null, hazards: readonly Hazard[]): AheadProfile {
+/**
+ * The field along the path, in cells of 0.5 km by 250 m up to 80 km and 12,500 m; and where the path is inside a hazard area. Each
+ * place on the path is read from the field once, for all its fifty heights (wxField.ts columnAt). `reuse`: a profile made before,
+ * whose arrays this one fills and has (the profile given back is a new object: one that shows it sees that it is another).
+ */
+export function aheadProfile(path: AheadPath, field: WxField | null, hazards: readonly Hazard[], reuse?: AheadProfile): AheadProfile {
   const [cols, rows] = [PROFILE_COLS, PROFILE_ROWS]
-  const [cover, sev] = [new Float32Array(cols * rows), new Float32Array(cols * rows)]
+  const [cover, sev] = reuse === undefined ? [new Float32Array(cols * rows), new Float32Array(cols * rows)] : [reuse.cover, reuse.sev]
   const out: AheadProfile['hazards'] = []
   const walk = walker(path)
   const p = { lat: 0, lon: 0, altM: 0 }
   const cell: Cover = { cover: 0, sev: 0 }
+  const col = fieldColumn()
   const live = field !== null && !field.empty
+  if (reuse !== undefined && !live) {
+    cover.fill(0)
+    sev.fill(0)
+  }
   const rowM = PROFILE_TOP_M / rows
   const open = hazards.map(() => -1) // each hazard area: the column its run in progress began at
   const close = (k: number, end: number): void => {
@@ -168,8 +178,9 @@ export function aheadProfile(path: AheadPath, field: WxField | null, hazards: re
   for (let i = 0; i < cols; i++) {
     walk((i + 0.5) * STEP_KM, p)
     if (live) {
+      columnAt(field, p.lat, p.lon, col)
       for (let j = 0; j < rows; j++) {
-        coverAt(field, p.lat, p.lon, (j + 0.5) * rowM, cell)
+        coverIn(col, (j + 0.5) * rowM, cell)
         cover[j * cols + i] = cell.cover
         sev[j * cols + i] = cell.sev
       }
@@ -186,6 +197,32 @@ export function aheadProfile(path: AheadPath, field: WxField | null, hazards: re
   for (let k = 0; k < hazards.length; k++) if (open[k] >= 0) close(k, cols) // still on at 80 km
   out.sort((a, b) => a.fromKm - b.fromKm)
   return { cols, rows, kmAhead: AHEAD_KM, topM: PROFILE_TOP_M, cover, sev, hazards: out }
+}
+
+/** A profile, and what it was made of: the field, the hazard areas, and the two ends of its path (the aircraft, and 80 km on). */
+export interface KeptProfile {
+  profile: AheadProfile
+  field: WxField | null
+  hazards: readonly Hazard[]
+  from: { lat: number; lon: number }
+  to: { lat: number; lon: number }
+}
+
+/** Km between two places near each other, on the plane round the first. */
+const kmApart = (a: { lat: number; lon: number }, b: { lat: number; lon: number }): number =>
+  Math.hypot((b.lat - a.lat) * RAD * R_KM, wrapLon(b.lon - a.lon) * RAD * R_KM * Math.cos(a.lat * RAD))
+
+/**
+ * The strip's profile for this path, field and hazard areas: the one kept, while it would show the same (the same field, the same
+ * list of hazard areas, and a path whose first place and whose place AHEAD_KM on have each moved less than half a cell since it was
+ * made: the aircraft's height and speed move no cell); else made again, in the kept one's arrays. At 450 kt that is once a second or
+ * so, where the strip is looked at four times a second.
+ */
+export function keepProfile(kept: KeptProfile | null, path: AheadPath, field: WxField | null, hazards: readonly Hazard[]): KeptProfile {
+  const from = path.points[0]
+  const to = pathPointAt(path, AHEAD_KM)
+  if (kept !== null && kept.field === field && kept.hazards === hazards && kmApart(kept.from, from) < KEPT_KM && kmApart(kept.to, to) < KEPT_KM) return kept
+  return { profile: aheadProfile(path, field, hazards, kept?.profile), field, hazards, from: { lat: from.lat, lon: from.lon }, to: { lat: to.lat, lon: to.lon } }
 }
 
 /**
