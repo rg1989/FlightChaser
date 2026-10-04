@@ -31,15 +31,18 @@
 //   cloud (150 km: its reach, which fades over the last 20) and 30 km past that, round the field's middle, from which the aircraft
 //   is never more than 28 km while that field is drawn: so what a build adds is out of the aircraft's reach and comes in through the
 //   fade as the aircraft closes, not at once at full strength. Built from the
-//   frame's zoom-7 tiles (radarCells.ts) at the same time as the observed clouds (the look builds those; where the tiles hold an
-//   echo the radar's part, the heavier, is built the frame after, and both are drawn the frame after that), and again when
+//   frame's zoom-7 tiles (radarCells.ts) at the same time as the observed clouds, and again when
 //   the next field is due, or when a tile or a newer frame has come (the tiles that come one by one are waited for: one
 //   build, when the last has come, at most 3 s after the first); until a newer frame's tile has come the last frame's stands in
 //   for it. They stand on the nearest station's ceiling (cloudField.ts radarBases), and RADAR_LOOK.reserve of the 700 clouds are
 //   kept for them;
+// - every source's clouds are gathered into the one list by a gatherer (wxGather.ts), in a page a worker of its own: in a rainy
+//   sky that is 10 to 25 ms of work, which held a frame 21 ms at a field's rebuild in a flight. The look asks it (where the tiles
+//   hold an echo, the frame after the look: where there is no worker the work is this thread's, and a look is work enough for a
+//   frame), and the answer is drawn at the frame after it has come; an answer a later ask has overtaken is not drawn;
 // - the model's clouds (cloudField.ts modelClouds), the lowest priority: after the observed and the radar's clouds, they fill what is
-//   left of the 700 (none where those fill it). Worked out once for a grid and the reports held, so a rebuild for a radar tile or 30 km
-//   of flight reuses them; a grid's arrival builds the sky again. windAt gives the model's wind at a place and pressure altitude: the
+//   left of the 700 (none where those fill it). Worked out once for a grid and the reports held (the gatherer keeps them, and each
+//   report's clouds), so a rebuild for a radar tile or the next field reuses them; a grid's arrival builds the sky again. windAt gives the model's wind at a place and pressure altitude: the
 //   flight-data frame's when the aircraft sends none (app.ts, live chase only);
 // - ground fog round a station near the aircraft that sees little (groundFog.ts);
 // - rain or snow round the camera, from the radar under it or the nearest station's weather, below the cloud: a light
@@ -79,18 +82,20 @@ import { geoidN } from '../../shared/geoid.ts'
 import { MODEL_CELL_DEG, type Metar, type ModelGrid, type Sigmet } from '../../shared/wx.ts'
 import type { TerrainFrame } from '../types.ts'
 import { DEFAULT_UNITS, type Units } from '../ui/units.ts'
-import { MAX_CLOUDS, RADAR_LOOK, REBUILD_KM, modelClouds, nearestClouds, observedClouds, overcastShade, radarBases, radarClouds, type CloudSpec } from './cloudField.ts'
+import { REBUILD_KM, observedClouds, overcastShade, type CloudSpec } from './cloudField.ts'
 import { REACH_KM } from './cloudShaders.ts'
 import { CloudVolume, resumeRendering, type CloudLook, type HazardStyle } from './cloudVolume.ts'
 import { MARCH_TIERS, MarchPace } from './marchPace.ts'
 import { drawnHeightM } from './exaggeration.ts'
 import { GroundFog, fogNear } from './groundFog.ts'
 import { inInnerHalf, modelWindAt, type ModelWind } from './modelWind.ts'
+import { builder, type Builder, type WorkerLike } from './fieldBuilder.ts'
 import { fieldCentre, fieldDue } from './fieldPlace.ts'
 import type { LayerLabel, PlaceLabels } from './placeLabels.ts'
 import { Precipitation, cloudBaseM, nearestStation, precipFromDbz, precipFromWx, radarPixel, radarSample, windOf, type Fall } from './precip.ts'
 import { RADAR_INDEX, RADAR_SRC_MAX, RadarSource, type RadarIndex, type SourceTile } from './radar.ts'
 import { radarCells, tilesAcross } from './radarCells.ts'
+import { gatherer, type GatherJob, type Gathered } from './wxGather.ts'
 import { hazardsNear, ringCentre, shiftMetars, shiftModel, shiftSigmets, viewBox, wrapLon, type Hazard } from './wxGeo.ts'
 import { MIN_GS_KT, type AheadPath } from './wxAhead.ts'
 import { demoSky } from './wxDemo.ts'
@@ -128,6 +133,9 @@ const KM_PER_DEG = 111.195 // of latitude, on a sphere of 6,371 km
  * stands out of the volume's reach and comes in through its fade as the aircraft closes.
  */
 const RADAR_READ_KM = REACH_KM[1] + REBUILD_KM
+/** The browser's worker for the gathering of a sky's clouds (Vite bundles the file named here); none outside a page. */
+const startGatherer = typeof Worker === 'undefined' || typeof document === 'undefined' ? null
+  : (): WorkerLike<GatherJob, Gathered> => new Worker(new URL('./wxGather.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike<GatherJob, Gathered>
 /** A hazard area's colour: its edges', its footprint's and its label's. */
 const hazardColor = (h: Hazard): string => sigmetColor(h.sigmet.hazard)
 const PRECIP_OVER_BASE_M = 300 // rain or snow shows round a camera up to this far over its cloud's base,
@@ -232,6 +240,7 @@ export interface Weather3DOptions {
   units?: () => Units // what heights are worded in (the flight-data frame's); default feet
   at?: WxAt | null // ?wxat
   getJson?: (url: string) => Promise<unknown>
+  gather?: Builder<GatherJob, Gathered> // who gathers a sky's clouds; default a worker in a page, else this thread (wxGather.ts)
   sky?: Sky // default: Cesium's, in the viewer's scene
   tile?: (radar: RadarSource, z: number, x: number, y: number) => Promise<SourceTile | null> // a decoded radar tile; default the source's own
   epochMs?: () => number // the wall clock the model's grid is dated by; default Date.now
@@ -358,17 +367,18 @@ export class Weather3D {
   #modelGen = 0 // the grid held: the clouds are built again from it when it changes (or when it grows too old to use)
   #modelOld = false // the grid held was too old to use at the last look
   #builtModel = -1
-  #modelMade: { grid: ModelGrid; metars: readonly Metar[]; specs: CloudSpec[] } | null = null // the model's clouds, kept for the grid and the reports they were made from
   #metarGen = 0 // the METAR list held: the clouds are built again from it when it changes
   #builtGen = -1
   #centre = { lat: Number.NaN, lon: Number.NaN } // the place the clouds were last built round: the field's middle (fieldPlace.ts)
   #stations = 0 // the stations the clouds were built from
   #pending: { clouds: CloudSpec[]; at: { lat: number; lon: number } } | null = null // built round a place, drawn at the next frame
   #drawMs = 0 // how long the last draw took
-  #staged: CloudSpec[] | null = null // the observed clouds built at a look, to be joined by the radar's, which are built at the next frame
+  #staged = false // a look has found the clouds due, and the gathering is asked for at the next frame
+  readonly #gather: Builder<GatherJob, Gathered>
+  #gatherAsk = 0 // the gathering last asked for: an answer to an earlier one is not drawn
+  #anew = false // the next gathering drops what the gatherer keeps (rebuildSky)
   #radarGen = 0 // the radar data held (its newest frame, its tiles): the radar's clouds are built again from it when it changes
   #builtRadar = -1
-  #made = new WeakMap<Metar, CloudSpec[]>() // each report's clouds (observedClouds' cache)
   #fNow = 1 // the relief drawn, as the last frame gave it (its object is reused: copied)
   #relHM = 0
   #night = 0 // the Sun's night, as setNight gave it
@@ -392,6 +402,7 @@ export class Weather3D {
     this.#onStatus = opts.onStatus ?? (() => {})
     this.#units = opts.units ?? (() => DEFAULT_UNITS)
     this.#getJson = opts.getJson ?? getJson
+    this.#gather = opts.gather ?? builder(startGatherer, gatherer(), 'the worker that gathers the weather\'s clouds')
     this.#at = opts.at ?? null
     this.#onCloudsFailed = opts.onCloudsFailed ?? (() => {})
     this.#heldTier = opts.tier ?? null
@@ -585,10 +596,7 @@ export class Weather3D {
    * kept, as when the next field is due (a check run times that).
    */
   rebuildSky(anew = true): void {
-    if (anew) {
-      this.#made = new WeakMap()
-      this.#modelMade = null
-    }
+    if (anew) this.#anew = true
     this.#builtGen = -1
     this.#refresh()
   }
@@ -610,7 +618,7 @@ export class Weather3D {
       this.#sky.clouds.draw(this.#pending.clouds, this.#pending.at)
       this.#drawMs = performance.now() - t0
       this.#pending = null
-    } else if (this.#staged !== null) this.#buildRadar() // one heavy piece of work a frame: the look, this, the draw
+    } else if (this.#staged) this.#askClouds() // one heavy piece of work a frame: the look, this, the draw
     this.#sky.clouds.frame(tf, this.#night)
     this.#sky.fog.frame(tf, this.#night)
     this.#easeShade(nowMs)
@@ -645,6 +653,7 @@ export class Weather3D {
     if (alive) this.show = false
     this.#show = false
     this.#destroyed = true
+    this.#gather.destroy()
     this.#sky.precip.destroy() // the overlay is the page's
     if (!alive) return
     void this.#viewer.dataSources.remove(this.#footprints, true)
@@ -831,12 +840,9 @@ export class Weather3D {
   }
 
   /**
-   * The clouds of the next field, round its middle (fieldPlace.ts: a place ahead of the aircraft on its track): the observed clouds
-   * built now, then the radar's, then the model's, within one cap;
-   * the radar's keep RADAR_LOOK.reserve of it when it has so many, the observed ones giving way, the farthest first; the model's
-   * come last, a forecast: they fill what is left. Where the tiles held have an echo the radar's part (the heavier) is built at the
-   * next frame (#buildRadar), else it is nothing but the asking for its tiles and is done here. Handed to the cloud volume at the
-   * frame after. With ?wxdemo they are the demo sky's, every time.
+   * The clouds of the next field, round its middle (fieldPlace.ts: a place ahead of the aircraft on its track): the gatherer is asked
+   * for them (#askClouds), at the next frame where the tiles held have an echo (the radar's part is the heavier), else here. With
+   * ?wxdemo they are the demo sky's, every time, handed to the cloud volume at the frame after.
    */
   #buildClouds(): void {
     const a = this.#here
@@ -848,62 +854,45 @@ export class Weather3D {
       this.#pending = { clouds: this.#demoSpecs, at: c }
       return
     }
-    const observed = observedClouds(this.#metars, c.lat, c.lon, { cache: this.#made })
-    this.#stations = observed.stations
+    this.#stations = observedClouds(this.#metars, c.lat, c.lon, { max: 0 }).stations // (counted here: no cloud is made)
     this.#builtGen = this.#metarGen
-    this.#staged = observed.specs
-    if (!this.#echoes()) this.#buildRadar()
-  }
-
-  /** The sky from the observed clouds staged, the radar's and the model's, round the field's middle: to be drawn at the next frame. */
-  #buildRadar(): void {
-    const a = this.#centre
-    const observed = this.#staged!
-    this.#staged = null
-    const radar = this.#radarSky()
-    // The observed clouds first, giving way to the radar's reserve; then the radar's; then the model's: a forecast, the lowest priority,
-    // it fills what is left of the 700. The radar's are kept as far as they were read, whatever their puffs' own fade (100 km): the
-    // volume fades every cloud by its one reach.
-    const room = radar.length === 0 ? MAX_CLOUDS : MAX_CLOUDS - Math.min(radar.length, RADAR_LOOK.reserve)
-    const clouds = nearestClouds([observed], a.lat, a.lon, room)
-    clouds.push(...nearestClouds([radar], a.lat, a.lon, MAX_CLOUDS - clouds.length, RADAR_READ_KM, () => REACH_KM[1]))
-    clouds.push(...nearestClouds([this.#modelSky()], a.lat, a.lon, MAX_CLOUDS - clouds.length))
-    this.#pending = { clouds, at: a }
-    this.#builtRadar = this.#radarGen
-    this.#builtModel = this.#modelGen
+    this.#staged = true
+    if (!this.#echoes()) this.#askClouds()
   }
 
   /**
-   * The model's clouds from the grid and the reports held, made again only when either has changed: a rebuild for a radar tile or 30 km
-   * of flight finds them as they were. None before the grid has come.
+   * The gatherer asked for the sky round the field's middle: the observed clouds, the radar's from the tiles held (a tile within
+   * RADAR_READ_KM that has not come is asked for, and the clouds are built again when it has; the radar is read at that place less
+   * the ?wxat shift, and its cells come out at their place plus it) and the model's (wxGather.ts). Its answer is drawn at the frame
+   * after it comes, unless a later ask has overtaken it.
    */
-  #modelSky(): CloudSpec[] {
-    const grid = this.#grid()
-    if (grid === null) return []
-    const made = this.#modelMade
-    if (made !== null && made.grid === grid && made.metars === this.#metars) return made.specs
-    const specs = modelClouds(grid, this.#metars)
-    this.#modelMade = { grid, metars: this.#metars, specs }
-    return specs
+  #askClouds(): void {
+    const at = this.#centre
+    this.#staged = false
+    const { dLat, dLon } = this.#shift
+    const tiles: GatherJob['tiles'] = []
+    radarCells((x, y) => { // (given no tile, it reads none: it names the tiles in reach)
+      const tile = this.#tileAt(x, y)
+      if (tile !== null) tiles.push({ x, y, tile })
+      return null
+    }, at.lat - dLat, wrapLon(at.lon - dLon), this.#shift, RADAR_READ_KM)
+    const id = ++this.#gatherAsk
+    const job: GatherJob = {
+      id, lat: at.lat, lon: at.lon, metars: this.#metars, metarGen: this.#metarGen, grid: this.#grid(), modelGen: this.#modelGen, tiles,
+      shift: { dLat, dLon }, readKm: RADAR_READ_KM, reachKm: REACH_KM[1], anew: this.#anew,
+    }
+    this.#anew = false
+    this.#builtRadar = this.#radarGen
+    this.#builtModel = this.#modelGen
+    this.#gather.ask(job, (got) => {
+      if (got.id === this.#gatherAsk && !this.#destroyed) this.#pending = { clouds: got.clouds, at }
+    })
   }
 
   /** Whether any tile held has an echo (else the radar has no clouds to build). */
   #echoes(): boolean {
     for (const t of this.#tiles.values()) if (t.tile !== null) return true
     return false
-  }
-
-  /**
-   * The radar's clouds within RADAR_READ_KM of the field's middle (its towers and deck puffs counted to their caps within RADAR_LOOK.radiusKm,
-   * those of the ring beyond it on top), from the
-   * frame's tiles that have come (a tile not come is asked for, and the clouds are built again when it has), on the bases the nearest
-   * stations' reports give. The radar is read at that place less the ?wxat shift, and the cells come out at their place plus it.
-   */
-  #radarSky(): CloudSpec[] {
-    const a = this.#centre
-    const { dLat, dLon } = this.#shift
-    const cells = radarCells((x, y) => this.#tileAt(x, y), a.lat - dLat, wrapLon(a.lon - dLon), this.#shift, RADAR_READ_KM)
-    return cells.length === 0 ? [] : radarClouds(cells, radarBases(this.#metars))
   }
 
   /** The overcast's grey over the camera: the nearest station's (within its 30 km) broken or overcast layer above it. */

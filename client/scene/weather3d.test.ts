@@ -12,6 +12,7 @@ import { MODEL_CLOUD_HPA, MODEL_WIND_HPA, type Cloud, type Metar, type ModelGeo,
 import type { TerrainFrame } from '../types.ts'
 import { DEFAULT_UNITS, type Units } from '../ui/units.ts'
 import { LOOKS, MAX_CLOUDS, MODEL_LOOK, PUFF_FILL, RADAR_LOOK, REBUILD_KM, modelClouds, nearestClouds, observedClouds, radarBases, radarClouds, type CloudSpec } from './cloudField.ts'
+import type { Builder } from './fieldBuilder.ts'
 import { fieldCentre } from './fieldPlace.ts'
 import { fogNear, type Fog } from './groundFog.ts'
 import type { LayerLabel } from './placeLabels.ts'
@@ -23,6 +24,7 @@ import { REACH_KM } from './cloudShaders.ts'
 import type { CloudLook, HazardStyle } from './cloudVolume.ts'
 import { HAZARD_KM, HttpError, MODEL_DWELL_MS, Weather3D, echoShade, parseWxAt, parseWxBreak, parseWxDemo, parseWxTier, statusText3d } from './weather3d.ts'
 import { aheadPath, type AheadPath } from './wxAhead.ts'
+import { gatherer, type GatherJob, type Gathered } from './wxGather.ts'
 import { demoSky } from './wxDemo.ts'
 import { buildField, type WxField } from './wxField.ts'
 import type { Hazard } from './wxGeo.ts'
@@ -148,7 +150,7 @@ function geoOf(url: string): ModelGeo {
  * was asked, answered from `answers` (or failed, or held until release()). The model is asked at the first look (no dwell) unless
  * `dwell` asks for the real 10 s; `network` has it use its own getJson, over the global fetch; `demo`: ?wxdemo's km.
  */
-function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: boolean; demo?: number; tier?: number } = {}) {
+function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: boolean; demo?: number; tier?: number; gather?: Builder<GatherJob, Gathered> } = {}) {
   const asked: string[] = []
   const answers: Record<'metar' | 'sigmet' | 'radar', unknown> = { metar: [], sigmet: [], radar: INDEX }
   const failing = new Set<Kind>()
@@ -196,7 +198,7 @@ function rig(o: { at?: { lat: number; lon: number }; dwell?: boolean; network?: 
   const failedNotes: string[] = [] // what the app was told when the cloud pass failed
   const w = new Weather3D(viewer, {
     apiBase: '/api', labels, getJson: o.network ? undefined : getJson, onStatus: (t) => lines.push(t), units: () => units, at: o.at, sky, tile, epochMs: () => epoch.now,
-    onShade: (s) => shades.push(s), dwellMs: o.dwell ? undefined : 0, demo: o.demo, onCloudsFailed: (note) => failedNotes.push(note), tier: o.tier,
+    onShade: (s) => shades.push(s), dwellMs: o.dwell ? undefined : 0, demo: o.demo, onCloudsFailed: (note) => failedNotes.push(note), tier: o.tier, gather: o.gather,
   })
   return {
     w, asked, answers, model, epoch, failing, hold, sources, removed, labelCalls, lines, shades, failedNotes, sky, tiles, tileAsks, tileHold, frameTiles,
@@ -957,6 +959,37 @@ test('Weather3D: rain or snow from the radar under the camera, its place less th
   assert.ok(r.sky.precip.sets.at(-1) !== null)
   r.w.show = false
   assert.equal(r.sky.precip.sets.at(-1), null, 'hidden: nothing falls')
+})
+
+test('Weather3D: a sky\'s clouds are gathered by the gatherer it is given (in a page a worker: the frames do not wait for it): asked at the look with the reports, the grid and the radar\'s tiles held, the answer drawn the frame after it comes, an answer a later ask has overtaken not at all; destroy ends it', async () => {
+  const asks: { job: GatherJob; done: (got: Gathered) => void }[] = []
+  let ended = 0
+  const r = rig({ gather: { ask: (job, done) => void asks.push({ job, done }), destroy: () => void ended++ } })
+  r.answers.metar = [metar('LLBG', 32.01, 34.89, { clouds: [layer('SCT', 3000)] }), metar('LLHA', 32.81, 35.04, { clouds: [layer('BKN', 2500)] })]
+  await open(r)
+  assert.ok(asks.length >= 1)
+  const first = asks.at(-1)!
+  const centre = fieldCentre(AC.lat, AC.lon, undefined)
+  assert.deepEqual([first.job.lat, first.job.lon, first.job.metars, first.job.readKm, first.job.reachKm, first.job.anew], [centre.lat, centre.lon, r.w.metars, READ_KM, REACH_KM[1], false])
+  assert.match(r.lines.at(-1)!, /2 airports/, 'the line counts the stations at the look: it does not wait for the clouds')
+  for (const t of [16, 32, 48]) r.w.update(AC, t)
+  assert.equal(r.sky.clouds.draws.length, 0, 'no answer yet: nothing drawn, and the frames go on')
+  const answer = (a: typeof first): Gathered => gatherer()(a.job)
+  first.done(answer(first))
+  assert.equal(r.sky.clouds.draws.length, 0, 'the answer has come: drawn at the next frame')
+  r.w.update(AC, 64)
+  assert.deepEqual(r.sky.clouds.draws, [nearestClouds([observedClouds(r.w.metars, AC.lat, AC.lon).specs], AC.lat, AC.lon)])
+  r.w.rebuildSky()
+  r.w.rebuildSky(false)
+  const [older, newer] = asks.slice(-2)
+  assert.deepEqual([older.job.anew, newer.job.anew, newer.job.id > older.job.id, newer.job.metarGen === older.job.metarGen], [true, false, true, true])
+  newer.done(answer(newer))
+  older.done(answer(older)) // overtaken, and late
+  r.w.update(AC, 80)
+  r.w.update(AC, 96)
+  assert.equal(r.sky.clouds.draws.length, 2, 'the later ask\'s answer, once')
+  r.w.destroy()
+  assert.equal(ended, 1)
 })
 
 test('Weather3D: rebuildSky builds the clouds again at once (a check aid for the look constants), drawn the frame after', async () => {
