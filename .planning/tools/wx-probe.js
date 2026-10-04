@@ -8,10 +8,11 @@
 // - rebuild(): the field built again n times (Weather3D.rebuildSky): the main thread's longest hold and the longest frame at each.
 // - hud(): what the status line and the ahead strip cost each time they are worked out.
 // - steady(): the frames and the pass over a while, with the pace's tier at each second.
-// - ab(): the pass as it was before perf-1 (wx-old-shaders.js: its shaders, generated from that commit) put in the scene beside the
-//   one in use, both drawn every frame, each timed: the same view, the same field, the same moment. The machine these runs are made
-//   on is shared, and another program on its graphics card doubles a pass's time: the two side by side take that alike, so their
-//   ratio stands where a time on its own does not.
+// - ab(): the pass as it was before perf-1 (wx-old-shaders.js: its shaders, generated from that commit) and a second copy of the pass
+//   as it is now, both put in the scene after the one in use and drawn every frame, each timed: the same view, the same field, the
+//   same moment. The machine these runs are made on is shared, and another program on its graphics card doubles a pass's time: the
+//   two side by side take that alike, so their ratio stands where a time on its own does not. (The first pass after the scene's own
+//   drawing pays for more than itself, so the pass in use is not one of the two; and the two are timed in both orders.)
 // - tiers(): the pass's time at each tier of the pace (marchPace.ts), the tiers taken in turn, several rounds.
 import { PostProcessStage, PostProcessStageComposite } from 'cesium'
 import { OLD_MARCH, OLD_MIX } from './wx-old-shaders.js'
@@ -45,12 +46,12 @@ function gpuTimer() {
   const gl = window.viewer.scene.context._gl
   const ext = gl.getExtension('EXT_disjoint_timer_query_webgl2')
   if (ext === null) return null
-  const t = { on: false, march: [], mix: [], marchOld: [], mixOld: [], waiting: [] }
+  const t = { on: false, march: [], mix: [], marchOld: [], mixOld: [], marchNew: [], mixNew: [], waiting: [] }
   const execute = PostProcessStage.prototype.execute
   PostProcessStage.prototype.execute = function (...args) {
     const name = String(this.name)
-    const old = name.endsWith('_old') ? 'Old' : ''
-    const key = name.startsWith('fh_cloud_march') ? `march${old}` : name.startsWith('fh_cloud_mix') ? `mix${old}` : null
+    const which = name.endsWith('_old') ? 'Old' : name.endsWith('_new') ? 'New' : ''
+    const key = name.startsWith('fh_cloud_march') ? `march${which}` : name.startsWith('fh_cloud_mix') ? `mix${which}` : null
     if (key === null || !t.on) return execute.apply(this, args)
     const q = gl.createQuery()
     gl.beginQuery(ext.TIME_ELAPSED_EXT, q)
@@ -218,35 +219,119 @@ function livePass() {
   return null
 }
 
-export async function ab({ looks = ['natural', 'severity', 'blocks'], s = 3 } = {}) {
+/** A pass made beside the one in the scene (not yet in the scene), reading the same images and numbers: the pass as it was before perf-1 ('old'), or as it is now ('new'). */
+function passOf(live, which, shaders) {
+  // The old shaders read an image Cesium had flipped; the volume's own images are not: the same texels, read the other way up.
+  const unflip = (src) => src.replace('vec2(px.x / ATLAS.x, 1.0 - px.y / ATLAS.y)', 'px / ATLAS').replaceAll('vec2(m.x / FIELD_KM + 0.5, 0.5 - m.y / FIELD_KM)', 'm.xy / FIELD_KM + 0.5')
+    .replace(/vec2\(px\.x \/ ([\d.]+), 1\.0 - px\.y \/ ([\d.]+)\)/, 'px / vec2($1, $2)')
+  const [marchSrc, mixSrc] = which === 'old' ? [unflip(OLD_MARCH), unflip(OLD_MIX)] : [shaders.MARCH_SHADER, shaders.MIX_SHADER]
+  const uniforms = (src, map) => Object.fromEntries([...src.matchAll(/^uniform\s+\w+\s+(\w+)/gm)].map((m) => m[1]).filter((n) => !['colorTexture', 'depthTexture', 'u_march'].includes(n)).map((n) => [n, map[n]]))
+  const march = new PostProcessStage({ name: `fh_cloud_march_${which}`, fragmentShader: marchSrc, textureScale: live.march.textureScale, uniforms: uniforms(marchSrc, live.march._uniformMap) })
+  const mix = new PostProcessStage({ name: `fh_cloud_mix_${which}`, fragmentShader: mixSrc, uniforms: { ...uniforms(mixSrc, live.mix._uniformMap), u_march: march.name } })
+  const missing = [...Object.entries(march.uniforms), ...Object.entries(mix.uniforms)].filter(([, v]) => v === undefined).map(([n]) => n)
+  return { pass: new PostProcessStageComposite({ name: `fh_cloud_${which}`, stages: [march, mix], inputPreviousStageTexture: false }), missing }
+}
+const oldPass = (live) => {
+  const { pass, missing } = passOf(live, 'old')
+  return { old: pass, missing }
+}
+
+export async function ab({ looks = ['natural', 'severity', 'blocks'], s = 2 } = {}) {
   const w = window.weather3d
   const t = gpuTimer()
   const live = livePass()
   if (t === null || live === null) return `${where()} ab: ${t === null ? 'no timer query' : 'no pass in the scene'}`
-  // The old shaders read an image Cesium had flipped; the volume's own images are not: the same texels, read the other way up.
-  const unflip = (src) => src.replace('vec2(px.x / ATLAS.x, 1.0 - px.y / ATLAS.y)', 'px / ATLAS').replaceAll('vec2(m.x / FIELD_KM + 0.5, 0.5 - m.y / FIELD_KM)', 'm.xy / FIELD_KM + 0.5')
-    .replace(/vec2\(px\.x \/ ([\d.]+), 1\.0 - px\.y \/ ([\d.]+)\)/, 'px / vec2($1, $2)')
-  const uniforms = (src, map) => Object.fromEntries([...src.matchAll(/^uniform\s+\w+\s+(\w+)/gm)].map((m) => m[1]).filter((n) => !['colorTexture', 'depthTexture', 'u_march'].includes(n)).map((n) => [n, map[n]]))
-  const march = new PostProcessStage({ name: 'fh_cloud_march_old', fragmentShader: unflip(OLD_MARCH), textureScale: live.march.textureScale, uniforms: uniforms(OLD_MARCH, live.march._uniformMap) })
-  const mix = new PostProcessStage({ name: 'fh_cloud_mix_old', fragmentShader: unflip(OLD_MIX), uniforms: { ...uniforms(OLD_MIX, live.mix._uniformMap), u_march: march.name } })
-  const missing = [...Object.entries(march.uniforms), ...Object.entries(mix.uniforms)].filter(([, v]) => v === undefined).map(([n]) => n)
-  const old = new PostProcessStageComposite({ name: 'fh_cloud_old', stages: [march, mix], inputPreviousStageTexture: false })
+  const shaders = await import('/client/scene/cloudShaders.ts')
+  const was = w.look
+  const out = []
+  let lost = []
+  for (const look of looks) {
+    w.look = look
+    const got = { old: [], new: [], oldMarch: [], newMarch: [] }
+    for (const order of [['old', 'new'], ['new', 'old']]) {
+      const made = order.map((which) => passOf(live, which, shaders))
+      lost = made.flatMap((m) => m.missing)
+      for (const m of made) live.stages.add(m.pass)
+      await frames(0.8)
+      for (const k of ['marchOld', 'mixOld', 'marchNew', 'mixNew']) t[k].length = 0
+      t.on = true
+      await frames(s)
+      t.on = false
+      got.old.push(med(t.marchOld) + med(t.mixOld))
+      got.new.push(med(t.marchNew) + med(t.mixNew))
+      got.oldMarch.push(med(t.marchOld))
+      got.newMarch.push(med(t.marchNew))
+      for (const m of made) live.stages.remove(m.pass)
+      await frames(0.2)
+    }
+    const mean = (a) => (a[0] + a[1]) / 2
+    out.push(`${look}: was ${f2(mean(got.old))} ms (march ${f2(mean(got.oldMarch))}; drawn first ${f2(got.old[0])}, second ${f2(got.old[1])}), is ${f2(mean(got.new))} ms (march ${f2(mean(got.newMarch))}; second ${f2(got.new[0])}, first ${f2(got.new[1])}): ${f2(mean(got.old) / mean(got.new))} times quicker`)
+  }
+  w.look = was
+  return `${where()} [${innerWidth}x${innerHeight}, march ${tier()}] the old pass and the new side by side (march + mix)${lost.length > 0 ? `; UNIFORMS MISSING: ${lost}` : ''}: ${out.join(' | ')}`
+}
+
+/**
+ * Whether the pass draws what it drew before perf-1: the same frame drawn with the new pass, then with the old one in its place, then
+ * with the new one again (what differs between the first and the third is the scene's own change from one frame to the next: the
+ * sea's waves), and the pictures compared, pixel by pixel.
+ */
+export async function same({ looks = ['natural', 'severity', 'blocks'] } = {}) {
+  const w = window.weather3d
+  const live = livePass()
+  if (live === null) return `${where()} same: no pass in the scene`
+  const v = window.viewer
+  const gl = v.scene.context._gl
+  const [W, H] = [gl.drawingBufferWidth, gl.drawingBufferHeight]
+  const { old, missing } = oldPass(live)
+  old.enabled = false
   live.stages.add(old)
+  const grab = (newOne) => {
+    live.pass.enabled = newOne
+    old.enabled = !newOne
+    const time = v.clock.currentTime
+    for (let k = 0; k < 3; k++) v.scene.render(time) // the stage that was off is made ready again in the first
+    const px = new Uint8Array(W * H * 4)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    gl.readPixels(0, 0, W, H, gl.RGBA, gl.UNSIGNED_BYTE, px)
+    return px
+  }
+  const differ = (a, b) => {
+    let [sum, most, over] = [0, 0, 0]
+    for (let o = 0; o < a.length; o += 4) {
+      const d = Math.max(Math.abs(a[o] - b[o]), Math.abs(a[o + 1] - b[o + 1]), Math.abs(a[o + 2] - b[o + 2]))
+      sum += d
+      if (d > most) most = d
+      if (d > 8) over++
+    }
+    return `mean ${f2(sum / (a.length / 4))} of 255, ${f2((100 * over) / (a.length / 4))} % of pixels over 8, most ${most}`
+  }
   const was = w.look
   const out = []
   for (const look of looks) {
     w.look = look
     await frames(1)
-    for (const k of ['march', 'mix', 'marchOld', 'mixOld']) t[k].length = 0
-    t.on = true
-    await frames(s)
-    t.on = false
-    const [n, o] = [med(t.march) + med(t.mix), med(t.marchOld) + med(t.mixOld)]
-    out.push(`${look}: was ${f2(med(t.marchOld))} + ${f2(med(t.mixOld))} ms, is ${f2(med(t.march))} + ${f2(med(t.mix))} ms: ${f2(o / n)} times quicker (${t.march.length} frames)`)
+    const [a, b, c] = [grab(true), grab(false), grab(true)]
+    out.push(`${look}: new against old: ${differ(a, b)}; new against new again: ${differ(a, c)}`)
   }
   w.look = was
+  live.pass.enabled = true
   live.stages.remove(old)
-  return `${where()} [${innerWidth}x${innerHeight}, march ${tier()}] old pass beside the new (march + mix)${missing.length > 0 ? `; UNIFORMS MISSING: ${missing}` : ''}: ${out.join(' | ')}`
+  return `${where()} [${W}x${H}] the picture${missing.length > 0 ? `; UNIFORMS MISSING: ${missing}` : ''}: ${out.join(' | ')}`
+}
+
+/** Hazard areas of 48 edges in all (two rings of 24 corners round the aircraft, 25 and 45 km out), in the style given: the most the march is ever given. */
+export function edges48(style = 'box') {
+  const w = window.weather3d
+  const a = w.aircraft
+  if (a === null) return 'edges48: no aircraft'
+  const ring = (km) => Array.from({ length: 25 }, (_, i) => [a.lon + (km * Math.cos((2 * Math.PI * i) / 24)) / (111.195 * Math.cos((a.lat * Math.PI) / 180)), a.lat + (km * Math.sin((2 * Math.PI * i) / 24)) / 111.195])
+  const area = (km, topM) => {
+    const r = ring(km)
+    return { sigmet: { hazard: 'TS', qualifier: 'EMBD', base: null, top: topM / 0.3048, until: '', raw: '', rings: [r] }, rings: [r], nearest: r, baseM: 0, topM, key: `probe${km}` }
+  }
+  w.sky.clouds.setHazards([area(25, 9000), area(45, 11000)], style, () => '#ff5a5a')
+  return `edges48: two rings of 24 edges, ${style}`
 }
 
 export async function tiers({ looks = ['natural'], rounds = 3, s = 1 } = {}) {
