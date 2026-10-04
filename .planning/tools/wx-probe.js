@@ -405,7 +405,36 @@ export async function flown({ s = 240 } = {}) {
     return a === undefined ? '' : ` (the way ahead and the HUD ${f1(a.duration)})`
   }
   const top = [...wx].sort((a, b) => b.duration - a.duration).slice(0, 8).map((e) => `${f1(e.duration)} ms at ${f1((e.startTime - t0) / 1000)} s${part(e)}`).join(', ')
-  return `${where()} flown ${Math.round(s)} s, ${f1(km)} km: ${swaps.length} new field${swaps.length === 1 ? '' : 's'} [${round.join('; ')}]; the weather's longest hold ${f1(max(wx.map((e) => e.duration)))} ms, ${wx.filter((e) => e.duration > 8).length} frames over 8 ms, its longest: ${top}; frames median ${f1(med(dts))} p99 ${f1(pct(dts, 99))} max ${f1(max(dts))} ms; long tasks ${long.length} (max ${f1(max(long.map((l) => l.ms)))} ms)`
+  return `${where()} flown ${Math.round(s)} s, ${f1(km)} km: ${swaps.length} new field${swaps.length === 1 ? '' : 's'} [${round.join('; ')}]; the weather's longest hold ${f1(max(wx.map((e) => e.duration)))} ms, ${wx.filter((e) => e.duration > 8).length} frames over 8 ms, its longest: ${top}; frames median ${f1(med(dts))} p99 ${f1(pct(dts, 99))} max ${f1(max(dts))} ms; long tasks ${long.length} (max ${f1(max(long.map((l) => l.ms)))} ms); sky: ${w.metars.length} reports, model ${w.model !== null}, radar ${w.radar !== null}${modelAsks === null ? '' : `, forecast asks answered in the page ${modelAsks}`}`
+}
+
+let modelAsks = null // realSky: how many asks for the model's grid the page answered itself
+
+/**
+ * For a flight in the real sky that must not ask the forecast feed (it has a daily budget): load the page with wx=0; this then
+ * answers the page's asks for the model's grid itself, with a made-up grid round the place asked (cloud at every level, by a fixed
+ * sequence), and shows the weather. The reports, the hazard areas and the radar are the real ones.
+ */
+export function realSky() {
+  const real = window.fetch
+  modelAsks = 0
+  window.fetch = (url, init) => {
+    const u = new URL(String(url instanceof Request ? url.url : url), location.href)
+    if (!u.pathname.endsWith('/wx/model')) return real(url, init)
+    modelAsks++
+    const [lat, lon, n, step] = [Number(u.searchParams.get('lat')), Number(u.searchParams.get('lon')), 13, 0.25]
+    let seed = 7
+    const r = () => (seed = (seed * 16807) % 2147483647) / 2147483647
+    const z = [110, 760, 1450, 3010, 4200, 5570, 7180, 9160, 10360, 11780]
+    const grid = {
+      lat0: lat - (step * (n - 1)) / 2, lon0: lon - (step * (n - 1)) / 2, step, n, timeMs: Date.now(), elevM: Array(n * n).fill(50),
+      clouds: [1000, 925, 850, 700, 600, 500, 400, 300, 250, 200].map((hPa, l) => ({ hPa, cover: Array.from({ length: n * n }, () => Math.round(100 * r())), zM: Array(n * n).fill(z[l]) })),
+      winds: [850, 700, 500, 300, 250, 200].map((hPa) => ({ hPa, kt: Array(n * n).fill(30), deg: Array(n * n).fill(270) })),
+    }
+    return Promise.resolve(new Response(JSON.stringify(grid), { status: 200, headers: { 'content-type': 'application/json' } }))
+  }
+  window.weather3d.show = true
+  return `${where()} the weather shown; the forecast is answered in the page`
 }
 
 /** The first load: the frames in which the weather held the main thread longest since the page began, and when (s after the first of them). */
