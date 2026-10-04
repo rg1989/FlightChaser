@@ -453,34 +453,110 @@ function pixelsOf(img: ImageBitmap): Uint8ClampedArray {
   return reader.getImageData(0, 0, SIZE, SIZE).data
 }
 
+export const RADAR_BURST = 200 // tiles that may be asked for at once
+export const RADAR_PER_S = 4 // and how many a second come back
+export const RADAR_COOL_MS = 10_000 // after a tile that could not be fetched nothing is asked for this long (RainViewer's Retry-After)
+
 /**
- * Decoded source tiles of one frame, fetched once each and shared by every tile and palette drawn from them.
+ * RainViewer's allowance, kept by the page. It allows an address 300 tile requests in 10 s and 500 in 60 s (its x-ratelimit
+ * headers, measured 2026-10-04) and refuses the rest: 429, Retry-After 10 s, without CORS headers, so here a failed fetch.
+ * A screen of tiles at each zoom on the way in is more than that. So at most RADAR_BURST tiles are asked for at once and
+ * RADAR_PER_S a second after (240 in 10 s, 440 in 60: room for a second page at the address), and after a tile that could
+ * not be fetched none for RADAR_COOL_MS, then from empty. One budget for every source of the page (radarBudget): the
+ * allowance is the address's.
+ */
+export class RadarBudget {
+  private readonly now: () => number
+  private left = RADAR_BURST
+  private at: number
+  private closedUntil = -Infinity
+  private down = false
+
+  constructor(now: () => number = () => performance.now()) {
+    this.now = now
+    this.at = now()
+  }
+
+  /** Whether one more tile may be asked for now: it is counted. */
+  take(): boolean {
+    const t = this.now()
+    if (t < this.closedUntil) return false
+    this.left = Math.min(RADAR_BURST, this.left + ((t - this.at) / 1000) * RADAR_PER_S)
+    this.at = t
+    if (this.left < 1) return false
+    this.left--
+    return true
+  }
+
+  /** A tile could not be fetched. True for the first since one was (one warning for a whole outage). */
+  failed(): boolean {
+    const first = !this.down
+    this.down = true
+    this.left = 0
+    this.at = this.closedUntil = this.now() + RADAR_COOL_MS
+    return first
+  }
+
+  /** RainViewer has answered. */
+  answered(): void {
+    this.down = false
+  }
+}
+export const radarBudget = new RadarBudget()
+
+/**
+ * Decoded source tiles of one frame, fetched once each and shared by every tile and palette drawn from them, as the budget
+ * allows. A tile that could not be fetched is not "no echo": it is not kept, and is fetched again when asked for later.
  * ponytail: keeps every tile of the frame it was asked for (a frame lives 10 min; a session pans over tens of tiles, 128 KB
  * each), the next frame's source replaces it.
  */
 export class RadarSource {
   readonly url: string // the frame's z/x/y template
   private readonly tiles = new Map<string, Promise<SourceTile | null>>()
+  private readonly budget: RadarBudget
 
-  constructor(host: string, path: string) {
+  constructor(host: string, path: string, budget: RadarBudget = radarBudget) {
     this.url = `${host}${path}/256/{z}/{x}/{y}/2/0_1.png` // no server blur (it erased storm cores), snow told apart
+    this.budget = budget
   }
 
-  /** The decoded tile, null when it has no echo or failed; the same promise for the same tile. */
-  get(z: number, x: number, y: number): Promise<SourceTile | null> {
+  /** Whether the tile is held or on its way (get answers it): one not asked for yet is asked for now, if the budget allows. */
+  want(z: number, x: number, y: number): boolean {
     const key = `${z}/${x}/${y}`
-    let tile = this.tiles.get(key)
-    if (tile === undefined) this.tiles.set(key, (tile = this.load(z, x, y)))
-    return tile
+    if (this.tiles.has(key)) return true
+    if (!this.budget.take()) return false
+    const tile = this.load(z, x, y)
+    this.tiles.set(key, tile)
+    tile.catch(() => this.tiles.delete(key)) // not fetched: not kept
+    return true
+  }
+
+  /**
+   * The decoded tile, null when it has no echo; the same promise for the same tile. It rejects when the tile cannot be had
+   * now (the budget is spent, or the fetch failed): ask again later.
+   */
+  get(z: number, x: number, y: number): Promise<SourceTile | null> {
+    return this.want(z, x, y) ? this.tiles.get(`${z}/${x}/${y}`)! : Promise.reject(new Error('radar: not now'))
   }
 
   private async load(z: number, x: number, y: number): Promise<SourceTile | null> {
     const url = this.url.replace('{z}', String(z)).replace('{x}', String(x)).replace('{y}', String(y))
+    let blob: Blob | null
     try {
       const r = await fetch(url)
-      if (!r.ok) throw new Error(`HTTP ${r.status}`)
+      if (r.status === 429 || r.status >= 500) throw new Error(`HTTP ${r.status}`)
+      blob = r.ok ? await r.blob() : null
+      if (blob === null) console.warn(`FlightHopper: radar tile ${url}: HTTP ${r.status}`) // RainViewer has no such tile (a frame gone by: 404, 410): an answer
+    } catch (e) {
+      // Refused, or out of reach: no answer.
+      if (this.budget.failed()) console.warn(`FlightHopper: radar tile ${url} (asked for again later):`, e)
+      throw e
+    }
+    this.budget.answered()
+    if (blob === null) return null // not asked again for this frame
+    try {
       // The colours must arrive exactly as sent: each is a dBZ.
-      const px = pixelsOf(await createImageBitmap(await r.blob(), { colorSpaceConversion: 'none' }))
+      const px = pixelsOf(await createImageBitmap(blob, { colorSpaceConversion: 'none' }))
       let seen = false
       for (let q = 3; q < px.length && !seen; q += 4) seen = px[q] !== 0
       if (!seen) return null // no echo: no arrays kept
@@ -488,7 +564,7 @@ export class RadarSource {
       return tile.dbz.some((v) => v >= FIRST_DBZ) ? tile : null
     } catch (e) {
       console.warn(`FlightHopper: radar tile ${url}:`, e)
-      return null // not asked again for this frame
+      return null // not a picture: not asked again for this frame
     }
   }
 }

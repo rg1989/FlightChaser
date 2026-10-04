@@ -186,22 +186,30 @@ export class RadarProvider extends UrlTemplateImageryProvider {
     return this.gone
   }
 
-  override requestImage(x: number, y: number, level: number, request?: Request): Promise<ImageryTypes> {
+  override requestImage(x: number, y: number, level: number, request?: Request): Promise<ImageryTypes> | undefined {
     const z = Math.min(level, RADAR_SRC_MAX)
     const need = sourceTiles(level, x, y)
+    // Its source tiles not asked for yet are asked for as RainViewer's budget allows (radar.ts), each that can be. Until all
+    // are on their way the answer is "not now", as Cesium's own providers say it when throttled: it draws the level above
+    // meanwhile and asks again at a later frame, if it still wants the tile.
+    if (need.filter(([sx, sy]) => !this.source.want(z, sx, sy)).length > 0) return undefined
+    // Cesium takes a cancelled request as "ask again later" and logs nothing; any other failure it logs, tile by tile.
+    const later = (e: unknown): never => {
+      if (request !== undefined) (request as { state: RequestState }).state = RequestState.CANCELLED
+      throw e
+    }
     const image = Promise.all(need.map(([sx, sy]) => this.source.get(z, sx, sy))).then((got) => {
       if (got.every((t) => t === null)) return blank()
       const at = new Map(need.map(([sx, sy], i) => [`${sx}/${sy}`, got[i]]))
       return queueDraw(() => {
         const px = renderTile(level, x, y, (sx, sy) => at.get(`${sx}/${sy}`) ?? null, this.palette)
         return px === null ? blank() : new ImageData(px, 256, 256)
-      }, this.live)
-    })
-    return image.catch((e: unknown) => {
-      // Cesium takes a cancelled request as "ask again later" and logs nothing; any other failure it logs, tile by tile.
-      if (!this.live() && request !== undefined) (request as { state: RequestState }).state = RequestState.CANCELLED
-      throw e
-    }) as unknown as Promise<ImageryTypes>
+      }, this.live).catch((e: unknown) => {
+        if (!this.live()) later(e)
+        throw e
+      })
+    }, later) // a source tile could not be fetched: drawn as no rain it would hide the rain of the level above
+    return image as unknown as Promise<ImageryTypes>
   }
 }
 

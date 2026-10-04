@@ -471,6 +471,7 @@ export class Weather3D {
   readonly #asked = new Set<string>() // the tiles asked for from #askedFrom
   #askedFrom: string | null = null // the URL of the frame they were asked from
   #loading = 0 // tiles asked for that have not come
+  #missed = false // a tile asked for could not be had: those in reach are asked for again at the next look
   #landed = false // a tile has come that reads differently, and the radar's clouds are not built from it yet
   #landedMs = 0 // the look it was seen at
 
@@ -768,6 +769,10 @@ export class Weather3D {
     }
     if (nowMs - this.#lookedMs < LOOK_MS) return
     this.#lookedMs = nowMs
+    if (this.#missed && Number.isFinite(this.#centre.lat)) { // (before the first build there is no field: the camera's tile is asked for by #echo)
+      this.#missed = false
+      this.#tilesInReach(this.#centre)
+    }
     this.#settleTiles(nowMs)
     this.#ask(nowMs)
     this.#refresh()
@@ -1000,12 +1005,7 @@ export class Weather3D {
     const at = this.#centre
     this.#staged = false
     const { dLat, dLon } = this.#shift
-    const tiles: GatherJob['tiles'] = []
-    radarCells((x, y) => { // (given no tile, it reads none: it names the tiles in reach)
-      const tile = this.#tileAt(x, y)
-      if (tile !== null) tiles.push({ x, y, tile })
-      return null
-    }, at.lat - dLat, wrapLon(at.lon - dLon), this.#shift, RADAR_READ_KM)
+    const tiles = this.#tilesInReach(at)
     const id = ++this.#gatherAsk
     const sat = this.#pictures(at)
     // A frame's pixels (or the server's answer's bytes) go to the gatherer once, handed over (1.3 MB: copied, they held this frame 3 to 4 ms); then the frame without them.
@@ -1039,6 +1039,17 @@ export class Weather3D {
       if (got.sat !== null) this.#known = true // the satellite has said where cloud is
       this.#pending = { clouds: got.clouds, at, sat: got.sat }
     }, handed)
+  }
+
+  /** The radar's decoded tiles held, of those RADAR_READ_KM round a field's middle reaches; one not asked for yet is asked for (#tileAt). */
+  #tilesInReach(at: { lat: number; lon: number }): GatherJob['tiles'] {
+    const tiles: GatherJob['tiles'] = []
+    radarCells((x, y) => { // (given no tile, it reads none: it names the tiles in reach)
+      const tile = this.#tileAt(x, y)
+      if (tile !== null) tiles.push({ x, y, tile })
+      return null
+    }, at.lat - this.#shift.dLat, wrapLon(at.lon - this.#shift.dLon), this.#shift, RADAR_READ_KM)
+    return tiles
   }
 
   /** The satellite's pictures that may be used now for a field round a place of the drawn sky (the pixels are where the weather is: the place less the ?wxat shift); null: none. */
@@ -1124,7 +1135,7 @@ export class Weather3D {
    * the newest frame's tile has come, the last frame's stands in for it, so a swap of frames leaves no gap. When a tile comes that
    * reads differently the radar's clouds are built again (#settleTiles). The rain overlay (#echo) and the radar's clouds read their
    * tiles here. About as many are kept as the box the radar is read in touches (#held), the first to have come going first (and
-   * asked for again if wanted: the source has it).
+   * asked for again if wanted: the source has it). A tile that could not be had is asked for again at the next look.
    */
   #tileAt(x: number, y: number): SourceTile | null {
     const radar = this.#radar
@@ -1153,6 +1164,11 @@ export class Weather3D {
           this.#landed = true
           this.#landedMs = this.#lookedMs
         }
+      }, () => { // it could not be had (RainViewer's budget is spent, or the fetch failed): asked for again at the next look
+        this.#loading--
+        if (url !== this.#askedFrom) return
+        this.#asked.delete(key)
+        this.#missed = true
       })
     }
     return this.#tiles.get(key)?.tile ?? null

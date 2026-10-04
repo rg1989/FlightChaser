@@ -1,7 +1,7 @@
 // client/scene/radar.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BANDS, RAIN_PALETTE, RadarSource, decodeTile, renderTile, sourceTiles, type Palette, type Rgba, type SourceTile } from './radar.ts'
+import { BANDS, RADAR_BURST, RADAR_COOL_MS, RADAR_PER_S, RAIN_PALETTE, RadarBudget, RadarSource, decodeTile, renderTile, sourceTiles, type Palette, type Rgba, type SourceTile } from './radar.ts'
 
 const NONE = -128
 const N = 256
@@ -248,7 +248,7 @@ test('sourceTiles: the tile\'s own source tile and only the neighbours its edge 
   same(sourceTiles(0, 0, 0), ['0/0'])
 })
 
-test('RadarSource: one fetch per tile of the frame; a failed tile is no echo and is not asked for again', async () => {
+test('RadarSource: one fetch per tile of the frame; a tile RainViewer has not (404) is no echo and is not asked for again', async () => {
   const asked: string[] = []
   const [fetch0, warn0] = [globalThis.fetch, console.warn]
   globalThis.fetch = (async (url: string | URL | Request) => {
@@ -257,7 +257,7 @@ test('RadarSource: one fetch per tile of the frame; a failed tile is no echo and
   }) as typeof fetch
   console.warn = () => {}
   try {
-    const source = new RadarSource('https://tilecache.rainviewer.com', '/v2/radar/abc')
+    const source = new RadarSource('https://tilecache.rainviewer.com', '/v2/radar/abc', new RadarBudget(() => 0))
     assert.equal(source.url, 'https://tilecache.rainviewer.com/v2/radar/abc/256/{z}/{x}/{y}/2/0_1.png')
     const first = source.get(7, 76, 50)
     assert.equal(source.get(7, 76, 50), first)
@@ -268,4 +268,56 @@ test('RadarSource: one fetch per tile of the frame; a failed tile is no echo and
     globalThis.fetch = fetch0
     console.warn = warn0
   }
+})
+
+test('RadarSource: a tile that could not be fetched (RainViewer\'s refusal is a failed fetch) is not "no echo": get rejects, nothing is asked for RADAR_COOL_MS, then it is fetched again; one warning', async () => {
+  const asked: string[] = []
+  const warned: unknown[] = []
+  const [fetch0, warn0] = [globalThis.fetch, console.warn]
+  let refused = true
+  globalThis.fetch = (async (url: string | URL | Request) => {
+    asked.push(String(url))
+    if (refused) throw new TypeError('Failed to fetch')
+    return new Response(null, { status: 404 })
+  }) as typeof fetch
+  console.warn = (...a: unknown[]) => warned.push(a)
+  try {
+    let now = 0
+    const source = new RadarSource('https://h', '/p', new RadarBudget(() => now))
+    await assert.rejects(source.get(7, 76, 50))
+    await assert.rejects(source.get(7, 77, 50), 'the budget is shut: not now')
+    assert.equal(source.want(7, 76, 50), false)
+    assert.equal(asked.length, 1, 'nothing asked while it is shut')
+    now = RADAR_COOL_MS - 1
+    assert.equal(source.want(7, 76, 50), false)
+    now = RADAR_COOL_MS + 1000 / RADAR_PER_S // open again, from empty: one tile's worth has come back
+    assert.equal(source.want(7, 76, 50), true, 'asked for again')
+    assert.equal(source.want(7, 77, 50), false, 'from empty: no second yet')
+    await assert.rejects(source.get(7, 76, 50), 'refused again')
+    assert.equal(asked.length, 2)
+    assert.equal(warned.length, 1, 'one warning for the outage')
+    refused = false
+    now += RADAR_COOL_MS + 1000 / RADAR_PER_S
+    assert.equal(await source.get(7, 76, 50), null, 'an answer: kept')
+    assert.equal(asked.length, 3)
+  } finally {
+    globalThis.fetch = fetch0
+    console.warn = warn0
+  }
+})
+
+test('RadarBudget: RADAR_BURST tiles at once, then RADAR_PER_S a second, never more than the burst saved up', () => {
+  let now = 0
+  const b = new RadarBudget(() => now)
+  let n = 0
+  while (b.take()) n++
+  assert.equal(n, RADAR_BURST)
+  now = 1000
+  for (n = 0; b.take();) n++
+  assert.equal(n, RADAR_PER_S)
+  now = 10 * 60_000
+  for (n = 0; b.take();) n++
+  assert.equal(n, RADAR_BURST)
+  // RainViewer's limits (300 in 10 s, 500 in 60 s) hold with room to spare.
+  assert.ok(RADAR_BURST + 10 * RADAR_PER_S <= 250 && RADAR_BURST + 60 * RADAR_PER_S <= 450)
 })
