@@ -29,6 +29,7 @@ export interface FieldMade {
   tiles: (Bitmap | null)[]
   near: Bitmap | null
   wet: boolean[]
+  box: [number, number, number, number] // wxSurvey.ts survey: the map's rectangle all the cover stands in
   noise: Bitmap | null
   ms: number
 }
@@ -65,18 +66,20 @@ export function makeField(job: FieldJob): FieldMade {
   let tiles: (Bitmap | null)[] = Array.from({ length: BANDS }, () => null)
   let near: Bitmap | null = null
   let wet = Array.from({ length: BANDS }, () => false)
+  let box: [number, number, number, number] = [1, 1, -1, -1]
   if (!field.empty) {
     const s = survey(field)
     tiles = tiles.map((_, b) => fieldTile(field, b))
     near = s.near
     wet = s.wet
+    box = s.box
   }
   let noise: Bitmap | null = null
   if (job.noise) {
     const n = noiseAtlas()
     noise = { data: n.data.slice(), width: n.width, height: n.height }
   }
-  return { id: job.id, field, tiles, near, wet, noise, ms: performance.now() - t0 }
+  return { id: job.id, field, tiles, near, wet, box, noise, ms: performance.now() - t0 }
 }
 
 /** The answer's arrays, each once: what a worker hands over with it. */

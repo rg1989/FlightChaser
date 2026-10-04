@@ -5,12 +5,12 @@ import { Cartesian3, Event, Matrix4, PostProcessStage, PostProcessStageComposite
 import { geoidN } from '../../shared/geoid.ts'
 import { PUFF_FILL, SEV, sunBrightness, type CloudSpec } from './cloudField.ts'
 import { noiseAtlas } from './cloudNoise.ts'
-import { MARCH_SHADER, MIX_SHADER } from './cloudShaders.ts'
+import { BOX_PAD_KM, MARCH_SHADER, MIX_SHADER } from './cloudShaders.ts'
 import { CloudVolume, eyeToLocal, localFrame, localToMap, mapScale, resumeRendering, tileUv } from './cloudVolume.ts'
 import type { FieldBuilder } from './fieldBuilder.ts'
 import { bytesImage, type MakeImage } from './gpuImage.ts'
 import { AHEAD_MIN, aheadPath } from './wxAhead.ts'
-import { hazardEdges, packEdges } from './wxEdges.ts'
+import { edgeBound, hazardEdges, packEdges } from './wxEdges.ts'
 import { BANDS, FIELD_KM, FIELD_N, HEIGHT_MAX_M, TOWER_BAND, buildField, fieldAtlas, sampleField, type WxField } from './wxField.ts'
 import { makeField, unpackSpecs, type FieldJob, type FieldMade } from './wxFieldJob.ts'
 import { hazardsNear, type Hazard } from './wxGeo.ts'
@@ -389,6 +389,27 @@ test('CloudVolume: the shader is told each band\'s heights in km (an empty band:
   assert.equal(r.call<number>(0, 'u_top'), 11)
   r.vol.draw([CU], HERE)
   assert.equal(r.call<number>(0, 'u_top'), 2.5)
+})
+
+test('CloudVolume: a ray is walked only over the box the field\'s cover stands in (the clear-air map\'s, with the march\'s margin and room for the map\'s bend), and the edges are read only by a ray that passes over the circle they stand in; with no cloud the box holds nothing', () => {
+  const r = rig()
+  r.vol.show = true
+  r.vol.setHazards([hazardOf([circle(30, 20)])], 'box', RED)
+  r.vol.draw([CU, RAIN], HERE) // the cumulus 6 km east and 2 km north, the deck 40 km west and 20 km north
+  const box = (): number[] => {
+    const b = r.call<{ x: number; y: number; z: number; w: number }>(0, 'u_box')
+    return [b.x, b.y, b.z, b.w]
+  }
+  const s = survey(r.vol.field!).box
+  assert.deepEqual(box(), [s[0] - BOX_PAD_KM, s[1] - BOX_PAD_KM, s[2] + BOX_PAD_KM, s[3] + BOX_PAD_KM])
+  assert.ok(BOX_PAD_KM > 8 && BOX_PAD_KM < 8.2)
+  const [west, south, east, north] = box()
+  assert.ok(west < -50 && west > -54 && east > 14 && east < 18 && south < -7 && south > -10 && north > 30 && north < 34, `${box()}: not the whole square of 320 km`)
+  const bound = r.call<{ x: number; y: number; z: number }>(0, 'u_edgeBound')
+  assert.deepEqual([bound.x, bound.y, bound.z], edgeBound(hazardEdges([hazardOf([circle(30, 20)])], FRAME, N0, RED)))
+  assert.ok(near(bound.x, 30, 1) && near(bound.z, 20, 1))
+  r.vol.draw([], HERE)
+  assert.ok(box()[0] > box()[2] && box()[1] > box()[3], 'no cloud: no ray is over it')
 })
 
 test('CloudVolume: the frame is at the field\'s middle at sea level (the geoid there): the camera\'s matrix, the map\'s scale and the noise, which is fixed to the Earth so that a field built round another place has the same detail', () => {

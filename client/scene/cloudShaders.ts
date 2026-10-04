@@ -97,6 +97,9 @@ const THIN = ERODE * 0.2
 export const REACH_KM: readonly [number, number] = [130, 150]
 export const RIM_KM: readonly [number, number] = [150, 158] // and at the square's rim (what fieldPlace.ts places a field by)
 const BOX_KM = 165 // the ray is clipped to this in the frame: the field's 160 km and room for the map's bend
+/** A ray is walked only over the box the field's cover stands in (wxSurvey.ts survey), grown by this, km: the margin the clear-air map is read with, and the room for the map's bend. */
+export const BOX_PAD_KM = CLEAR_MARGIN_KM + BOX_KM - FIELD_KM / 2
+const HOLD_KM = 0.01 // a sample this near a band's heights is read from the field, not judged by its height alone (the fine warp moves its height on the curved Earth by 8 m at most)
 const GAIN = 1.5 // the field's cover × profile is drawn times this, capped at 1 (the mock's): bodies are solid, their edges crisp
 const SIGMA = 7 // extinction per km of full cloud (the mock's) …
 const SIGMA_STORM = 11 // … and in heavy rain and storms
@@ -199,6 +202,8 @@ uniform float u_look; // 0 natural, 1 severity colours, 2 blocks
 uniform float u_light; // the Sun's brightness: 1 by day
 uniform sampler2D u_edges; // packEdges: the hazard areas' edges, ${EDGE_TEXELS} texels each, in one row
 uniform float u_edgeCount; // how many of them
+uniform vec3 u_edgeBound; // a circle on the frame's ground that holds them all: its middle and its radius, km (wxEdges.ts edgeBound)
+uniform vec4 u_box; // the box the field's cover stands in, in the frame: west, south, east, north, km (with the margin: BOX_PAD_KM)
 uniform float u_hazard; // how they are drawn: 0 a curtain, 1 a fence, 2 a box
 uniform vec3 u_aircraft; // the aircraft in the frame, km: the level slice is at its height, round it
 uniform vec2 u_aids; // 1 where it shows: x the track line (the mix draws it), y the level slice
@@ -211,7 +216,7 @@ const float MARGIN = ${glsl(CLEAR_MARGIN_KM)}; // and this is taken off its word
 const float STRIDE = ${glsl(STRIDE_KM)}; // the longest stride through clear air
 const float THIN = ${glsl(THIN)}; // cover times profile times GAIN under this is no cloud: the noise eats it all
 const float NOISE_MEAN = ${glsl(NOISE_MEAN)};
-const float BOX = ${glsl(BOX_KM)};
+const float HOLD = ${glsl(HOLD_KM)};
 const float PAD = 1.0; // the warp moves a sample's height by 0.9 km at most
 const vec3 CELL = vec3(1.0, 1.0, 0.5); // blocks: a cell's size east, north and up
 const float EDGE_KM = ${glsl(EDGE_KM)}; // packEdges: an edge's end is packed over this far each way,
@@ -320,12 +325,35 @@ float fbm(vec3 q, float lod) {
   return 0.42 * noise(q) + 0.27 * wide + 0.19 * mid + 0.12 * fine;
 }
 
-// The place the field is read at for p: moved by up to 1.3 km each way, smoothly (over 16 km), so that a disc is not a disc, and by
-// 0.22 km more over 4 km, so that the field's texels do not show in a small cloud's outline.
-vec3 warp(vec3 p, vec3 q) {
+// The place the field is read at for p: moved by up to 1.3 km each way and 0.9 km up or down, smoothly (over 16 km), so that a disc
+// is not a disc (the wide warp), and by 0.22 km more each way over 4 km, with no change of height, so that the field's texels do not
+// show in a small cloud's outline (the fine warp).
+vec3 warpWide(vec3 p, vec3 q) {
   float a = noise(q * 2.0) - 0.5, b = noise(q * 2.0 + vec3(0.37, 0.11, 0.53)) - 0.5;
+  return p + vec3(a, b, 0.35 * (a + b)) * 2.6;
+}
+vec3 warpFine(vec3 pw, vec3 q) {
   float c = noise(q * 8.0 + vec3(0.71, 0.23, 0.47)) - 0.5, d = noise(q * 8.0 + vec3(0.19, 0.83, 0.61)) - 0.5;
-  return p + vec3(a, b, 0.35 * (a + b)) * 2.6 + vec3(c, d, 0.0) * 0.45;
+  return pw + vec3(c, d, 0.0) * 0.45;
+}
+vec3 warp(vec3 p, vec3 q) { return warpFine(warpWide(p, q), q); }
+
+// Whether the field may hold cloud or rain at the height the wide warp has put a sample (pw; the fine warp leaves the height): some
+// band whose cover is within the margin (nr: the clear-air map where the ray is) holds that height, down to its rain's floor. When
+// none does the field need not be read there, nor the fine warp's noise: gap is then what cover() would say, how far the sample is
+// over or under the bands near. (A ray near weather samples the bands' heights and 1 km over and under them, the warp's reach: more
+// than half of those samples end here.)
+bool holds(vec3 pw, vec4 nr, out float gap) {
+  float h = pw.z + dot(pw.xy, pw.xy) * (0.5 * INV_R);
+  gap = 1.0e9;
+  bool any = false;
+  for (int b = 0; b < ${BANDS}; b++) {
+    if (u_lo[b] > u_hi[b] || clearOf(nr, b) > 0.0) continue;
+    if (h > u_hi[b] + HOLD) gap = min(gap, h - u_hi[b]);
+    else if (h < u_floor[b] - HOLD) gap = min(gap, u_floor[b] - h);
+    else any = true;
+  }
+  return any;
 }
 
 // Where along the ray its height over the sea is H: the two places (the height is a parabola along it), the nearer first; none:
@@ -507,13 +535,19 @@ void main() {
   gN = 0;
   gI = 0;
   if (u_aids.y > 0.5) slice(ro, rd, tO, pix);
-  if (u_edgeCount > 0.5) hazards(ro, rd, tO, pix);
+  if (u_edgeCount > 0.5) {
+    // only by a ray that passes over the circle the edges stand in, short of what the pixel shows
+    vec2 w = u_edgeBound.xy - ro.xy;
+    float along = dot(rd.xy, rd.xy);
+    vec2 off = w - rd.xy * (along > 1.0e-12 ? clamp(dot(w, rd.xy) / along, 0.0, tO) : 0.0);
+    if (dot(off, off) <= u_edgeBound.z * u_edgeBound.z) hazards(ro, rd, tO, pix);
+  }
   sortEvents();
 
-  // The part of the ray worth walking: under the highest top, inside the square, short of what the pixel shows.
+  // The part of the ray worth walking: under the highest top, over the box the cover stands in, short of what the pixel shows.
   vec2 top = atHeight(ro, rd, u_top + PAD);
   vec2 dir = vec2(abs(rd.x) < 1.0e-6 ? 1.0e-6 : rd.x, abs(rd.y) < 1.0e-6 ? 1.0e-6 : rd.y);
-  vec2 ta = (-BOX - ro.xy) / dir, tb = (BOX - ro.xy) / dir;
+  vec2 ta = (u_box.xy - ro.xy) / dir, tb = (u_box.zw - ro.xy) / dir;
   vec2 tn = min(ta, tb), tf = max(ta, tb);
   float tS = max(max(tn.x, tn.y), max(top.x, 0.0));
   float tEnd = min(min(tf.x, tf.y), min(top.y, tO));
@@ -574,9 +608,10 @@ void main() {
         continue;
       }
       vec3 q = (u_noiseFrame * vec4(p, 1.0)).xyz;
-      float sev, gap;
-      vec2 rain;
-      float dm = min(1.0, GAIN * cover(toMap(warp(p, q)), nr, sev, rain, gap));
+      float sev = 0.0, gap;
+      vec2 rain = vec2(0.0);
+      vec3 pw = warpWide(p, q);
+      float dm = holds(pw, nr, gap) ? min(1.0, GAIN * cover(toMap(warpFine(pw, q)), nr, sev, rain, gap)) : 0.0;
       float small = clamp(0.018 * t, 0.03, max(0.1, 0.004 * t)); // a small step here: finer near the camera, where a pixel sees less
       float ds = clamp(0.018 * t, 0.03, max(0.1, 0.004 * t) + 0.6 * A) * stretch;
       if (dm > THIN) {

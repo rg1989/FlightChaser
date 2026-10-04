@@ -1,7 +1,7 @@
 // client/scene/cloudShaders.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { MARCH_SHADER, MIX_SHADER, REACH_KM } from './cloudShaders.ts'
+import { BOX_PAD_KM, MARCH_SHADER, MIX_SHADER, REACH_KM } from './cloudShaders.ts'
 import { EDGE_TOP_KM, POST_KM } from './wxEdges.ts'
 import { FIELD_KM } from './wxField.ts'
 
@@ -20,4 +20,14 @@ test('the shaders: each is given the reach the radar is read by (REACH_KM), the 
     for (const [open, close] of ['{}', '()', '[]']) assert.equal(code.split(open).length, code.split(close).length, `${open}${close}`)
     assert.ok(!/[^\x00-\x7f]/.test(code), 'outside its comments, plain ASCII')
   }
+})
+
+test('the march: a ray is clipped to the box the cover stands in, not to the whole field; a sample whose height no band near holds is not read from the field (nor the fine warp\'s noise for it); the edges are read only by a ray that passes the circle they stand in', () => {
+  assert.ok(MARCH_SHADER.includes('uniform vec4 u_box;') && MARCH_SHADER.includes('(u_box.xy - ro.xy) / dir, tb = (u_box.zw - ro.xy) / dir'))
+  assert.ok(!/\bBOX\b/.test(MARCH_SHADER.replace(/\/\/.*$/gm, '')), 'no other clip')
+  assert.ok(MARCH_SHADER.includes('holds(pw, nr, gap) ? min(1.0, GAIN * cover(toMap(warpFine(pw, q)), nr, sev, rain, gap)) : 0.0'))
+  assert.ok(MARCH_SHADER.includes('const float HOLD = 0.01;'))
+  assert.ok(MARCH_SHADER.includes('vec3 warp(vec3 p, vec3 q) { return warpFine(warpWide(p, q), q); }'), 'the two warps together are the warp there was')
+  assert.ok(MARCH_SHADER.includes('if (dot(off, off) <= u_edgeBound.z * u_edgeBound.z) hazards(ro, rd, tO, pix);'))
+  assert.ok(Math.abs(BOX_PAD_KM - 8.1) < 1e-9, 'the clear-air map\'s margin (3.1 km) and the room for the map\'s bend (5 km)')
 })

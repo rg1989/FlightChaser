@@ -32,17 +32,17 @@
 // while the pass is in the scene takes the pass out for good (failed, onFailed; resumeRendering starts Cesium's loop again).
 // ponytail: the clouds stand at their true heights when the relief is flattened or grown (the puffs moved with their station's ground).
 // Upgrade: the frame's relief in the height the shader takes.
-import { Cartesian2, Cartesian3, Ellipsoid, Matrix4, PostProcessStage, PostProcessStageComposite, Transforms, type Camera, type PostProcessStageCollection } from 'cesium'
+import { Cartesian2, Cartesian3, Cartesian4, Ellipsoid, Matrix4, PostProcessStage, PostProcessStageComposite, Transforms, type Camera, type PostProcessStageCollection } from 'cesium'
 import { geoidN } from '../../shared/geoid.ts'
 import type { TerrainFrame } from '../types.ts'
 import { sunBrightness, type CloudSpec } from './cloudField.ts'
 import { NOISE_KM } from './cloudNoise.ts'
-import { ATLAS_H, ATLAS_W, MARCH_SHADER, MIX_SHADER, PATH_N, R_KM } from './cloudShaders.ts'
+import { ATLAS_H, ATLAS_W, BOX_PAD_KM, MARCH_SHADER, MIX_SHADER, PATH_N, R_KM } from './cloudShaders.ts'
 import { fieldBuilder, type FieldBuilder } from './fieldBuilder.ts'
 import { bytesImage, textureImages, type GpuImage, type MakeImage } from './gpuImage.ts'
 import { MARCH_SCALES } from './marchPace.ts'
 import type { AheadPath } from './wxAhead.ts'
-import { EDGE_TEXELS, MAX_EDGES, hazardEdges, packEdges } from './wxEdges.ts'
+import { EDGE_TEXELS, MAX_EDGES, edgeBound, hazardEdges, packEdges } from './wxEdges.ts'
 import { FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.ts'
 import { NEAR_N } from './wxSurvey.ts'
 import { packSpecs, type FieldMade } from './wxFieldJob.ts'
@@ -181,6 +181,8 @@ export class CloudVolume {
   readonly #plane = new Cartesian2() // the aircraft on the field's map; the field's middle until fade() gives it
   readonly #local = new Cartesian3() // and in the frame
   readonly #aids = new Cartesian2() // u_aids
+  readonly #box = new Cartesian4(1, 1, -1, -1) // u_box: the frame's rectangle the field's cover stands in, with the march's margin; none until a field with cloud is in use
+  readonly #edgeBound = new Cartesian3() // u_edgeBound
   readonly #path: number[] = Array.from({ length: PATH_N * 3 }, () => 0) // u_path
   readonly #aircraft = new Cartesian3() // u_aircraft: the path's first place
   readonly #scratch = new Cartesian3()
@@ -395,6 +397,9 @@ export class CloudVolume {
     this.#lo = f.lo.map((m) => m / 1000)
     this.#hi = f.hi.map((m) => m / 1000)
     this.#top = f.empty ? NO_TOP_KM : Math.max(...this.#hi)
+    const [west, south, east, north] = made.box
+    if (west > east) Cartesian4.fromElements(1, 1, -1, -1, this.#box)
+    else Cartesian4.fromElements(west - BOX_PAD_KM, south - BOX_PAD_KM, east + BOX_PAD_KM, north + BOX_PAD_KM, this.#box)
     this.#floor = this.#lo.map((km, b) => (made.wet[b] ? 0 : km))
     const seaM = this.#geoid(f.lat, f.lon)
     this.#seaM = seaM
@@ -455,6 +460,7 @@ export class CloudVolume {
     const same = packed.data.every((b, i) => b === was[i])
     this.#edges = packed
     this.#edgeCount = Math.min(edges.length, MAX_EDGES)
+    Cartesian3.fromArray(edgeBound(edges.slice(0, MAX_EDGES)), 0, this.#edgeBound)
     if (!same) this.#edgeImage?.write(packed, 0, 0)
   }
 
@@ -504,8 +510,8 @@ export class CloudVolume {
       textureScale: this.#marchScale,
       uniforms: {
         ...shared, u_noise: () => (this.#noiseImage ?? this.#shown!.near).texture, u_near: () => this.#shown!.near.texture, u_noiseFrame: () => this.#noiseFrame,
-        u_floor: () => this.#floor, u_top: () => this.#top, u_light: () => this.#light,
-        u_edges: () => this.#edgeImage!.texture, u_edgeCount: () => this.#edgeCount, u_hazard: () => HAZARD[this.#style] ?? HAZARD.box, u_aircraft: () => this.#aircraft,
+        u_floor: () => this.#floor, u_top: () => this.#top, u_light: () => this.#light, u_box: () => this.#box,
+        u_edges: () => this.#edgeImage!.texture, u_edgeCount: () => this.#edgeCount, u_edgeBound: () => this.#edgeBound, u_hazard: () => HAZARD[this.#style] ?? HAZARD.box, u_aircraft: () => this.#aircraft,
       },
     })
     const mix = new PostProcessStage({

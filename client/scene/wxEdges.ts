@@ -104,6 +104,21 @@ export function hazardEdges(
 }
 
 /**
+ * A circle on the frame's ground that holds every edge: its middle, km east and north, and its radius, km. A ray that passes it by
+ * meets none of the walls, nor an area's top face (which lies inside its ring): the march then leaves the edges unread. Of no edges:
+ * nothing.
+ */
+export function edgeBound(edges: readonly HazardEdge[]): [number, number, number] {
+  if (edges.length === 0) return [0, 0, 0]
+  let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity]
+  for (const e of edges) {
+    ;[x0, y0, x1, y1] = [Math.min(x0, e.ax, e.bx), Math.min(y0, e.ay, e.by), Math.max(x1, e.ax, e.bx), Math.max(y1, e.ay, e.by)]
+  }
+  const [x, y] = [(x0 + x1) / 2, (y0 + y1) / 2]
+  return [x, y, Math.max(...edges.map((e) => Math.max(Math.hypot(e.ax - x, e.ay - y), Math.hypot(e.bx - x, e.by - y))))]
+}
+
+/**
  * The edges as the image the march reads (u_edges): one row, EDGE_TEXELS texels an edge, MAX_EDGES at most (the first ones), the rest
  * blank. A number is two bytes, the high one first. An edge's texels: its first end (east in R and G, north in B and A, over ± EDGE_KM);
  * its second end; its base (R, G) and top (B, A), over 0 … EDGE_TOP_KM; its colour (R, G, B) and in A 1 when it is the first of its

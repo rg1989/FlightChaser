@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { Cartesian3, Matrix4 } from 'cesium'
 import { geoidN } from '../../shared/geoid.ts'
 import { localFrame } from './cloudVolume.ts'
-import { EDGE_KM, EDGE_Q, EDGE_TEXELS, EDGE_TOP_KM, MAX_EDGES, POST_KM, hazardEdges, packEdges, unpackEdge, type HazardEdge } from './wxEdges.ts'
+import { EDGE_KM, EDGE_Q, EDGE_TEXELS, EDGE_TOP_KM, MAX_EDGES, POST_KM, edgeBound, hazardEdges, packEdges, unpackEdge, type HazardEdge } from './wxEdges.ts'
 import { hazardsNear, type Hazard } from './wxGeo.ts'
 
 const KM_PER_DEG = 111.195
@@ -131,4 +131,14 @@ test('hazardEdges: an edge that leaves what the image can hold (819 km each way)
   assert.ok(near(kept[0].ax, inFrame(long[2]).x, 1e-9) && near(kept[0].bx, inFrame(long[0]).x, 1e-9) && !kept[0].whole)
   // an area whose base and top are one height in the image is no wall
   assert.deepEqual(hazardEdges([{ ...hazardOf([circle(30, 20)]), baseM: 9000, topM: 9000.2 }], FRAME, N0, RED), [])
+})
+
+test('edgeBound: a circle on the frame\'s ground that holds every edge (a ray that passes it by meets no wall and no top face: the march then does not read the edges at all); of no edges, nothing', () => {
+  const edges = hazardEdges([hazardOf([circle(120, 30)], { topFt: 30000 }), hazardOf([ringKm([[-40, -10], [-20, -10], [-20, 15]])], { topFt: 20000 })], FRAME, N0, RED)
+  const [x, y, r] = edgeBound(edges)
+  for (const e of edges) assert.ok(Math.hypot(e.ax - x, e.ay - y) <= r + 1e-9 && Math.hypot(e.bx - x, e.by - y) <= r + 1e-9, 'each end inside')
+  assert.ok(x > 40 && x < 70 && Math.abs(y) < 15 && r > 90 && r < 120, `round both areas, 190 km apart: ${[x, y, r]}`)
+  const one = edgeBound(hazardEdges([hazardOf([circle(120, 30)])], FRAME, N0, RED))
+  assert.ok(Math.abs(one[0] - 120) < 1 && Math.abs(one[1]) < 1 && one[2] > 29.9 && one[2] < 31, `one area of 30 km: ${one}`)
+  assert.deepEqual(edgeBound([]), [0, 0, 0])
 })

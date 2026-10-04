@@ -70,4 +70,21 @@ test('survey: the clear-air map: how far it is from each cell of 1.25 km to a ba
   const none = survey(buildField([], LAT, LON))
   assert.deepEqual(none.wet, [false, false, false, false, false])
   assert.ok(none.near.data.every((b) => b === 255), 'no weather: clear everywhere')
+  assert.ok(none.box[0] > none.box[2] && none.box[1] > none.box[3], 'and its box holds nothing')
+})
+
+test('survey: the box all the cover stands in, on the map (km west, south, east and north of the field\'s middle): every texel with cover of any band is inside it, and it is no wider than a cell of 1.25 km past them', () => {
+  const f = buildField([puff(1500, 2500, { eastKm: 22, northKm: -31 }), puff(7000, 8700, { eastKm: -80, northKm: 60, wide: 10_000, sev: SEV.light }), puff(1000, 9000, { eastKm: 100, northKm: 40, wide: 8000, tower: 1, sev: SEV.storm })], LAT, LON)
+  const [west, south, east, north] = survey(f).box
+  let [w, s, e, n] = [Infinity, Infinity, -Infinity, -Infinity]
+  for (let b = 0; b < BANDS; b++) {
+    f.cov[b].forEach((c, o) => {
+      if (!(c > 0)) return
+      const [x, y] = middleOf(o % FIELD_N, Math.floor(o / FIELD_N))
+      ;[w, s, e, n] = [Math.min(w, x), Math.min(s, y), Math.max(e, x), Math.max(n, y)]
+    })
+  }
+  assert.ok(west <= w && south <= s && east >= e && north >= n, `${[west, south, east, north]} holds ${[w, s, e, n]}`)
+  assert.ok(w - west <= 1.25 && s - south <= 1.25 && east - e <= 1.25 && north - n <= 1.25, 'to a cell')
+  assert.ok(west < -80 && west > -90 && east > 100 && east < 110 && south < -31 && south > -36 && north > 60 && north < 70, `the deck in the west, the storm in the east, the cumulus in the south: ${[west, south, east, north]}`)
 })

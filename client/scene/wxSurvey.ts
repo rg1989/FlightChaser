@@ -1,5 +1,6 @@
 // client/scene/wxSurvey.ts
-// What the cloud volume's march asks of a weather field before it walks it (cloudShaders.ts): the clear-air map, and which bands rain.
+// What the cloud volume's march asks of a weather field before it walks it (cloudShaders.ts): the clear-air map, which bands rain, and
+// the box all the cover stands in.
 // Pure (no Cesium, no DOM), so Node tests cover it.
 import { BANDS, FIELD_KM, FIELD_N, type Bitmap, type WxField } from './wxField.ts'
 
@@ -16,25 +17,33 @@ const OCTAGON = 1 / Math.cos(Math.PI / 8) // a way made of steps to the eight ce
  * strides to the weather and does not search for it. A word is never more than the true distance (a stride passes over nothing): the
  * way is counted in steps to the eight cells round, which is at most 8 % longer than the straight one, so it is taken that much
  * shorter, and half a cell's diagonal is taken off for the cover's place inside its cell. And `wet`, per band, whether rain falls
- * from it (cover with a severity of light rain or more).
+ * from it (cover with a severity of light rain or more). And `box`: the map's rectangle that holds every cell with cover of any band,
+ * km west, south, east and north of the field's middle (west over east: no cover at all): a ray that does not pass over it meets no
+ * weather.
  */
-export function survey(f: WxField): { near: Bitmap; wet: boolean[] } {
+export function survey(f: WxField): { near: Bitmap; wet: boolean[]; box: [number, number, number, number] } {
   const n = NEAR_N
   const per = FIELD_N / n
   const wet = Array.from({ length: BANDS }, () => false)
   const far = 4 * n // further, in cells, than any way across the map
   const ways = Array.from({ length: 4 }, () => new Float32Array(n * n).fill(far))
   const any = [false, false, false, false]
+  let [i0, j0, i1, j1] = [n, n, -1, -1] // the cells with cover: the first and last column and row
   for (let b = 0; b < BANDS; b++) {
     if (f.lo[b] > f.hi[b]) continue
     const [cov, sev, way] = [f.cov[b], f.sev[b], ways[NEAR_CHANNEL[b]]]
     any[NEAR_CHANNEL[b]] = true
     let rains = false
     for (let j = 0, o = 0; j < FIELD_N; j++) {
-      const row = Math.floor(j / per) * n
+      const [cj, row] = [Math.floor(j / per), Math.floor(j / per) * n]
       for (let i = 0; i < FIELD_N; i++, o++) {
         if (!(cov[o] > 0)) continue
-        way[row + Math.floor(i / per)] = 0
+        const ci = Math.floor(i / per)
+        way[row + ci] = 0
+        if (ci < i0) i0 = ci
+        if (ci > i1) i1 = ci
+        if (cj < j0) j0 = cj
+        if (cj > j1) j1 = cj
         if (sev[o] >= 0.5) rains = true
       }
     }
@@ -62,6 +71,8 @@ export function survey(f: WxField): { near: Bitmap; wet: boolean[] } {
       data[o * 4 + c] = Math.floor(Math.min(1, (Math.max(0, v / OCTAGON - Math.SQRT1_2) * NEAR_KM) / NEAR_MAX_KM) * 255)
     }
   }
-  return { near: { data, width: n, height: n }, wet }
+  const half = FIELD_KM / 2
+  const box: [number, number, number, number] = i1 < 0 ? [1, 1, -1, -1] : [i0 * NEAR_KM - half, j0 * NEAR_KM - half, (i1 + 1) * NEAR_KM - half, (j1 + 1) * NEAR_KM - half]
+  return { near: { data, width: n, height: n }, wet, box }
 }
 const NEAR_CHANNEL: readonly number[] = [0, 1, 2, 2, 3] // the clear-air map's channel for each band (the shader's clearOf)

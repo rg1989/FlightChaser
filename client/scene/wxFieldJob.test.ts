@@ -57,6 +57,7 @@ test('makeField: the field of the job\'s specs round its place, its image for th
   const s = survey(f)
   assert.deepEqual(made.near, s.near)
   assert.deepEqual(made.wet, s.wet)
+  assert.deepEqual(made.box, s.box)
   assert.deepEqual(made.wet, [false, false, true, false, true], 'the deck and the storm rain')
   assert.equal(made.noise, null, 'not asked for')
   assert.ok(Number.isFinite(made.ms) && made.ms >= 0)
@@ -69,6 +70,7 @@ test('makeField: an empty sky has a field (empty) and no images; weather outside
     assert.deepEqual([made.field.lat, made.field.lon], [LAT, LON])
     assert.deepEqual([made.tiles, made.near], [[null, null, null, null, null], null])
     assert.deepEqual(made.wet, [false, false, false, false, false])
+    assert.ok(made.box[0] > made.box[2], 'a box that holds nothing')
   }
 })
 
