@@ -10,10 +10,10 @@ import { DEFAULT_UNITS, type Units } from './units.ts'
 registerHooks({
   load: (url, context, nextLoad) => (url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : nextLoad(url, context)),
 })
-const { drawStrip, mountWxHud, stripPlot } = await import('./wxHud.ts')
+const { drawStrip, mountWxHud, stripCells, stripPlot } = await import('./wxHud.ts')
 
 // Node has no DOM: just enough of one for mountWxHud, with counters for what is written.
-interface Call { op: string; a: unknown[]; fill: string; stroke: string; alpha: number; dash: number[]; align: string }
+interface Call { op: string; a: unknown[]; fill: string; stroke: string; alpha: number; dash: number[]; align: string; smooth: boolean }
 class Ctx {
   calls: Call[] = []
   fillStyle = '#000'
@@ -23,10 +23,11 @@ class Ctx {
   textAlign = 'start'
   textBaseline = 'alphabetic'
   globalAlpha = 1
+  imageSmoothingEnabled = true
   #dash: number[] = []
   transform: number[] = []
   #note(op: string, a: unknown[]): void {
-    this.calls.push({ op, a, fill: this.fillStyle, stroke: this.strokeStyle, alpha: this.globalAlpha, dash: this.#dash, align: this.textAlign })
+    this.calls.push({ op, a, fill: this.fillStyle, stroke: this.strokeStyle, alpha: this.globalAlpha, dash: this.#dash, align: this.textAlign, smooth: this.imageSmoothingEnabled })
   }
   clearRect(...a: number[]): void { this.#note('clearRect', a) }
   fillRect(...a: number[]): void { this.#note('fillRect', a) }
@@ -36,12 +37,18 @@ class Ctx {
   lineTo(...a: number[]): void { this.#note('lineTo', a) }
   stroke(): void { this.#note('stroke', []) }
   fill(): void { this.#note('fill', []) }
-  fillText(...a: unknown[]): void { this.#note('fillText', a) }
+  fillText(...a: unknown[]): void { touched.push('read'); this.#note('fillText', a) } // (in a browser a canvas's text asks for the page's styles: a read)
+  drawImage(...a: unknown[]): void { this.#note('drawImage', a) }
+  createImageData(width: number, height: number): { data: Uint8ClampedArray; width: number; height: number } { return { data: new Uint8ClampedArray(width * height * 4), width, height } }
+  putImageData(...a: unknown[]): void { this.#note('putImageData', a) }
   setLineDash(d: number[]): void { this.#dash = d }
   setTransform(...a: number[]): void { this.transform = a }
   texts(): string[] { return this.calls.filter((c) => c.op === 'fillText').map((c) => String(c.a[0])) }
   rects(color: string): Call[] { return this.calls.filter((c) => c.op === 'fillRect' && c.fill === color) }
 }
+
+/** What the HUD did to the page, in order: 'read' (it asked how something is laid out), 'write' (it changed what is laid out). */
+const touched: string[] = []
 
 class El {
   tag: string
@@ -56,8 +63,8 @@ class El {
   vars: Record<string, string> = {}
   setProps = 0
   removed: string[] = []
-  offsetHeight = 0
-  clientWidth = 0
+  #offsetHeight = 0
+  #clientWidth = 0
   width = 300
   height = 150
   ctx = new Ctx()
@@ -69,9 +76,13 @@ class El {
     this.tag = tag
   }
   get textContent(): string { return this.#text }
-  set textContent(v: string) { this.textWrites++; this.#text = v }
+  set textContent(v: string) { this.textWrites++; touched.push('write'); this.#text = v }
   get hidden(): boolean { return this.#hidden }
-  set hidden(v: boolean) { this.hiddenWrites++; this.#hidden = v }
+  set hidden(v: boolean) { this.hiddenWrites++; touched.push('write'); this.#hidden = v }
+  get offsetHeight(): number { touched.push('read'); return this.#offsetHeight }
+  set offsetHeight(v: number) { this.#offsetHeight = v }
+  get clientWidth(): number { touched.push('read'); return this.#clientWidth }
+  set clientWidth(v: number) { this.#clientWidth = v }
   append(...cs: El[]): void { for (const c of cs) { c.parent = this; this.children.push(c) } }
   remove(): void {
     if (!this.parent) return
@@ -202,7 +213,9 @@ test('the strip is drawn at the width it is laid out at, as sharp as the screen 
   const m = mount()
   m.canvas.clientWidth = 360
   m.hud.set(status(), profile(), PATH, DEFAULT_UNITS)
-  assert.deepEqual([m.canvas.width, m.canvas.height], [360, Math.round(360 * 0.28)])
+  assert.deepEqual([m.canvas.width, m.canvas.height], [400, 112], 'shown at this look: drawn at the usual width until the page has laid it out')
+  m.hud.set(status(), profile(), PATH, DEFAULT_UNITS)
+  assert.deepEqual([m.canvas.width, m.canvas.height], [360, Math.round(360 * 0.28)], 'at the next look, at its own')
   assert.deepEqual(m.canvas.ctx.transform, [1, 0, 0, 1, 0, 0])
   ;(globalThis as { devicePixelRatio?: number }).devicePixelRatio = 3
   try {
@@ -215,6 +228,26 @@ test('the strip is drawn at the width it is laid out at, as sharp as the screen 
   const n = mount()
   n.hud.set(status(), profile(), PATH, DEFAULT_UNITS) // not laid out (no width): 400
   assert.deepEqual([n.canvas.width, n.canvas.height], [400, 112])
+})
+
+test('the strip\'s cells go to its canvas as one picture, a pixel a cell, stretched over the plot (as rectangles, one a cell, they took 2.5 to 7 ms of a frame)', () => {
+  const m = mount()
+  m.canvas.clientWidth = 400
+  m.hud.set(status(), profile([[20, 10, 0.9, 2]]), PATH, DEFAULT_UNITS)
+  const laid = m.canvas.ctx.calls.filter((c) => c.op === 'drawImage')
+  assert.equal(laid.length, 1)
+  const cells = laid[0].a[0] as El
+  assert.deepEqual([cells.tag, cells.width, cells.height, cells.parent], ['canvas', PROFILE_COLS, PROFILE_ROWS, null], 'a canvas of its own, not in the page')
+  const put = cells.ctx.calls.filter((c) => c.op === 'putImageData')
+  assert.equal(put.length, 1)
+  const image = put[0].a[0] as { data: Uint8ClampedArray }
+  assert.deepEqual([...image.data.subarray(((PROFILE_ROWS - 11) * PROFILE_COLS + 20) * 4).subarray(0, 4)], [0xff, 0xbe, 0x3d, 255], 'the cell, heavy rain\'s colour')
+  assert.equal(m.canvas.ctx.calls.filter((c) => c.op === 'fillRect').length, 1, 'no rectangle but the plot\'s ground')
+  m.hud.set(status(), profile([[21, 10, 0.9, 1]]), PATH, DEFAULT_UNITS)
+  const again = cells.ctx.calls.filter((c) => c.op === 'putImageData')
+  assert.equal(again.length, 2)
+  assert.equal(again[1].a[0], image, 'the same picture, filled again')
+  assert.deepEqual([...image.data.subarray(((PROFILE_ROWS - 11) * PROFILE_COLS + 20) * 4).subarray(0, 8)], [0, 0, 0, 0, 0x58, 0xa6, 0xff, 255])
 })
 
 test('the strip is painted again only when it would show something else: another profile, other units, another size, or a way ahead that has moved a pixel; the same again is not painted (the app looks four times a second, and a profile lasts a second or more)', () => {
@@ -247,6 +280,100 @@ test('the strip is painted again only when it would show something else: another
   assert.equal(painted(), 8, 'hidden and shown with nothing new: the canvas has kept its picture')
 })
 
+test('at a look, what is laid out is read before anything is written: a read after a write makes the browser lay the whole page out on the spot (5 to 20 ms in a flight, when a chip\'s words changed), so the HUD\'s height and the strip\'s width are those of the look before', () => {
+  const m = mount()
+  m.box.offsetHeight = 40
+  m.canvas.clientWidth = 360
+  const looks: [AheadStatus, AheadProfile | null][] = [
+    [status(), profile()], [status({ sev: 2, inMin: 3 }), profile()], [status({ sev: 2, inMin: 2 }, { inside: false, inMin: 4, text: 'icing' }), profile([[3, 3, 0.9, 1]])],
+    [status({ inside: true, sev: 1, inMin: 0 }, { inside: true, inMin: 0, text: 'icing' }), null], [status(), profile()],
+  ]
+  for (const [s, p] of looks) {
+    touched.length = 0
+    m.hud.set(s, p, PATH, DEFAULT_UNITS)
+    const firstWrite = touched.indexOf('write')
+    assert.ok(firstWrite < 0 || !touched.slice(firstWrite).includes('read'), `no read after a write: ${touched.join(' ')}`)
+  }
+  assert.ok(touched.length > 0)
+  for (const on of [false, true]) {
+    touched.length = 0
+    m.hud.setStrip(on)
+    assert.ok(touched.includes('write') && !touched.slice(touched.indexOf('write')).includes('read'), `nor when the strip is switched: ${touched.join(' ')}`)
+  }
+})
+
+test('the strip\'s labels are in the page\'s font, asked for with what is laid out, before anything is written, and not at a paint: asked after a write, the browser works the whole page\'s styles out on the spot (3 to 5 ms of a flight\'s frame)', () => {
+  const g = globalThis as { getComputedStyle?: unknown }
+  g.getComputedStyle = (): { fontFamily: string; display: string } => {
+    touched.push('read')
+    return { fontFamily: 'Inter, sans-serif', display: 'block' }
+  }
+  try {
+    const m = mount()
+    m.canvas.clientWidth = 360
+    for (const [k, s] of [status(), status({ sev: 2, inMin: 3 }), status({ sev: 2, inMin: 2 })].entries()) {
+      touched.length = 0
+      m.hud.set(s, profile([[k, 3, 0.9, 1]]), PATH, DEFAULT_UNITS) // other words and another profile at each look: written, and painted
+      const firstWrite = touched.indexOf('write')
+      assert.ok(firstWrite < 0 || !touched.slice(firstWrite).includes('read'), `look ${k}: no read after a write: ${touched.join(' ')}`)
+      assert.equal(m.canvas.ctx.font, '500 11px Inter, sans-serif', `look ${k}`)
+    }
+    assert.equal(m.canvas.ctx.calls.filter((c) => c.op === 'clearRect').length, 3, 'painted at each')
+  } finally {
+    delete g.getComputedStyle
+  }
+})
+
+test('in a browser the HUD is told when a part of it changes size, or the window does, and reads what is laid out only then: a look that changes nothing reads nothing (a read makes the browser lay out whatever the rest of the page has changed in that frame)', () => {
+  const watchers: { told: () => void; watched: unknown[]; off: boolean }[] = []
+  const g = globalThis as { ResizeObserver?: unknown }
+  g.ResizeObserver = class {
+    readonly #w: { told: () => void; watched: unknown[]; off: boolean }
+    constructor(told: () => void) { watchers.push((this.#w = { told, watched: [], off: false })) }
+    observe(el: unknown): void { this.#w.watched.push(el) }
+    disconnect(): void { this.#w.off = true }
+  }
+  try {
+    const m = mount()
+    assert.deepEqual(watchers[0].watched, [m.box, m.cloud, m.hazard, m.strip], 'the HUD, its two chips and the strip')
+    m.box.offsetHeight = 40
+    m.canvas.clientWidth = 360
+    const p = profile() // (the same profile at every look: the strip is painted once)
+    m.hud.set(status(), p, PATH, DEFAULT_UNITS)
+    assert.equal(m.hud.moved(), true, 'at first it may stand anywhere')
+    assert.equal(m.hud.moved(), false, 'asked again: nothing new')
+    watchers[0].told() // the page has laid it out: its parts have their sizes
+    touched.length = 0
+    m.hud.set(status(), p, PATH, DEFAULT_UNITS)
+    assert.ok(touched.includes('read'), 'read at the next look')
+    assert.equal(m.root.vars['--fh-wxhud-h'], '40px')
+    assert.equal(m.canvas.width, 360)
+    assert.equal(m.hud.moved(), true)
+    for (let k = 0; k < 3; k++) {
+      touched.length = 0
+      m.hud.set(status(), p, PATH, DEFAULT_UNITS)
+      assert.deepEqual(touched, [], 'the same again: nothing read, nothing written')
+      assert.equal(m.hud.moved(), false)
+    }
+    m.hud.set(status({ sev: 2, inMin: 3 }), p, PATH, DEFAULT_UNITS) // other words: the chip is wider
+    assert.ok(touched.includes('write') && !touched.includes('read'), 'not read at the look that writes')
+    watchers[0].told()
+    touched.length = 0
+    m.box.offsetHeight = 44
+    m.hud.set(status({ sev: 2, inMin: 3 }), p, PATH, DEFAULT_UNITS)
+    assert.deepEqual(touched.includes('read') && m.root.vars['--fh-wxhud-h'], '44px')
+    m.hud.destroy()
+    assert.equal(watchers[0].off, true)
+  } finally {
+    delete g.ResizeObserver
+  }
+  assert.equal(mount().hud.moved(), true, 'where nothing tells it (no ResizeObserver), it may have moved at any look')
+  const n = mount()
+  n.hud.set(status(), null, null, DEFAULT_UNITS)
+  assert.equal(n.hud.moved(), true)
+  assert.equal(n.hud.moved(), true)
+})
+
 test('what has not changed is not written again: the line says the same thing most of the time', () => {
   const m = mount()
   const s = status({ sev: 1, inMin: 5 }, { inside: false, inMin: 3, text: 'icing' })
@@ -264,6 +391,8 @@ test('its height is published as --fh-wxhud-h on the root for the toasts to stan
   const m = mount()
   m.box.offsetHeight = 41.2
   m.hud.set(status(), null, null, DEFAULT_UNITS)
+  assert.deepEqual(m.root.vars, {}, 'shown at this look: its height is read at the next (the page lays it out between)')
+  m.hud.set(status(), null, null, DEFAULT_UNITS)
   assert.equal(m.root.vars['--fh-wxhud-h'], '42px')
   const writes = m.root.setProps
   m.hud.set(status(), null, null, DEFAULT_UNITS)
@@ -272,7 +401,8 @@ test('its height is published as --fh-wxhud-h on the root for the toasts to stan
   m.hud.set(status(), profile(), PATH, DEFAULT_UNITS)
   assert.equal(m.root.vars['--fh-wxhud-h'], '172px')
   m.hud.set(null, null, null, DEFAULT_UNITS)
-  assert.deepEqual(m.root.vars, {}, 'hidden: none')
+  assert.deepEqual(m.root.vars, {}, 'hidden: none, at once')
+  m.hud.set(status(), null, null, DEFAULT_UNITS)
   m.hud.set(status(), null, null, DEFAULT_UNITS)
   assert.equal(m.root.vars['--fh-wxhud-h'], '172px')
   m.hud.destroy()
@@ -345,19 +475,39 @@ test('drawStrip: the minutes under the plot, each at its distance along 80 km; a
   for (let i = 1; i < xs.length; i++) assert.ok(xs[i] - xs[i - 1] >= 44, 'room between the labels')
 })
 
-test('drawStrip: a cell is drawn where the cover is over 0.25, in its severity\'s colour, the more solid the cover the stronger; none for less', () => {
+test('stripCells: the cells as a picture, a pixel a cell, the top row first: a cell where the cover is over 0.25, in its severity\'s colour, the more solid the cover the stronger; clear for less', () => {
+  const p = profile([[10, 5, 1, 3], [11, 5, 0.2, 3], [12, 5, 0.6, 1], [13, 5, 0.25, 2], [20, 30, 0.8, 2.4], [30, 40, 0.5, 0], [0, 0, 0.9, 1], [159, 49, 0.9, 3]])
+  const px = stripCells(p)
+  assert.equal(px.length, PROFILE_COLS * PROFILE_ROWS * 4)
+  const at = (i: number, j: number): number[] => [...px.subarray(((PROFILE_ROWS - 1 - j) * PROFILE_COLS + i) * 4).subarray(0, 4)]
+  assert.deepEqual(at(10, 5), [0xff, 0x4d, 0x3d, 255], 'a thunderstorm: 0.35 + 1, kept to 1')
+  assert.deepEqual(at(11, 5), [0, 0, 0, 0], '0.2: none')
+  assert.deepEqual(at(12, 5), [0x58, 0xa6, 0xff, Math.round(0.95 * 255)], 'light rain: 0.35 + 0.6')
+  assert.deepEqual(at(13, 5), [0, 0, 0, 0], '0.25 is not over 0.25')
+  assert.deepEqual(at(20, 30), [0xff, 0xbe, 0x3d, 255], 'heavy rain: 2.4 is step 2')
+  assert.deepEqual(at(30, 40), [0xf2, 0xf5, 0xf8, Math.round(0.85 * 255)], 'cloud')
+  assert.deepEqual([...px.subarray((PROFILE_ROWS - 1) * PROFILE_COLS * 4).subarray(0, 4)], [0x58, 0xa6, 0xff, 255], 'the first column at sea level: the bottom row\'s first pixel')
+  assert.deepEqual([...px.subarray((PROFILE_COLS - 1) * 4).subarray(0, 4)], [0xff, 0x4d, 0x3d, 255], 'the last column at the top: the top row\'s last pixel')
+  assert.equal(px.filter((v, k) => k % 4 === 3 && v > 0).length, 6)
+  const kept = stripCells(profile([[1, 1, 0.9, 0]]), px)
+  assert.equal(kept, px, 'into the picture given')
+  assert.deepEqual(at(10, 5), [0, 0, 0, 0], 'what it held is gone')
+  assert.equal(px.filter((v, k) => k % 4 === 3 && v > 0).length, 1)
+})
+
+test('drawStrip: the cells\' picture is laid over the plot, not smoothed (a cell is a block), over the hazard areas\' tints and under their dashed boxes; without one no cell is drawn', () => {
   const p = stripPlot(W, H, DEFAULT_UNITS)
-  const [cw, ch] = [(p.x1 - p.x0) / PROFILE_COLS, (p.y1 - p.y0) / PROFILE_ROWS]
-  const ctx = draw(profile([[10, 5, 1, 3], [11, 5, 0.2, 3], [12, 5, 0.6, 1], [13, 5, 0.25, 2], [20, 30, 0.8, 2.4], [30, 40, 0.5, 0]]))
-  const storm = ctx.rects('#ff4d3d')
-  assert.equal(storm.length, 1)
-  assert.ok(Math.abs((storm[0].a[0] as number) - (p.x0 + 10 * cw)) < 1e-9 && Math.abs((storm[0].a[1] as number) - (p.y1 - 6 * ch)) < 1e-9, 'column 10, row 5 (the sixth up from the bottom)')
-  assert.equal(storm[0].alpha, 1, '0.35 + 1, kept to 1')
-  const rain = ctx.rects('#58a6ff')
-  assert.equal(rain.length, 1)
-  assert.ok(Math.abs(rain[0].alpha - 0.95) < 1e-6, '0.35 + 0.6 (the cover is a float32)')
-  assert.equal(ctx.rects('#ffbe3d').length, 1, 'one heavy rain: 2.4 is step 2; the 0.25 is not over 0.25')
-  assert.equal(ctx.rects('#f2f5f8').length, 1, 'and cloud')
+  const cells = { the: 'picture' }
+  const ctx = new Ctx()
+  drawStrip(ctx as unknown as CanvasRenderingContext2D, W, H, profile([[10, 5, 1, 3]], [{ fromKm: 40, toKm: 60, baseM: 3000, topM: 10_000, color: RED }]), PATH, DEFAULT_UNITS, undefined, cells as unknown as CanvasImageSource)
+  const laid = ctx.calls.filter((c) => c.op === 'drawImage')
+  assert.equal(laid.length, 1)
+  assert.deepEqual(laid[0].a, [cells, p.x0, p.y0, p.x1 - p.x0, p.y1 - p.y0])
+  assert.deepEqual([laid[0].smooth, laid[0].alpha], [false, 1])
+  const order = ctx.calls.map((c) => c.op)
+  assert.ok(order.lastIndexOf('fillRect') < order.indexOf('drawImage') && order.indexOf('drawImage') < order.indexOf('strokeRect'))
+  assert.equal(ctx.calls.filter((c) => c.op === 'fillRect').length, 2, 'the plot\'s ground and the area\'s tint: no rectangle for a cell')
+  assert.equal(draw(profile([[10, 5, 1, 3]])).calls.filter((c) => c.op === 'drawImage' || c.op === 'fillRect').length, 1)
 })
 
 test('drawStrip: a hazard area is a dashed box in its own colour over the stretch it is crossed, from its base to its top, tinted inside', () => {

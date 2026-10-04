@@ -839,7 +839,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // What is ahead on this heading (scene/wxAhead.ts): the way the chased aircraft goes if it keeps its track, speed and climb is worked out
   // every frame, for the 3-D view's track line and level slice (Weather3D.setAhead); a few times a second (WX_LOOK_MS) the status line,
   // the ahead strip (ui/wxHud.ts) and the track line's minute labels follow from it; the strip's profile (8,000 cells of the field) is
-  // made again only when it would show something else. Hidden with the weather: nothing is worked out.
+  // made again only when it would show something else, in the frame after a look, and the next look paints it: over a storm the
+  // profile takes up to 6 ms and the look's own work up to 5, which in one frame was a hold of 11 ms. So the strip shows the sky as
+  // it was a quarter second ago, and comes a quarter second after it is switched on. Hidden with the weather: nothing is worked out.
   // Until a source of clouds has answered (weather3d.known) the status line says "No weather data" and the strip has no cells.
   // wxAids are the Looking ahead choices of the Weather menu (wxPrefs: the track line, the level slice, the ahead strip).
   // ponytail: the minute labels are placed with the names (placeLabels.ts), a few times a second, so they trail the track line by up to
@@ -850,6 +852,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   let wxLookMs = -Infinity
   let wxHudUp = false // the HUD shows something
   let wxKept: KeptProfile | null = null // the ahead strip's profile, kept while it would show the same (scene/wxAhead.ts keepProfile)
+  let wxProfileDue = false // this frame is the one after a look: the strip's profile is made in it
   let wxMinutesUp = false // the names overlay holds the minute labels
   let wxHudRects: readonly Rect[] = NO_RECTS // the HUD's chips and strip on the canvas: no name of the 3-D view (a hazard area's label is one) goes under them
   const lookAhead = (s: RenderState | null, now: number): void => {
@@ -858,20 +861,29 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     if (path === null) {
       if (wxHudUp) wxHud.set(null, null, null, frameUnits)
       if (wxMinutesUp) placeLabels.setLayer(WX_MINUTES_KEY, WX_MINUTES_RANK, [])
-      wxHudUp = wxMinutesUp = false
+      wxHudUp = wxMinutesUp = wxProfileDue = false
       wxHudRects = NO_RECTS
+      wxKept = null
       return
     }
-    if (now - wxLookMs < WX_LOOK_MS) return
-    wxLookMs = now
-    const units = frameUnits
+    if (!wxProfileDue && now - wxLookMs < WX_LOOK_MS) return
     const hazards = weather3d.hazards
     const known = weather3d.known // no source has answered yet: the field (none, or an empty one) says nothing of the sky
     const field = known ? weather3d.field : null
-    if (wxAids.strip) wxKept = keepProfile(wxKept, path, field, hazards)
-    wxHud.set(aheadStatus(path, field, hazards, (h) => hazardWords(h.sigmet, units), known), wxAids.strip ? wxKept!.profile : null, path, units)
+    if (wxProfileDue) {
+      wxProfileDue = false
+      wxKept = keepProfile(wxKept, path, field, hazards)
+      return
+    }
+    wxLookMs = now
+    const units = frameUnits
+    // (where the HUD stands is read before it is written to, and only when it says it may have moved: a read after a write makes the
+    // browser lay the page out on the spot; the names overlay keeps off the chips as they stood a quarter second ago)
+    if (wxHudUp && wxHud.moved()) wxHudRects = measureRoom('.fh-wxhud-chip, .fh-wxhud-strip').covers.filter((r) => r.w > 0 && r.h > 0)
+    if (!wxAids.strip) wxKept = null
+    wxHud.set(aheadStatus(path, field, hazards, (h) => hazardWords(h.sigmet, units), known), wxKept?.profile ?? null, path, units)
+    wxProfileDue = wxAids.strip
     wxHudUp = true
-    wxHudRects = measureRoom('.fh-wxhud-chip, .fh-wxhud-strip').covers.filter((r) => r.w > 0 && r.h > 0)
     if (weather3d.aheadShow.track || wxMinutesUp) {
       const minutes: LayerLabel[] = !weather3d.aheadShow.track ? [] : path.points.slice(1).map((p, i) => ({
         text: `${i + 1} min`, position: Cartesian3.fromDegrees(p.lon, p.lat, p.altM + geoidN(p.lat, p.lon)), color: WX_MINUTES_COLOR,
@@ -951,7 +963,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     Math.min(MAX_DELAY_S, Math.max(registry.delayTargetS(selected), (status.chaseEveryS ?? 0) + p90(arrivalAgesS) + 0.5))
   const bench = params.bench ? new BenchRecorder(viewer, { label: params.hex ?? 'browse' }) : null
   bench?.mountOverlay(div('fh-bench', ui))
-  // ?bench=1: User Timing measures fh:frame, fh:fleet, fh:table, fh:wx (each frame) and fh:ingest (each poll), and two marks
+  // ?bench=1: User Timing measures fh:frame, fh:fleet, fh:table, fh:wx and its part fh:wx-ahead (each frame) and fh:ingest (each poll), and two marks
   // under the chased aircraft for gate GE: fh:no-ground for each undefined terrain reading, and fh:ground-unknown for
   // each frame whose ground is still unknown after the memo. Read them with performance.getEntriesByName(name) or in
   // DevTools. ponytail: entries pile up (~200 per second) until performance.clearMeasures(); fine for runs of minutes.
@@ -1966,9 +1978,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       weather3d.setNight(prefs.light && st !== null ? st.night : 0)
       weather3d.update(chased !== null ? wxAircraft : null, now, tf)
     }
+    const tAhead = bench === null ? 0 : performance.now()
     lookAhead(chased, now)
     if (bench !== null) {
       measure?.('fh:wx', tWx)
+      measure?.('fh:wx-ahead', tAhead)
       bench.work(performance.now() - tWx)
     }
     // The names over the 3-D view, after the camera moved; none over the flight-data frame's cards and flight ID, nor
