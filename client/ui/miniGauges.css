@@ -168,9 +168,10 @@
     left: 8px;
   }
 
-  /* …so with a card showing (the map key gives way to it, mapKey.css) the panel goes to the top left corner. */
+  /* …so with a card showing (the map key gives way to it, mapKey.css) the panel goes to the top left corner, under the
+     pill that says the time shown (timePill.css). */
   .fh-ui:has(.fh-card:not([hidden])) .fh-botleft {
-    top: var(--fh-top);
+    top: calc(var(--fh-top) + 40px);
     bottom: auto;
   }
 

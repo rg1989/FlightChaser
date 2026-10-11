@@ -21,6 +21,12 @@ export function makeAdsblol(opts: { userAgent: string; baseUrl?: string; timeout
     async hexes(hexes) {
       return get(`/v2/hex/${hexList(hexes, MAX_HEXES)}`)
     },
+    // /v2/callsign/{callsigns} → readsb find_callsign= (a comma list), as /v2/hex: the flight search (server/flightSearch.ts).
+    async callsign(callsigns) {
+      const list = [...new Set(callsigns.map((c) => c.trim().toUpperCase()))].filter((c) => /^[A-Z0-9]{3,8}$/.test(c)).slice(0, 20)
+      if (list.length === 0) throw new Error('no callsign') // never: the caller sends what parseFlightId passed
+      return get(`/v2/callsign/${list.join(',')}`)
+    },
     async all() {
       throw new Error('unsupported')
     },

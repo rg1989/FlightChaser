@@ -5,7 +5,8 @@
 // (?cam=heading,pitch,range: offset from the nose °, look pitch °, distance m) and the scene toggles that differ from
 // the defaults (?topo=0 …, read by scenePrefs). A running scenario replaces at, hex and chase with ?scenario=<id>&t=<s>
 // (t: the scenario clock in whole seconds since its local midnight, as in the package files, so a link survives a
-// package whose start moves) and keeps ?cam=, or says ?view=map for its top-down map. A replay of the past (History) adds ?hist=<unix s> to the view, so a
+// package whose start moves) and keeps ?cam=, or says ?view=map for its top-down map. A replay of the past (History)
+// adds ?hist=<unix s> to the view, and one flight's replay ?fl=<its first second>,<its last>,<its callsign> too, so a
 // reload returns to that moment, paused. Other parameters (?bench, ?sun, ?airport, ?scenarioBase) are kept as they
 // are. Pure: the app passes location.search and writes the result with history.replaceState.
 import { DEFAULT_PREFS, PREF_KEYS } from './scenePrefs.ts'
@@ -31,6 +32,14 @@ export interface UrlState {
   prefs: ScenePrefs
   scenario?: { id: string; t: number; map?: boolean } | null // a running scenario and its clock; map: on the top-down map
   hist?: number | null // History: the replay time, UTC ms (written in whole seconds)
+  flight?: FlightSpan | null // …of one flight's replay: the flight (History's bar is then that flight alone)
+}
+
+/** One past flight being replayed: whose, under which callsign, from its first point heard to its last (UTC ms). */
+export interface FlightSpan {
+  callsign: string
+  fromMs: number
+  toMs: number
 }
 
 /**
@@ -78,10 +87,20 @@ export function readHist(search: string): number | null {
   return /^\d+$/.test(v) && Number(v) >= HIST_MIN_S ? Number(v) * 1000 : null
 }
 
+const FLIGHT = /^(\d{9,11}),(\d{9,11}),([A-Z0-9]{2,8})$/
+
+/** ?fl=<unix s>,<unix s>,<callsign>: the flight a History replay is of; null when absent, malformed or not a span of at most two days. */
+export function readFlight(search: string): FlightSpan | null {
+  const m = FLIGHT.exec(new URLSearchParams(search).get('fl') ?? '')
+  if (m === null) return null
+  const [fromMs, toMs] = [Number(m[1]) * 1000, Number(m[2]) * 1000]
+  return fromMs >= HIST_MIN_S * 1000 && toMs > fromMs && toMs - fromMs <= 2 * 86_400_000 ? { callsign: m[3], fromMs, toMs } : null
+}
+
 /** The search string for s, keeping every parameter this module does not own. Rounded so small moves do not churn history. */
 export function writeUrl(search: string, s: UrlState): string {
   const q = new URLSearchParams(search)
-  for (const k of ['at', 'hex', 'chase', 'cam', 'scenario', 't', 'view', 'hist', ...PREF_KEYS]) q.delete(k)
+  for (const k of ['at', 'hex', 'chase', 'cam', 'scenario', 't', 'view', 'hist', 'fl', ...PREF_KEYS]) q.delete(k)
   const cam = s.cam && `${Math.round(s.cam.headingDeg)},${Math.round(s.cam.pitchDeg)},${Math.round(s.cam.rangeM)}`
   if (s.scenario) {
     q.set('scenario', s.scenario.id)
@@ -94,6 +113,7 @@ export function writeUrl(search: string, s: UrlState): string {
     if (s.hex && s.chase) q.set('chase', '1')
     if (s.hex && s.chase && cam) q.set('cam', cam)
     if (s.hist != null) q.set('hist', String(Math.floor(s.hist / 1000)))
+    if (s.hist != null && s.flight != null && s.hex) q.set('fl', `${Math.floor(s.flight.fromMs / 1000)},${Math.ceil(s.flight.toMs / 1000)},${s.flight.callsign}`)
   }
   for (const k of PREF_KEYS) if (s.prefs[k] !== DEFAULT_PREFS[k]) q.set(k, s.prefs[k] ? '1' : '0')
   const out = q.toString().replaceAll('%2C', ',')

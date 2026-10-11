@@ -50,3 +50,18 @@ export function flightNumbersOf(callsign: string | null): string[] {
   const iata = IATA[op]
   return [...new Set([...(iata === undefined ? [] : [iata + sent, iata + num]), op + num])]
 }
+
+let byIata: Map<string, string> | null = null
+
+/**
+ * An airline's ICAO designator from its ticket designator ('LY' → 'ELY'); null when the table has none. The first in the
+ * table when two airlines share one. ponytail: the table is OpenFlights', which is years old (W4 is not Wizz Air Malta
+ * there): the flight search asks adsbdb first and falls back on this.
+ */
+export function icaoOfIata(code: string): string | null {
+  if (byIata === null) {
+    byIata = new Map()
+    for (const [icao, two] of Object.entries(IATA)) if (!byIata.has(two)) byIata.set(two, icao)
+  }
+  return byIata.get(code.trim().toUpperCase()) ?? null
+}

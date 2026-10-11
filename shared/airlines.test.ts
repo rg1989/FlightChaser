@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { airlineOf, flightNumbersOf, numberOf, operatorOf } from './airlines.ts'
+import { airlineOf, flightNumbersOf, icaoOfIata, numberOf, operatorOf } from './airlines.ts'
 
 test('airlineOf: ICAO designator + flight number → airline name', () => {
   assert.equal(airlineOf('ELY5450'), 'El Al Israel Airlines')
@@ -65,4 +65,11 @@ test('operatorOf: the ICAO designator of an airline flight id, else null', () =>
   assert.equal(operatorOf(' ezy62bu '), 'EZY')
   assert.equal(operatorOf('N12345'), null) // a registration flown as the callsign
   assert.equal(operatorOf(null), null)
+})
+
+test('icaoOfIata: an airline\'s ICAO designator from its ticket designator; null for one the table lacks', () => {
+  assert.equal(icaoOfIata('LY'), 'ELY')
+  assert.equal(icaoOfIata(' fz '), 'FDB')
+  assert.equal(icaoOfIata('U2'), 'EZY')
+  assert.equal(icaoOfIata('??'), null)
 })

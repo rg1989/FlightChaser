@@ -9,10 +9,11 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
-import type { HistorySlot, HistoryStatus, TraceDay, TraceReply } from '../shared/api.ts'
+import type { FlightSearchReply, HistorySlot, HistoryStatus, TraceDay, TraceReply } from '../shared/api.ts'
 import { SLOT_MS, newestSlotMs } from '../shared/history.ts'
 import type { ReadsbAircraft } from '../shared/types.ts'
 import { readServerConfig } from './config.ts'
+import { ADSBDB_FLIGHT_URL } from './flightRoutes.ts'
 import { encodeHeatmap } from './heatmap.ts'
 import { heatmapUrl } from './historyStore.ts'
 import { commandLineDeps, createServer, rollsHistory } from './main.ts'
@@ -416,4 +417,48 @@ test('closing the server aborts the downloads under way', async (t) => {
   await app.close()
   assert.equal(signals[0].aborted, true)
   await waiting
+})
+
+test('a flight over HTTP: what it is; then its past days, read while the page keeps asking; 400 for what is not a flight', async (t) => {
+  const asked: string[] = []
+  const place = (icao: string, iata: string, city: string, latitude: number, longitude: number) => ({ icao_code: icao, iata_code: iata, name: `${city} Airport`, municipality: city, latitude, longitude })
+  // adsbdb knows the callsign's route; the airline's callsign list and everything else: 404.
+  const flightsFetch = (async (input: string | URL | Request) => {
+    asked.push(String(input))
+    if (String(input) !== `${ADSBDB_FLIGHT_URL}AEE4266`) return new Response('not found', { status: 404 })
+    return Response.json({ response: { flightroute: { callsign: 'AEE4266', callsign_icao: 'AEE4266', airline: { name: 'Aegean Airlines', icao: 'AEE' }, origin: place('LGAV', 'ATH', 'Athens', 37.94, 23.94), destination: place('LLBG', 'TLV', 'Tel Aviv', 32.01, 34.89) } } })
+  }) as typeof fetch
+  const { base, up } = await start(t, { flightsFetch })
+  // adsb.lol: 4691c4 sends AEE4266 as the newest half hours begin; its trace holds one two-hour leg over them.
+  const t0 = SLOT - 3 * SLOT_MS
+  for (let k = -3; k <= 1; k++) up.custom.set(heatUrl(SLOT + k * SLOT_MS), () => heatResponse(SLOT))
+  up.custom.set('https://adsb.lol/data/traces/c4/trace_full_4691c4.json', () => Response.json({
+    icao: '4691c4', r: 'SX-DND', t: 'A320', timestamp: t0 / 1000,
+    trace: Array.from({ length: 25 }, (_, i) => [i * 300, 37.9 - i * 0.24, 23.9 + i * 0.45, 34000, 440, 120, i === 0 ? 2 : 0, 0, i === 0 ? { flight: 'AEE4266 ' } : null]),
+  }))
+
+  for (const bad of ['', 'tel aviv', 'x'.repeat(40)]) assert.equal((await get(`${base}/api/flights?q=${encodeURIComponent(bad)}`)).status, 400, bad)
+  const first = await get<FlightSearchReply>(`${base}/api/flights?q=aee%204266`)
+  assert.equal(first.status, 200)
+  const { route, ...what } = first.body
+  assert.deepEqual(what, {
+    id: 'AEE4266', ticket: null, callsigns: ['AEE4266'], byRoute: false, airline: 'Aegean Airlines', known: true,
+    live: null, // a replay has no live lookup
+    past: [], scan: { state: 'idle', fromMs: null, oldestMs: GUESS, more: true }, similar: [],
+  })
+  assert.deepEqual(route?.map((p) => [p.icao, p.iata, p.city]), [['LGAV', 'ATH', 'Athens'], ['LLBG', 'TLV', 'Tel Aviv']])
+  assert.ok(asked.includes(`${ADSBDB_FLIGHT_URL}AEE4266`))
+  assert.equal(up.urls.length, 0, 'nothing of the past is read until it is asked for')
+
+  let reply = first.body
+  for (let i = 0; i < 800 && reply.scan.state !== 'done'; i++) {
+    reply = (await get<FlightSearchReply>(`${base}/api/flights?q=AEE4266&scan=1&days=1`)).body
+    assert.notEqual(reply.scan.state, 'failed')
+    await sleep(5)
+  }
+  assert.equal(reply.scan.state, 'done')
+  assert.deepEqual(reply.past.map((f) => [f.hex, f.callsign, f.reg, f.typeCode, f.from.tMs, f.to.tMs]), [['4691c4', 'AEE4266', 'SX-DND', 'A320', t0, t0 + 2 * HOUR]])
+  // Only the starts of the half hours were asked for (a part of each file), and the one aircraft's trace.
+  const heat = up.urls.filter((u) => u.includes('/heatmap/'))
+  assert.ok(heat.length > 0 && up.urls.some((u) => u.endsWith('/trace_full_4691c4.json')))
 })

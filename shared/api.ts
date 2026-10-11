@@ -94,6 +94,77 @@ export interface TraceDay {
   legs: TraceReply[]
 }
 
+/** An airport of a flight's route (adsbdb.com). */
+export interface FlightPlace {
+  icao: string | null
+  iata: string | null
+  name: string
+  city: string | null
+  lat: number
+  lon: number
+}
+
+/** A flight in the air now, found by its callsign worldwide (the live source's callsign lookup). */
+export interface LiveFlight {
+  hex: string
+  callsign: string
+  reg: string | null
+  typeCode: string | null
+  lat: number
+  lon: number
+  alt: number | 'g' | null       // baro ft, 'g' on the ground, null unknown
+  gsKt: number | null
+  sinceMs: number | null         // its first point on this flight, when its trace is known
+}
+
+/** The first or the last point an aircraft was heard at on a flight. */
+export interface FlightEnd {
+  tMs: number
+  lat: number
+  lon: number
+  alt: number | 'g' | null       // ft, 'g' on the ground, null unknown
+}
+
+/** A flight of the past: one aircraft's leg under the callsign looked for (adsb.lol's trace of it). */
+export interface PastFlight {
+  hex: string
+  callsign: string
+  reg: string | null
+  typeCode: string | null
+  from: FlightEnd
+  to: FlightEnd
+}
+
+/** A flight one slip of the keyboard from the one asked for, that the lists know: offered, never searched by itself. */
+export interface SimilarFlight {
+  id: string                     // what to search instead: a callsign
+  route: string | null           // 'LLBG-EGLL', when the airline's list says
+  flying: boolean                // in the air in the newest half hour
+}
+
+/**
+ * A flight looked up by its ticket number or callsign (GET /api/flights?q=): what it is, where it flies now, when it flew
+ * before. The past is searched only when asked (scan=1), a day at a time back from now, while the page keeps asking.
+ */
+export interface FlightSearchReply {
+  id: string                     // as searched: 'W43257'
+  ticket: string | null          // the ticket number as printed, 'W4 3257'; null: a callsign was typed
+  callsigns: string[]            // every callsign looked for: the number's own, or its airline's on the route (byRoute)
+  byRoute: boolean               // the number's own callsign is not known: the airline's callsigns on its route stand in
+  airline: string | null
+  route: [FlightPlace, FlightPlace] | null // from, to
+  known: boolean                 // the route database, the airline's callsign list or the air now knows it
+  live: LiveFlight[] | null      // null: this server cannot look callsigns up (a replay), or the lookup failed
+  past: PastFlight[]             // newest first
+  scan: {
+    state: 'idle' | 'running' | 'done' | 'failed' // failed: adsb.lol could not be read; asking again goes on from there
+    fromMs: number | null        // the past is searched from here to now; null: not begun
+    oldestMs: number             // adsb.lol keeps nothing older
+    more: boolean                // days it keeps are still unsearched
+  }
+  similar: SimilarFlight[]       // when nothing is known under id
+}
+
 /** One flight being recorded to its own file (server/flightLog.ts). Times on the server clock. */
 export interface RecordingState {
   hex: string

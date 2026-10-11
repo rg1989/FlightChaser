@@ -173,6 +173,69 @@
 [data-kind='flight'] { --k: #ffd23f; --k-rgb: 255 210 63; }
 [data-kind='recording'] { --k: #ff6f6f; --k-rgb: 255 111 111; }
 [data-kind='scenario'] { --k: #ff9bd6; --k-rgb: 255 155 214; }
+/* A flight looked up worldwide: in the air now (the Live green), a flight of the past (the Replay amber), one a slip of
+   the keyboard away (grey: not what was typed), and a line that asks for more. */
+[data-kind='live'] { --k: #3ccf6e; --k-rgb: 60 207 110; }
+[data-kind='flown'] { --k: #f2b53a; --k-rgb: 242 181 58; }
+[data-kind='similar'] { --k: #b9c2cf; --k-rgb: 185 194 207; }
+[data-kind='more'] { --k: #5aa9ff; --k-rgb: 90 169 255; }
+
+/* Its heading, over its rows: what the flight is, its route, and what the search found or is doing. */
+.fh-search-flight {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin-bottom: 2px;
+  padding: 8px 10px 9px 8px;
+  border-bottom: 1px solid var(--fh-hairline);
+}
+
+.fh-search-flight-text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fh-search-flight-title {
+  overflow: hidden;
+  color: #fff;
+  font: 700 14px/1.25 var(--fh-font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fh-search-flight-route {
+  overflow: hidden;
+  color: rgba(233, 238, 244, 0.86);
+  font: 500 12.5px/1.3 var(--fh-font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.fh-search-flight-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fh-search-flight-note {
+  color: var(--fh-muted);
+  font-size: 11.5px;
+  line-height: 1.4;
+}
+
+.fh-search-flight > .fh-spin {
+  margin-top: 9px;
+}
+
+/* A similar flight is not what was typed: its label is not the bold of a match. */
+.fh-search-row[data-kind='similar'] .fh-search-label {
+  color: rgba(233, 238, 244, 0.72);
+}
 
 .fh-search-row {
   display: flex;
@@ -377,6 +440,15 @@
   width: 12px;
   height: 12px;
   border-width: 1.5px;
+}
+
+/* A flight's past being searched, said under its flights: as tall as the row it took the place of ("Search older days"),
+   its spinner where the tiles are, so the list keeps its place and the next flights come in where that row was. */
+.fh-search-doing {
+  box-sizing: border-box;
+  gap: 23px;
+  height: 52px;
+  padding: 0 12px 0 20px;
 }
 
 .fh-search-skel-row {
@@ -618,6 +690,12 @@
     height: 62px;
   }
 
+  .fh-search-doing {
+    gap: 26px;
+    height: 62px;
+    padding-left: 22px;
+  }
+
   .fh-search-glow {
     right: 8px;
     left: 8px;
@@ -644,6 +722,11 @@
 
   .fh-search-kind {
     font-size: 10px;
+  }
+
+  /* A flight of the past says its day, its times and its length: on a phone its chip gives them the room (its tile is the clock). */
+  .fh-search-row[data-kind='flown'] .fh-search-kind {
+    display: none;
   }
 
   .fh-search-head {

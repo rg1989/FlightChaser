@@ -12,6 +12,8 @@ const POINT = golden('adsbfi-point-llbg.json') // one real answer, 2026-09-23: /
 const HEX = golden('adsbfi-hex.json')
 // A squawk answer in the adsb.lol envelope (a real empty one, 2026-10-03: {"ac":[],"msg":"No error","now":…,"total":0}).
 const SQK = '{"ac":[{"hex":"89645a","squawk":"7700","lat":29.9,"lon":38.1,"seen_pos":1,"alt_baro":30000}],"msg":"No error","now":1790995674001,"total":1}'
+// A callsign answer for two callsigns, cut to the fields read (the real one, 2026-10-11, had both aircraft: /v2/callsign/DLH452,BAW491).
+const CALLS = '{"ac":[{"hex":"3c65a2","flight":"DLH452  ","r":"D-AIMB","t":"A388","lat":56.434719,"lon":-1.431055,"alt_baro":36000,"gs":423.6,"seen_pos":0.5},{"hex":"407537","flight":"BAW491  ","r":"G-TTNG","t":"A20N","lat":51.442737,"lon":-0.047302,"alt_baro":5200,"gs":181.4,"seen_pos":0.2}],"msg":"No error","now":1791721790000,"total":2}'
 const UA = 'FlightHopper/0.1 (+test@example.com)'
 
 const seen: { url: string; ua: string | undefined }[] = []
@@ -24,6 +26,7 @@ before(async () => {
     if (req.url?.startsWith('/api/v3/lat/')) return void res.end(POINT)
     if (req.url?.startsWith('/api/v2/hex/')) return void res.end(HEX)
     if (req.url?.startsWith('/api/v2/sqk/')) return void res.end(SQK)
+    if (req.url?.startsWith('/api/v2/callsign/')) return void res.end(CALLS)
     res.writeHead(404)
     res.end()
   })
@@ -82,4 +85,18 @@ test('squawk: /v2/sqk/{code} for four octal digits and the envelope parses; any 
     assert.deepEqual(skipped.snapshot!.aircraft, [], JSON.stringify(code))
   }
   assert.equal(seen.length, n, 'nothing sent: a 400 or 404 counts toward adsb.fi\'s IP restriction')
+})
+
+test('callsign: /v2/callsign/{a,b} for every callsign in one request, upper case, each once; nothing that is no callsign is sent', async () => {
+  seen.length = 0
+  const r = await src.callsign!(['dlh452', 'BAW491', 'DLH452', 'not a callsign', ''])
+  assert.equal(seen.length, 1)
+  assert.equal(seen[0].url, '/api/v2/callsign/DLH452,BAW491')
+  assert.equal(seen[0].ua, UA)
+  assert.deepEqual(r.snapshot?.aircraft.map((a) => [a.hex, a.flight?.trim()]), [['3c65a2', 'DLH452'], ['407537', 'BAW491']])
+  // None left to ask: no request (a 400 or 404 counts toward adsb.fi's IP restriction), answered as found none.
+  const none = await src.callsign!(['?', 'two words'])
+  assert.equal(seen.length, 1)
+  assert.equal(none.status, 200)
+  assert.deepEqual(none.snapshot?.aircraft, [])
 })

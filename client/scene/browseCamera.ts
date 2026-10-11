@@ -60,6 +60,31 @@ export function heightToFit(box: RectDeg, widthPx: number, heightPx: number, spa
   return Math.max(heightForViewWidthM(ewM * spare, fovX), heightForViewWidthM(nsM * spare, fovY))
 }
 
+/**
+ * The top-down view (where the camera looks, and from how high) that shows the whole of box inside one part of a canvas
+ * widthPx × heightPx: `part`, in CSS px from the canvas's top-left (the map clear of the cards and bars), with a little to
+ * spare. The box's middle comes to the part's middle. The part's angles are taken as if it sat on the camera's axis, which
+ * is near enough for a part that holds most of the canvas.
+ */
+export function viewToFit(box: RectDeg, widthPx: number, heightPx: number, part: { x: number; y: number; w: number; h: number }, spare = 1.05):
+  { lat: number; lon: number; heightM: number } {
+  const mPerDeg = (EARTH_R * Math.PI) / 180
+  const lat = (box.north + box.south) / 2
+  const lon = (box.west + box.east) / 2
+  const cos = Math.cos((lat * Math.PI) / 180)
+  const perPx = Math.tan(CESIUM_FOV_RAD / 2) / (Math.max(widthPx, heightPx) / 2) // the tangent of the angle one pixel off the axis
+  const fov = (px: number): number => 2 * Math.atan((perPx * Math.max(1, px)) / 2)
+  const heightM = Math.max(
+    heightForViewWidthM((box.east - box.west) * mPerDeg * cos * spare, fov(part.w)),
+    heightForViewWidthM((box.north - box.south) * mPerDeg * spare, fov(part.h)),
+  )
+  // The camera looks at the canvas's middle: the box's middle is put as far from it as the part's middle is.
+  const mPerPx = heightM * perPx
+  const dx = part.x + part.w / 2 - widthPx / 2
+  const dy = part.y + part.h / 2 - heightPx / 2
+  return { lat: lat + (dy * mPerPx) / mPerDeg, lon: lon - (dx * mPerPx) / (mPerDeg * Math.max(0.05, cos)), heightM }
+}
+
 /** Is (lat, lon) inside r? Edges count as inside; a rectangle with west > east wraps across the antimeridian. */
 export function containsDeg(r: RectDeg, lat: number, lon: number): boolean {
   if (lat < r.south || lat > r.north) return false
