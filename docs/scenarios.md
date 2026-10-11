@@ -2,8 +2,9 @@
 # Scenarios: the package format and what to send
 
 A scenario is a recorded flight that FlightHopper plays back. The app reads it from static files in
-`public/scenarios/`. Only that aircraft is drawn, in chase view or on the top-down map (the play bar's Map button, or V): there
-the whole route is drawn in the altitude colours, with the timeline's marks as dots on it. A timeline plays, pauses and drags the flight. The
+`public/scenarios/`. Only that aircraft is drawn, in chase view or on the top-down map: there the whole route is drawn
+in the altitude colours, with the timeline's marks as dots on it. A pill at the top of the screen says the scenario's
+day and time, switches between 3-D and Map (or V), and has Exit. A timeline plays, pauses and drags the flight. The
 aircraft's position is a function of the scenario clock. Captions show what the crew and ATC said, from the official
 record.
 

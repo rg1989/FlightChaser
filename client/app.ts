@@ -157,7 +157,7 @@ const FT = 0.3048
 // What covers the canvas where the flight-data frame must not go, measured at most every SAFE_EVERY_MS (a layout read).
 // Not a traffic aircraft's card: opened and closed by a click, it keeps off the frame instead (keepClear), which stays put.
 // A new overlay goes in MAP_COVERS too (History's top-down map keeps its aircraft clear of the same).
-const FRAME_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard), .fh-outage-pill, .fh-playbar, .fh-captions, .fh-event-title, .fh-search, .fh-timepill-solo, .fh-presets, .fh-wxhud-chip, .fh-wxhud-strip'
+const FRAME_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard), .fh-outage-pill, .fh-playbar, .fh-captions, .fh-event-title, .fh-search, .fh-scnpill, .fh-timepill-solo, .fh-presets, .fh-wxhud-chip, .fh-wxhud-strip'
 // What covers the top-down map in History, where its aircraft must not come to rest: FRAME_COVERS less what History never shows
 // (captions, event title, TV presets, the outage pill) and with the search box's bar, not its list (that slides open and shut
 // over most of the map: it must not move the map under the person typing). The History bar is a .fh-playbar, an open rail

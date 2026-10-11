@@ -932,6 +932,202 @@
   font-size: 14px;
 }
 
+/* ---- mini variant: the figures alone (a card set to Mini; the Compact preset's corner and strip) ------------------ */
+
+/* The altitude, the speed and the heading as lines of figures: the mini variant's, in place of the tapes. */
+.fh-dig {
+  display: none;
+}
+
+.fh-fblock[data-v='2'] {
+  --fh-adi: 40px;
+  --fh-col-w: 38px;
+  --fh-att-gap: 7px;
+  gap: 4px;
+  padding: 7px 10px 8px;
+  border-radius: 10px;
+}
+
+.fh-fblock[data-v='2'][data-block='top'] {
+  align-items: stretch;
+  width: auto;
+}
+
+.fh-fblock[data-v='2'][data-block='bottom'] {
+  padding: 6px 9px;
+}
+
+.fh-fblock[data-v='2'] .fh-dig {
+  display: flex;
+}
+
+.fh-fblock[data-v='2'] .fh-dig .fh-v {
+  font: 650 17px/1.05 var(--fh-font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.fh-fblock[data-v='2'] .fh-dig .fh-l {
+  min-width: 26px;
+}
+
+/* Room for the usual figures (38,000 ft, 480 kt, 4,000 ft/min), so a digit more or less does not move the card. */
+.fh-fblock[data-v='2'][data-block='left'] :is(.fh-dig, .fh-vsl) .fh-v {
+  min-width: 3.3em;
+}
+
+.fh-fblock[data-v='2'][data-block='right'] .fh-v {
+  min-width: 1.75em;
+}
+
+.fh-fblock[data-v='2'] :is(.fh-bhead, .fh-brow, .fh-dual, .fh-agl, .fh-tas, .fh-hdgcol, .fh-thrust, .fh-gload, .fh-annun) {
+  display: none;
+}
+
+/* The wind keeps its name: without the dial (no heading to draw it against) it is a bare figure. */
+.fh-fblock[data-v='2'] .fh-wind .fh-bhead {
+  display: flex;
+  min-width: 26px;
+  min-height: 0;
+  margin-right: 5px;
+}
+
+.fh-fblock[data-v='2'] .fh-wind {
+  order: 0;
+  justify-content: flex-start;
+}
+
+.fh-fblock[data-v='2'] .fh-wind-row {
+  height: 20px;
+}
+
+.fh-fblock[data-v='2'] .fh-attcol {
+  gap: 0;
+}
+
+.fh-fblock[data-v='2'] .fh-stat .fh-v {
+  font-size: 13.5px;
+}
+
+/* Docked together (a ready-made layout's corner or strip, data-dock on the frame): one size, so the four read as one
+   piece. */
+.fh-frame:is([data-dock='corner'], [data-dock='row']) .fh-fblock[data-v='2'] {
+  box-sizing: border-box;
+  justify-content: center;
+  height: 60px;
+}
+
+.fh-frame[data-dock='corner'] .fh-fblock[data-v='2'] {
+  width: 160px;
+}
+
+/* ---- looks: the cards' colours (data-look on the frame: the viewer's own layout's, or a ready-made one's) -------- */
+
+/* What the glass look draws in white (the tapes' readout boxes, the horizon's lines and figures) takes a look's colours. */
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-read {
+  border-color: var(--fh-i-line);
+  color: var(--fh-i-text);
+}
+
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-read::after {
+  border-color: var(--fh-i-line);
+}
+
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) :is(.fh-adi-hz, .fh-adi-ladder path) {
+  stroke: var(--fh-i-text);
+}
+
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-adi-ladder text {
+  fill: var(--fh-i-text);
+}
+
+/* An estimated attitude (every live one) mutes the glass look's own sky and ground: in a look, the look's, a little dimmed. */
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-adi.fh-est {
+  --fh-i-sky0: inherit;
+  --fh-i-sky1: inherit;
+  --fh-i-gnd0: inherit;
+  --fh-i-gnd1: inherit;
+  opacity: 0.86;
+}
+
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-ann {
+  border-color: var(--fh-i-line);
+  background: none;
+}
+
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-vsi-bar {
+  background: var(--fh-i-green);
+}
+
+/* A head-up display: green figures and lines on a faint green glass, no card behind them to speak of. */
+.fh-frame[data-look='hud'] {
+  --fh-i-card0: rgba(6, 26, 14, 0.34);
+  --fh-i-card1: rgba(2, 14, 8, 0.4);
+  --fh-i-well: rgba(0, 0, 0, 0.16);
+  --fh-i-line: rgba(118, 255, 166, 0.9);
+  --fh-i-dim: rgba(118, 255, 166, 0.5);
+  --fh-i-text: #a6ffc4;
+  --fh-i-label: rgba(118, 255, 166, 0.72);
+  --fh-i-green: #76ffa6;
+  --fh-i-cyan: #76ffa6;
+  --fh-i-amber: #d8ff7a;
+  --fh-i-sky0: rgba(30, 110, 62, 0.34);
+  --fh-i-sky1: rgba(52, 170, 96, 0.4);
+  --fh-i-gnd0: rgba(10, 44, 24, 0.62);
+  --fh-i-gnd1: rgba(3, 18, 9, 0.7);
+}
+
+.fh-frame[data-look='hud'] .fh-fblock {
+  border-color: rgba(118, 255, 166, 0.3);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.22), 0 6px 20px rgba(0, 0, 0, 0.18);
+  text-shadow: 0 0 6px rgba(60, 255, 130, 0.35);
+}
+
+/* A night cockpit's amber on near-black. */
+.fh-frame[data-look='amber'] {
+  --fh-i-card0: rgba(30, 20, 8, 0.84);
+  --fh-i-card1: rgba(12, 8, 3, 0.88);
+  --fh-i-well: rgba(0, 0, 0, 0.42);
+  --fh-i-line: rgba(255, 196, 108, 0.9);
+  --fh-i-dim: rgba(255, 196, 108, 0.46);
+  --fh-i-text: #ffd699;
+  --fh-i-label: #b98a4a;
+  --fh-i-green: #ffc46c;
+  --fh-i-cyan: #ffe2b0;
+  --fh-i-amber: #ff9a3c;
+  --fh-i-sky0: #5a3a12;
+  --fh-i-sky1: #b77a2a;
+  --fh-i-gnd0: #2c1c0a;
+  --fh-i-gnd1: #0f0903;
+}
+
+.fh-frame[data-look='amber'] .fh-fblock {
+  border-color: rgba(255, 180, 90, 0.22);
+}
+
+/* Ice: pale blue lines on deep blue glass. */
+.fh-frame[data-look='ice'] {
+  --fh-i-card0: rgba(14, 34, 62, 0.8);
+  --fh-i-card1: rgba(5, 14, 30, 0.86);
+  --fh-i-well: rgba(0, 8, 22, 0.44);
+  --fh-i-line: rgba(196, 228, 255, 0.9);
+  --fh-i-dim: rgba(160, 205, 255, 0.46);
+  --fh-i-text: #eaf5ff;
+  --fh-i-label: #7fa6cf;
+  --fh-i-green: #7fe6ff;
+  --fh-i-cyan: #9fd2ff;
+  --fh-i-amber: #ffffff;
+  --fh-i-sky0: #123a78;
+  --fh-i-sky1: #5aa8ee;
+  --fh-i-gnd0: #20324c;
+  --fh-i-gnd1: #0a1322;
+}
+
+.fh-frame[data-look='ice'] .fh-fblock {
+  border-color: rgba(140, 200, 255, 0.28);
+  box-shadow: 0 10px 28px rgba(0, 10, 30, 0.4), inset 0 1px 0 rgba(180, 220, 255, 0.12);
+}
+
 /* ---- phones: smaller cards; the thrust and the load factor go ------------------------------------------------- */
 
 @media (max-width: 640px) {
@@ -1150,6 +1346,17 @@
   box-shadow: 0 18px 44px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+/* A ready-made layout while editing: its cards are not the viewer's to move, hide or size. */
+.fh-frame[data-edit][data-locked] .fh-fblock {
+  cursor: default;
+  outline-style: solid;
+  outline-color: rgba(255, 255, 255, 0.16);
+}
+
+.fh-frame[data-edit][data-locked] :is(.fh-fgrip, .fh-feye, .fh-fsize) {
+  display: none;
+}
+
 /* The grip: a pill on the card's top edge. The whole card drags; this says so. */
 .fh-frame[data-edit] .fh-fgrip {
   position: absolute;
@@ -1231,9 +1438,11 @@
   top: var(--fh-top);
   left: 0;
   display: flex;
-  align-items: center;
-  gap: 6px;
-  max-width: calc(100% - 16px);
+  flex-direction: column;
+  gap: 5px;
+  box-sizing: border-box;
+  width: 760px; /* one width, whichever layout's choices its second row holds */
+  max-width: calc(100% - 92px); /* beside the rail on a narrow window: its rows wrap */
   padding: 5px 5px 5px 12px;
   border: 1px solid var(--fh-hairline);
   border-radius: var(--fh-radius);
@@ -1265,14 +1474,6 @@
 
 .fh-fbar-t b {
   font-weight: 650;
-}
-
-.fh-fbar-hint {
-  color: var(--fh-muted);
-}
-
-.fh-fbar-hint::before {
-  content: '— ';
 }
 
 .fh-fbar-b {
@@ -1316,24 +1517,17 @@
   .fh-fbar {
     top: calc(12px + env(safe-area-inset-top, 0px));
     max-width: calc(100% - 24px);
-    padding: 4px 4px 4px 12px;
+    padding: 4px 4px 4px 8px;
     font-size: 14px;
   }
 
   .fh-fbar-b {
-    height: 44px;
+    height: 38px;
     padding: 0 14px;
     font-size: 14px;
   }
 
   .fh-fbar-more {
-    display: none;
-  }
-}
-
-/* A phone held upright: the title alone (the grips on the cards say how), so the toolbar keeps 12 px from each edge. */
-@media (max-width: 480px) {
-  .fh-fbar-hint {
     display: none;
   }
 }
@@ -1404,6 +1598,71 @@
   color: var(--fh-text);
 }
 
+/* The toolbar's two rows: the mode, the layouts, Units and Done; under them the layout's own choices: a ready-made one's
+   three options, or the viewer's own cards (a menu each: off, or a variant), its colours and Reset. The rows share the
+   Units menu's segment (.fh-funits-seg). */
+.fh-fbar-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.fh-fbar-presets {
+  margin-right: auto;
+}
+
+.fh-fbar-choices .fh-fbar-sel {
+  flex: 1;
+}
+
+.fh-fbar-choices {
+  flex-wrap: wrap;
+  padding-top: 5px;
+  border-top: 1px solid var(--fh-hairline);
+}
+
+.fh-fbar-choices .fh-fbar-b:last-child {
+  margin-left: auto;
+}
+
+/* A narrow window: "Reset" alone, so the cards' menus and it stay on one line. */
+@media (max-width: 900px) {
+  .fh-fbar-more {
+    display: none;
+  }
+}
+
+.fh-fbar-note {
+  padding: 0 6px;
+  color: var(--fh-muted);
+  font-size: 12px;
+  white-space: normal;
+}
+
+/* A card's menu, the colours': the toolbar's button with a caret; a card that is off, dimmed. */
+.fh-fbar-sel {
+  padding: 0 26px 0 11px;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 14px) 13px, calc(100% - 9.5px) 13px;
+  background-size: 4.5px 4.5px, 4.5px 4.5px;
+  background-repeat: no-repeat;
+  color-scheme: dark;
+}
+
+.fh-fbar-sel:hover {
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 14px) 13px, calc(100% - 9.5px) 13px;
+  background-size: 4.5px 4.5px, 4.5px 4.5px;
+  background-repeat: no-repeat;
+}
+
+.fh-fbar-sel.fh-off {
+  color: var(--fh-muted);
+}
+
 /* The second unit's readout under a tape ("both" units): smaller, muted. */
 .fh-line.fh-dual {
   justify-content: flex-end;
@@ -1426,5 +1685,53 @@
   .fh-funits-b {
     height: 40px;
     font-size: 13px;
+  }
+
+  /* Phones: the two rows flow as one, line by line: the title, Units and Done; the layouts; then the viewer's own cards
+     two to a line and the colours beside Reset, or a ready-made layout's options and the note. */
+  .fh-fbar {
+    flex-flow: row wrap;
+    align-items: center;
+    width: auto;
+  }
+
+  .fh-fbar-row {
+    display: contents;
+  }
+
+  .fh-fbar-t {
+    flex: 1;
+  }
+
+  .fh-fbar-presets {
+    order: 1;
+    flex: 1 0 100%;
+    margin: 0;
+  }
+
+  .fh-fbar-row .fh-funits-b {
+    flex: 1;
+    height: 34px;
+    padding: 0 6px;
+  }
+
+  .fh-fbar-choices > * {
+    order: 2;
+  }
+
+  .fh-fbar-choices > .fh-funits-seg,
+  .fh-fbar-note {
+    flex: 1 0 100%;
+  }
+
+  .fh-fbar .fh-fbar-sel,
+  .fh-fbar .fh-fbar-sel:hover {
+    flex: 1 0 40%;
+    background-position: calc(100% - 14px) 17px, calc(100% - 9.5px) 17px;
+  }
+
+  .fh-fbar .fh-fbar-look,
+  .fh-fbar-choices > .fh-fbar-b:not(.fh-fbar-sel) {
+    order: 3;
   }
 }

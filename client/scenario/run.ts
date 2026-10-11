@@ -1,11 +1,12 @@
 // client/scenario/run.ts
 // One scenario playing (.planning/scenarios-design.md §2, §4). ScenarioPlayer is the pure part: the clock and, each
 // step, what the scenario shows at its time: the pose, the flight-data frame's numbers, the events, the captions and
-// the ending. ScenarioRun adds what lives in the page: the play bar, the captions, the marks' titles and the ending card
-// in the app's overlay, the era imagery under the night lights, the audio (only when the package has it), and the keys (Space
-// play/pause, ←/→ ±10 s, Shift ±60 s, M mute, V the view). The app (app.ts) draws the rest from the frame: in the 3-D view
-// the model, the chase camera, the sun at the scenario's instant and the frame around the aircraft; in the top-down map
-// (the play bar's Map button) its icon on its route. Dresser puts the scenario's type, livery, span, damage and gear on the
+// the ending. ScenarioRun adds what lives in the page: the play bar, the pill at the top (the scenario's day and time, the
+// view, Exit: ui/scenarioPill.ts), the captions, the marks' titles and the ending card in the app's overlay, the era
+// imagery under the night lights, the audio (only when the package has it), and the keys (Space play/pause, ←/→ ±10 s,
+// Shift ±60 s, M mute, V the view). The app (app.ts) draws the rest from the frame: in the 3-D view the model, the chase
+// camera, the sun at the scenario's instant and the frame around the aircraft; in the top-down map (the pill's Map
+// button) its icon on its route. Dresser puts the scenario's type, livery, span, damage and gear on the
 // chase model.
 import { Color, ImageryLayer, Rectangle, UrlTemplateImageryProvider } from 'cesium'
 import type { Viewer } from 'cesium'
@@ -14,8 +15,8 @@ import type { FlightData, ModelManifestEntry, RenderState } from '../types.ts'
 import { mountCaptions, type CaptionView } from '../ui/captions.ts'
 import { mountEnding } from '../ui/ending.ts'
 import { mountEventTitle } from '../ui/eventTitle.ts'
-import { icon } from '../ui/icons.ts'
 import { clockText, mountPlaybar } from '../ui/playbar.ts'
+import { mountScenarioPill, scenarioDay } from '../ui/scenarioPill.ts'
 import { mountStory } from '../ui/story.ts'
 import { AudioSync } from './audio.ts'
 import { ScenarioClock } from './clock.ts'
@@ -227,8 +228,8 @@ export interface ScenarioRunOpts {
   t?: number // start here, paused (a reload's ?t=); else at the start
   play?: boolean // start playing (the Scenarios panel's Play)
   under: ImageryLayer | null // the era imagery goes right under this layer (the night lights), over the base
-  onExit(): void // the play bar's exit, the ending card's Close
-  onView?(): void // the play bar's Map / 3-D button, and V: the app switches the view and answers through setView()
+  onExit(): void // the pill's Exit, the play bar's ×, the ending card's Close
+  onView?(): void // the pill's 3-D / Map buttons, and V: the app switches the view and answers through setView()
 }
 
 /** A scenario playing in the page. frame() once a frame; destroy() removes everything it added. */
@@ -245,7 +246,7 @@ export class ScenarioRun {
   readonly #audioEl: HTMLAudioElement | null = null
   readonly #audio: AudioSync | null = null
   #gain = 1 // the play bar's volume, 0 when muted
-  readonly #view: HTMLButtonElement | null = null // the play bar's Map / 3-D button
+  readonly #pill: ReturnType<typeof mountScenarioPill>
   readonly #onKey: (e: KeyboardEvent) => void
 
   static start(o: ScenarioRunOpts): ScenarioRun {
@@ -264,23 +265,13 @@ export class ScenarioRun {
     this.#story = mountStory(o.ui)
     this.#title = mountEventTitle(o.ui)
     this.#ending = mountEnding(o.ui, { onClose: () => o.onExit() })
-    if (o.onView) {
-      const view = (this.#view = document.createElement('button'))
-      view.type = 'button'
-      view.className = 'fh-pill fh-pill-secondary fh-playbar-view'
-      view.addEventListener('click', (e) => {
-        o.onView!()
-        if (e.detail > 0) view.blur() // a later Space plays or pauses
-      })
-      this.setView(false)
-    }
+    this.#pill = mountScenarioPill(o.ui, { onExit: () => o.onExit(), onView: o.onView })
     this.#bar = mountPlaybar(o.ui, {
       start: s.start, stop: clock.stop, end: s.end, marks: marks(s.events), clockLabel: s.clockLabel, title: s.title,
       onToggle: () => this.player.toggle(),
       onSeek: (t) => this.player.seek(t),
       onRate: () => void clock.nextRate(),
       onExit: () => o.onExit(),
-      tools: this.#view === null ? undefined : [this.#view],
       sound: s.audio !== null && s.present.audio ? { reenacted: s.audio.reenacted, onGain: (g) => (this.#gain = g) } : null,
     })
     // Over the base imagery, under the night lights: in the order the package lists them, the first lowest.
@@ -315,26 +306,17 @@ export class ScenarioRun {
     return this.player.scenario
   }
 
-  /** The view on screen, for the play bar's button: it offers the other one (Map in the 3-D view, 3-D on the map). */
+  /** The view on screen, for the pill's buttons. */
   setView(topDown: boolean): void {
-    const b = this.#view
-    if (b === null) return
-    const label = document.createElement('span')
-    label.className = 'fh-playbar-view-l'
-    label.textContent = topDown ? '3-D' : 'Map'
-    const glyph = document.createElement('span')
-    glyph.className = 'fh-pill-icon'
-    glyph.append(icon(topDown ? 'plane' : 'map', 16))
-    b.replaceChildren(glyph, label)
-    const name = topDown ? '3-D view' : 'Top-down map'
-    b.setAttribute('aria-label', name)
-    b.title = `${name} (V)`
+    this.#pill.setView(topDown)
   }
 
   frame(dtS: number): ScenarioFrame {
     const f = this.player.step(dtS)
     const clock = this.player.clock
     this.#bar.update({ t: f.t, playing: clock.playing, rate: clock.rate, clock: clockText(f.t), phase: f.event.phase })
+    // (the pill says the day, so its clock is that day's: the play bar's runs on past 24:00)
+    this.#pill.update(`${scenarioDay(this.scenario.date, f.t)} · ${clockText(f.t - Math.floor(f.t / 86_400) * 86_400)} ${this.scenario.clockLabel}`)
     this.#captions.update(f.lines.map((l) => this.#views.get(l)!))
     this.#story.update(f.story === null ? null : { key: f.story.key, clock: `${clockText(f.story.t)} ${this.scenario.clockLabel}`, text: f.story.text })
     this.#title.update(f.mark === null ? null : { key: f.mark.key, text: f.mark.label }, f.jumped)
@@ -351,6 +333,7 @@ export class ScenarioRun {
   destroy(): void {
     window.removeEventListener('keydown', this.#onKey)
     this.#bar.destroy()
+    this.#pill.destroy()
     this.#captions.destroy()
     this.#story.destroy()
     this.#title.destroy()
