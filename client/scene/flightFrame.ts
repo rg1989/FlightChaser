@@ -10,13 +10,15 @@
 // moves every frame, smoothly (transforms only); its figures change at most every TEXT_MS, but the tapes' readouts roll
 // every frame, and the speed tape's trend arrow points at the speed 10 s ahead. frameLayout (pure) places the blocks
 // round a square on the aircraft, never over it; layoutSide (pure) sizes that square: the default framing's when zoomed
-// out, and zoomed in no larger than the blocks' arrangement fits, so there they stop, over the aircraft.
+// out, and zoomed in no larger than the blocks' arrangement fits, so there they stop, over the aircraft. Each block has
+// three variants (the full instrument, a compact one, the figures alone), and the frame a look (its colours): the viewer's
+// own layout chooses them a card at a time, a ready-made one (framePresets.ts) for all, with a place for each card too.
 import { Cartesian2, Cartesian3, Math as CesiumMath, Matrix4, SceneTransforms } from 'cesium'
 import type { Model, PerspectiveFrustum, Viewer } from 'cesium'
 import type { ReadsbAircraft } from '../../shared/types.ts'
 import { trueAirspeedKt } from '../track/airspeed.ts'
 import type { FlightData, ModelManifestEntry, RenderState } from '../types.ts'
-import { NO_FRAME_PREFS, clampScale, type FramePrefs, type Offset } from '../ui/framePrefs.ts'
+import { LOOK_IDS, NO_FRAME_PREFS, PRESET_IDS, clampScale, type FramePrefs, type Look, type Offset, type PresetId } from '../ui/framePrefs.ts'
 import { icon } from '../ui/icons.ts'
 import {
   ALT_TAPE, ALT_TAPE_M, Adi, ArcGauge, EPR_GAUGE, G_GAUGE, HeadingTape, SPEED_TAPE, SPEED_TAPE_KMH, SPEED_TAPE_MPH, Tape, Vsi, WindDial, h, move,
@@ -26,6 +28,7 @@ import {
   ALT_UNITS, KMH_PER_KT, MS_PER_FPM, M_PER_FT, SPEED_UNITS, UNIT_NAME, VS_UNITS, altIn, altLabel, speedIn, speedLabel, vsLabel, type Units,
 } from '../ui/units.ts'
 import { defaultRangeM } from './chaseCamera.ts'
+import { LOOK_NAMES, PRESETS, PRESET_NAMES, VARIANT_NAMES, dockAt, optionOf, type Dock, type PresetOption } from './framePresets.ts'
 import { Glide, TREND_S, Trend, rel180, trendShown } from './instrumentMath.ts'
 import type { ModelWind } from './modelWind.ts'
 import { BOX_CENTRE, BOX_HALF, squarePx } from './traffic.ts'
@@ -592,6 +595,10 @@ const ID_H = 12
 const ID_GAP = 5
 const ID_CHAR = 9
 const CARD: Record<BlockId, string> = { left: 'altitude', right: 'speed', top: 'heading', bottom: 'attitude' } // for the controls
+const BANK: readonly BlockId[] = ['left', 'right', 'top', 'bottom'] // the Preset menu's cards, in this order
+const VARIANTS = ['0', '1', '2'] as const // data-v: the full card, the compact one, the figures alone (flightFrame.css)
+const NONE: BlockSize = { w: 0, h: 0 } // a variant the card may not take
+const DOCK_EDGE = 12 // a docked group from the view's edges: the app's corner margin (the play bar's, the layout button's)
 // The least side of the square the blocks go round (layoutSide), of the view's smaller dimension: an airliner's at the
 // chase camera's default range (150 m) in a desktop window.
 const LEAST_SIDE = 0.42
@@ -674,6 +681,10 @@ export class FlightFrame {
   readonly #agl = line('fh-agl', 'AGL', 'ft')
   readonly #alt2 = line('fh-dual', '', 'm') // "both" units: the altitude in metres under the tape
   readonly #altHead = label('Alt', 'ft')
+  // The figures alone (the mini variant, data-v="2"): the altitude, the speed and the heading as lines, each named.
+  readonly #altD = line('fh-dig', 'Alt', 'ft')
+  readonly #spdD = line('fh-dig', '', 'kt')
+  readonly #hdgD = line('fh-dig', '', '')
   // Right: the speed tape (airspeed, else ground speed); under it the true airspeed, level with the V/S, and the ground
   // speed: the three speeds, each named (a dive's V/S and TAS both grow, the one in ft/min, the other in kt).
   #spd = new Tape(SPEED_TAPE, 'spd')
@@ -745,7 +756,10 @@ export class FlightFrame {
   // Edit mode: the viewer's layout, its toolbar and each card's eye, the card being dragged (pointer and grip in client
   // px, the layer's origin), and this frame's square and safe area to drag in.
   readonly #layer: HTMLElement
-  #prefs: { moved: Partial<Record<BlockId, Offset>>; hidden: BlockId[]; order: BlockId[]; scale: Partial<Record<BlockId, number>>; units: Units }
+  #prefs: {
+    moved: Partial<Record<BlockId, Offset>>; hidden: BlockId[]; order: BlockId[]; scale: Partial<Record<BlockId, number>>; units: Units
+    preset: PresetId; option: Partial<Record<PresetId, number>>; variant: Partial<Record<BlockId, number>>; look: Look
+  }
   readonly #onPrefs: (prefs: FramePrefs) => void
   readonly #onEdit: (on: boolean) => void
   #editing = false
@@ -768,13 +782,20 @@ export class FlightFrame {
   readonly #unitsBtn = h('button', 'fh-fbar-b fh-fbar-units')
   readonly #unitsMenu = h('div', 'fh-funits')
   readonly #unitBtns: HTMLButtonElement[] = []
+  readonly #presets = h('div', 'fh-funits-seg fh-fbar-presets') // the toolbar's layouts: the viewer's own and the ready-made ones
+  readonly #top = h('div', 'fh-fbar-row')
+  readonly #choices = h('div', 'fh-fbar-row fh-fbar-choices') // …and under them the layout's own choices
+  #look: HTMLSelectElement | null = null // the viewer's own layout's colours, in the first row
 
   constructor(layer: HTMLElement, opts: FrameOpts = {}) {
     this.#phone = typeof matchMedia === 'function' ? matchMedia(PHONE) : null
     this.#layer = layer
     this.#bracket.append(this.#id)
     const p = opts.prefs ?? NO_FRAME_PREFS
-    this.#prefs = { moved: { ...p.moved }, hidden: [...p.hidden], order: [...p.order], scale: { ...(p.scale ?? {}) }, units: { ...p.units } }
+    this.#prefs = {
+      moved: { ...p.moved }, hidden: [...p.hidden], order: [...p.order], scale: { ...(p.scale ?? {}) }, units: { ...p.units },
+      preset: p.preset ?? 'custom', option: { ...(p.option ?? {}) }, variant: { ...(p.variant ?? {}) }, look: p.look ?? 'glass',
+    }
     this.#alt = new Tape(altTape(p.units), 'alt')
     this.#spd = new Tape(speedTape(p.units), 'spd')
     this.#onPrefs = opts.onPrefs ?? ((): void => {})
@@ -796,16 +817,16 @@ export class FlightFrame {
       eye.addEventListener('click', () => this.#toggle(id))
     }
     this.#altRow.append(this.#alt.el, this.#vsi.el)
-    blocks.left.append(head(this.#altHead), this.#altRow, this.#alt2.el, this.#vs.el, this.#agl.el)
+    blocks.left.append(head(this.#altHead), this.#altD.el, this.#altRow, this.#alt2.el, this.#vs.el, this.#agl.el)
 
     this.#spdRow.append(this.#spd.el)
-    blocks.right.append(this.#spdHead, this.#spdRow, this.#spd2.el, this.#tas.el, this.#gs.el)
+    blocks.right.append(this.#spdHead, this.#spdD.el, this.#spdRow, this.#spd2.el, this.#tas.el, this.#gs.el)
 
     const windRow = h('div', 'fh-wind-row')
     windRow.append(this.#wdial.el, this.#windText, this.#windUnit)
     this.#wind.append(head(label('Wind')), windRow)
     this.#hdgCol.append(head(label(this.#hdgKind)), this.#hdg.el)
-    blocks.top.append(this.#wind, this.#hdgCol)
+    blocks.top.append(this.#hdgD.el, this.#wind, this.#hdgCol)
 
     this.#gload.append(label('Load', 'g'), this.#g.el)
     this.#annun.append(this.#gear, this.#flaps)
@@ -837,7 +858,7 @@ export class FlightFrame {
       this.#applyScale(id)
     }
     const title = h('span', 'fh-fbar-t')
-    title.append(icon('layout', 16), h('b', '', 'Edit layout'), h('span', 'fh-fbar-hint', 'drag the cards'))
+    title.append(icon('layout', 16), h('b', '', 'Edit layout'))
     this.#reset.type = 'button'
     this.#reset.setAttribute('aria-label', 'Reset to defaults')
     this.#reset.append('Reset', h('span', 'fh-fbar-more', ' to defaults'))
@@ -854,8 +875,11 @@ export class FlightFrame {
     this.#unitsBtn.setAttribute('aria-expanded', 'false')
     this.#unitsBtn.addEventListener('click', () => this.#menu(this.#unitsMenu.hidden === true))
     this.#buildUnits()
-    this.#bar.append(title, this.#unitsBtn, this.#reset, done, this.#unitsMenu)
-    this.#reset.disabled = this.#plain()
+    this.#presets.setAttribute('role', 'group')
+    this.#presets.setAttribute('aria-label', 'Layout')
+    this.#top.append(title, this.#presets, this.#unitsBtn, done)
+    this.#bar.append(this.#top, this.#choices, this.#unitsMenu)
+    this.#arranged()
     this.#guideV.hidden = this.#guideH.hidden = true
     layer.append(this.#bracket, ...IDS.map((id) => blocks[id]), this.#faintLayer, this.#guideV, this.#guideH, this.#bar)
     this.#labels()
@@ -977,12 +1001,15 @@ export class FlightFrame {
       d.sy = p.y
       this.#prefs.moved[d.id] = offsetAt(p.x, p.y, sizes[d.id], lsq, area, avoid, d.v)
     }
-    const moved = this.#prefs.moved
-    const fixed: Partial<Record<BlockId, Fixed>> = {}
-    for (const id of IDS) {
-      const o = moved[id]
-      const f = o === undefined ? null : movedTo(o, sizes[id], lsq, area, avoid)
-      if (f !== null) fixed[id] = f
+    // The viewer's own layout: its moved cards. A ready-made one: its dock, where it has room (else round the aircraft).
+    const ready = this.#ready()
+    const fixed: Partial<Record<BlockId, Fixed>> = ready === null || ready.dock === null ? {} : this.#docked(ready.dock, safe, room.covers)
+    if (ready === null) {
+      for (const id of IDS) {
+        const o = this.#prefs.moved[id]
+        const f = o === undefined ? null : movedTo(o, sizes[id], lsq, area, avoid)
+        if (f !== null) fixed[id] = f
+      }
     }
     const at = frameLayout(lsq, sizes, safe, GAP, this.#placed, fixed)
     this.#auto = Object.keys(fixed).length === 0 ? at : frameLayout(lsq, sizes, safe, GAP, this.#auto)
@@ -990,7 +1017,8 @@ export class FlightFrame {
       const b = this.#blocks[id]
       const p = at[id]
       // A hidden card keeps its place (hiding one moves no other), drawn only while editing: ghosted, to be shown again.
-      show(b, p !== null && (this.#editing || !this.#prefs.hidden.includes(id)))
+      // A ready-made layout shows every card.
+      show(b, p !== null && (ready !== null || this.#editing || !this.#prefs.hidden.includes(id)))
       if (p === null) continue
       const variant = String(p.v)
       if (b.dataset.v !== variant) {
@@ -1025,7 +1053,7 @@ export class FlightFrame {
     show(this.#id, idShown)
     this.#idRect = idShown ? { x: sq.x - w / 2, y: idB - ID_H, w, h: ID_H } : null
     move(this.#id, `translate(-50%, ${Math.max(0, (sq.side - ls) / 2).toFixed(1)}px)`)
-    if (this.#editing && this.#bar0 === null) this.#placeBar([...room.covers, { x: sq.x - w / 2, y: idB - ID_H, w, h: ID_H }], at)
+    if (this.#editing && this.#bar0 === null) this.#placeBar(room.covers, at)
   }
 
   destroy(): void {
@@ -1038,7 +1066,7 @@ export class FlightFrame {
 
   /** Edit mode: a press on a card (not on its eye) takes it; the canvas never sees the pointer, so the camera stays. */
   #grab(id: BlockId, e: PointerEvent): void {
-    if (!this.#editing || this.#drag !== null || this.#rs !== null || e.button !== 0 || (e.target as Element).closest('.fh-feye') !== null) return
+    if (!this.#editing || this.#ready() !== null || this.#drag !== null || this.#rs !== null || e.button !== 0 || (e.target as Element).closest('.fh-feye') !== null) return
     e.preventDefault()
     const b = this.#blocks[id]
     b.setPointerCapture(e.pointerId)
@@ -1105,16 +1133,49 @@ export class FlightFrame {
     this.#stack()
   }
 
-  /** A card's scale (1: as designed). */
-  #k(id: BlockId): number {
-    return this.#prefs.scale[id] ?? 1
+  /** The ready-made layout's option in force; null: the viewer's own layout. */
+  #ready(): PresetOption | null {
+    const p = this.#prefs.preset
+    return p === 'custom' ? null : optionOf(p, this.#prefs.option)
   }
 
-  /** A card's sizes at its scale, and its edit controls kept their own size (flightFrame.css --fh-k). */
+  /** The variant a card is to take: the layout's, or the one the viewer chose for it (0: the full card). */
+  #variant(id: BlockId): number {
+    return this.#ready()?.variant ?? this.#prefs.variant[id] ?? 0
+  }
+
+  /** A card's scale (1: as designed; a ready-made layout's cards are). */
+  #k(id: BlockId): number {
+    return this.#ready() !== null ? 1 : (this.#prefs.scale[id] ?? 1)
+  }
+
+  /**
+   * A card's sizes at its scale, in the variants it may take: the one asked for, and under the full card the compact one,
+   * which it takes where the full one has no room. Its edit controls keep their own size (flightFrame.css --fh-k).
+   */
   #applyScale(id: BlockId): void {
     const k = this.#k(id)
-    this.#sizes[id] = scaledSizes(this.#base[id], k)
+    const want = this.#variant(id)
+    this.#sizes[id] = scaledSizes(this.#base[id], k).map((b, v) => (v === want || (want === 0 && v === 1) ? b : NONE))
     this.#blocks[id].style.setProperty('--fh-k', String(k))
+  }
+
+  /**
+   * A ready-made layout's docked cards (framePresets.ts dockAt), each in the largest variant it may take with which the
+   * dock has room; none when it has none: the cards then go round the aircraft.
+   */
+  #docked(dock: Dock, safe: Rect, covers: readonly Rect[]): Partial<Record<BlockId, Fixed>> {
+    for (const smaller of [0, 1]) {
+      const pick: Partial<Record<BlockId, { b: BlockSize; v: number }>> = {}
+      for (const id of IDS) {
+        const vs = variantsOf(this.#sizes[id])
+        if (vs.length > 0) pick[id] = vs[Math.min(smaller, vs.length - 1)]
+      }
+      const view = { x: DOCK_EDGE, y: DOCK_EDGE, w: this.#view.w - 2 * DOCK_EDGE, h: this.#view.h - 2 * DOCK_EDGE }
+      const at = dockAt(dock, Object.fromEntries(IDS.flatMap((id) => (pick[id] === undefined ? [] : [[id, pick[id].b]]))), safe, view, covers, GAP)
+      if (at !== null) return Object.fromEntries(IDS.flatMap((id) => (at[id] === undefined ? [] : [[id, { ...at[id], v: pick[id]!.v }]])))
+    }
+    return {}
   }
 
   /**
@@ -1265,6 +1326,97 @@ export class FlightFrame {
     this.#unitsBtn.setAttribute('aria-expanded', String(open))
   }
 
+  /**
+   * The toolbar's choices, drawn again at each one: the layouts in its first row; under them a ready-made layout's three
+   * options, or, for the viewer's own, a menu for each card (one of its variants, or off) and Reset, its colours' menu
+   * in the first row. What was pressed keeps the focus.
+   */
+  #paintBar(): void {
+    const p = this.#prefs
+    const all = (): HTMLElement[] => [...this.#bar.querySelectorAll<HTMLElement>('.fh-funits-b, .fh-fbar-sel')]
+    const focus = all().indexOf(document.activeElement as HTMLElement)
+    const button = (label: string, on: boolean, pick: () => void): HTMLButtonElement => {
+      const b = h('button', 'fh-funits-b', label)
+      b.type = 'button'
+      b.setAttribute('aria-pressed', String(on))
+      b.addEventListener('click', pick)
+      return b
+    }
+    /** A menu that names what it sets in each choice ("Altitude: Full"), so it needs no label beside it. */
+    const menu = (name: string, choices: readonly string[], chosen: number, pick: (i: number) => void): HTMLSelectElement => {
+      const m = h('select', 'fh-fbar-b fh-fbar-sel')
+      m.setAttribute('aria-label', name)
+      choices.forEach((c, i) => m.append(new Option(`${name}: ${c}`, String(i), false, i === chosen)))
+      m.addEventListener('change', () => pick(Number(m.value)))
+      return m
+    }
+    this.#presets.replaceChildren(...PRESET_IDS.map((id) => button(PRESET_NAMES[id], p.preset === id, () => this.#arrange(() => (p.preset = id)))))
+    const preset = p.preset
+    let look: HTMLSelectElement | null = null
+    if (preset === 'custom') {
+      const cards = BANK.map((id) => {
+        const off = p.hidden.includes(id)
+        const m = menu(CARD[id][0].toUpperCase() + CARD[id].slice(1), [...VARIANT_NAMES, 'Off'], off ? VARIANT_NAMES.length : (p.variant[id] ?? 0), (i) => this.#card(id, i < VARIANT_NAMES.length ? i : null))
+        m.classList.toggle('fh-off', off)
+        return m
+      })
+      look = menu('Colours', LOOK_IDS.map((id) => LOOK_NAMES[id]), LOOK_IDS.indexOf(p.look), (i) => this.#arrange(() => (p.look = LOOK_IDS[i])))
+      look.classList.add('fh-fbar-look')
+      this.#choices.replaceChildren(...cards, this.#reset)
+    } else {
+      const seg = h('div', 'fh-funits-seg')
+      seg.setAttribute('role', 'group')
+      seg.setAttribute('aria-label', `${PRESET_NAMES[preset]} options`)
+      const chosen = PRESETS[preset].indexOf(optionOf(preset, p.option))
+      seg.append(...PRESETS[preset].map((o, i) => button(o.name, i === chosen, () => this.#arrange(() => (p.option = { ...p.option, [preset]: i })))))
+      this.#choices.replaceChildren(seg, h('span', 'fh-fbar-note', 'Ready-made. Choose Custom to move, size or hide the cards.'))
+    }
+    // The colours' menu stands before Units, while the layout is the viewer's own.
+    this.#look?.remove()
+    this.#look = look
+    if (look !== null) this.#top.insertBefore(look, this.#unitsBtn)
+    if (focus >= 0) all()[focus]?.focus()
+  }
+
+  /** A choice of the toolbar's: made, then the cards arranged for it and the layout kept. */
+  #arrange(choose: () => void): void {
+    choose()
+    this.#arranged()
+    this.#changed()
+  }
+
+  /** The viewer's own layout: a card off (v null), or shown in variant v. */
+  #card(id: BlockId, v: number | null): void {
+    this.#arrange(() => {
+      const p = this.#prefs
+      p.hidden = p.hidden.filter((x) => x !== id)
+      if (v === null) p.hidden.push(id)
+      else if (v === 0) delete p.variant[id]
+      else p.variant[id] = v
+    })
+  }
+
+  /**
+   * The cards as the layout in force has them: its colours (flightFrame.css data-look), each card's variant and scale,
+   * which are shown; laid out afresh. A ready-made layout is not the viewer's to move (data-locked: no grips).
+   */
+  #arranged(): void {
+    const ready = this.#ready()
+    this.#layer.toggleAttribute('data-locked', ready !== null)
+    this.#layer.dataset.look = ready?.look ?? this.#prefs.look
+    this.#layer.dataset.dock = ready?.dock ?? '' // docked cards share a width or a height (flightFrame.css)…
+    for (const id of IDS) {
+      this.#paint(id)
+      this.#applyScale(id)
+      this.#keys[id] = '' // …so every card is measured again at the next figures
+    }
+    this.#textAt = -Infinity
+    this.#placed = {} // no hysteresis from the layout before
+    this.#auto = {}
+    this.#reset.disabled = ready !== null || this.#plain()
+    this.#paintBar()
+  }
+
   /** New units: the tapes redrawn in them where they changed, every label, and the cards measured again. */
   #setUnits(u: Units): void {
     const was = this.#prefs.units
@@ -1290,12 +1442,14 @@ export class FlightFrame {
     const u = this.#prefs.units
     say(this.#altHead.querySelector('.fh-u')!, altLabel(u.alt))
     say(this.#agl.unit, altLabel(u.alt))
+    say(this.#altD.unit, altLabel(u.alt))
     say(this.#vs.unit, vsLabel(u.vs))
     this.#vsi.units(u.vs === 'ms')
     const sl = speedLabel(u.speed)
     say(this.#spdHead.querySelector('.fh-u')!, sl)
     say(this.#tas.unit, sl)
     say(this.#gs.unit, sl)
+    say(this.#spdD.unit, sl)
     say(this.#windUnit, sl)
     for (const b of this.#unitBtns) b.setAttribute('aria-pressed', String(u[b.dataset.key as keyof Units] === b.dataset.unit))
   }
@@ -1322,8 +1476,8 @@ export class FlightFrame {
 
   /**
    * The toolbar, once an edit session starts: at the top, centred, else in the free spot nearest there, clear of what
-   * covers the view (avoid: and the flight ID) and of the cards (between the flight card and the rail, or under the card
-   * on a narrow window).
+   * covers the view (avoid) and of the cards (between the flight card and the rail, or under the card on a narrow
+   * window). Over the flight ID when that is where the room is.
    */
   #placeBar(avoid: readonly Rect[], at: Record<BlockId, Placed | null>): void {
     const bar = this.#bar
@@ -1336,7 +1490,15 @@ export class FlightFrame {
       return p === null || b === undefined ? [] : [{ x: p.x, y: p.y, w: b.w, h: b.h }]
     })
     const room = { x: BAR_EDGE, y: BAR_EDGE, w: this.#view.w - 2 * BAR_EDGE, h: this.#view.h - 2 * BAR_EDGE }
-    const p = freeSpot(room.x + (room.w - w) / 2, bar.offsetTop, w, h, room, [...avoid, ...cards], PAD)
+    // Clear of the cards too where there is such a place; else over them (a moved card makes way for it), clear of what
+    // covers the view.
+    const free = (list: readonly Rect[]): { x: number; y: number; ok: boolean } => {
+      const at = freeSpot(room.x + (room.w - w) / 2, bar.offsetTop, w, h, room, list, PAD)
+      const hit = list.some((c) => c.w > 0 && c.h > 0 && at.x < c.x + c.w && c.x < at.x + w && at.y < c.y + c.h && c.y < at.y + h)
+      return { ...at, ok: !hit }
+    }
+    const clear = free([...avoid, ...cards])
+    const p = clear.ok ? clear : free(avoid)
     bar.style.left = `${Math.round(p.x)}px`
     bar.style.top = `${Math.round(p.y)}px`
     this.#bar0 = { x: p.x, y: p.y, w, h }
@@ -1347,36 +1509,40 @@ export class FlightFrame {
     const hidden = this.#prefs.hidden
     this.#prefs.hidden = hidden.includes(id) ? hidden.filter((x) => x !== id) : [...hidden, id]
     this.#paint(id)
+    this.#paintBar()
     this.#changed()
   }
 
-  /** Every card back in its place, shown, at its own size (the units stay: a preference, not the layout). */
+  /**
+   * The viewer's own layout as it comes: every card back in its place, shown, full, at its own size, in the glass
+   * colours (the units stay: a preference, not the layout; so does each ready-made layout's option).
+   */
   #resetPrefs(): void {
-    this.#prefs = { moved: {}, hidden: [], order: [], scale: {}, units: this.#prefs.units }
+    const { units, preset, option } = this.#prefs
+    this.#prefs = { moved: {}, hidden: [], order: [], scale: {}, units, preset, option, variant: {}, look: 'glass' }
     this.#stack()
-    this.#placed = {} // laid out afresh: no hysteresis from where the viewer had them
-    this.#auto = {}
-    for (const id of IDS) {
-      this.#paint(id)
-      this.#applyScale(id)
-    }
+    this.#arranged()
     this.#changed()
   }
 
   #changed(): void {
-    this.#reset.disabled = this.#plain()
+    this.#reset.disabled = this.#ready() !== null || this.#plain()
     const p = this.#prefs
-    this.#onPrefs({ moved: { ...p.moved }, hidden: [...p.hidden], order: [...p.order], scale: { ...p.scale }, units: { ...p.units } })
+    this.#onPrefs({
+      moved: { ...p.moved }, hidden: [...p.hidden], order: [...p.order], scale: { ...p.scale }, units: { ...p.units },
+      preset: p.preset, option: { ...p.option }, variant: { ...p.variant }, look: p.look,
+    })
   }
 
-  /** Whether every card is in its place and shown. */
+  /** Whether the viewer's own layout is as it comes: every card in its place, shown, full, in the glass colours. */
   #plain(): boolean {
-    return this.#prefs.hidden.length === 0 && Object.keys(this.#prefs.moved).length === 0 && Object.keys(this.#prefs.scale).length === 0
+    const p = this.#prefs
+    return p.hidden.length === 0 && Object.keys(p.moved).length === 0 && Object.keys(p.scale).length === 0 && Object.keys(p.variant).length === 0 && p.look === 'glass'
   }
 
-  /** A card's eye and look: shown, or hidden (ghosted while editing). */
+  /** A card's eye and look: shown, or hidden (ghosted while editing; never in a ready-made layout). */
   #paint(id: BlockId): void {
-    const off = this.#prefs.hidden.includes(id)
+    const off = this.#ready() === null && this.#prefs.hidden.includes(id)
     const eye = this.#eyes[id]
     const tip = `${off ? 'Show' : 'Hide'} the ${CARD[id]} card`
     eye.replaceChildren(icon(off ? 'eyeOff' : 'eye', 14))
@@ -1476,6 +1642,11 @@ export class FlightFrame {
       dim(this.#vs.el, v.vs.est)
     }
     show(this.#altRow, v.alt !== null || v.vs !== null)
+    show(this.#altD.el, v.alt !== null)
+    if (v.alt !== null && gl.alt.value !== null) {
+      say(this.#altD.value, altTextIn(gl.alt.value, u))
+      dim(this.#altD.el, v.alt.est)
+    }
     show(this.#alt2.el, u.alt === 'ft+m' && v.alt !== null)
     if (u.alt === 'ft+m' && gl.alt.value !== null) say(this.#alt2.value, num(gl.alt.value * M_PER_FT))
     show(this.#agl.el, v.agl !== null)
@@ -1486,9 +1657,13 @@ export class FlightFrame {
     // Right.
     show(this.#spdHead, v.speed !== null)
     show(this.#spdRow, v.speed !== null)
+    show(this.#spdD.el, v.speed !== null)
     if (v.speed !== null) {
       say(this.#spdKind, v.speed.kind)
       dim(this.#spd.el, v.speed.est)
+      say(this.#spdD.el.firstElementChild!, v.speed.kind)
+      if (gl.spd.value !== null) say(this.#spdD.value, speedText(speedIn(gl.spd.value, u.speed)))
+      dim(this.#spdD.el, v.speed.est)
     }
     show(this.#spd2.el, u.speed === 'kt+kmh' && v.speed !== null)
     if (u.speed === 'kt+kmh' && gl.spd.value !== null) say(this.#spd2.value, num(gl.spd.value * KMH_PER_KT))
@@ -1509,10 +1684,14 @@ export class FlightFrame {
     }
     // Top.
     show(this.#hdgCol, v.hdg !== null)
+    show(this.#hdgD.el, v.hdg !== null)
     if (v.hdg !== null && gl.hdg.value !== null) {
       say(this.#hdgKind, v.hdg.kind)
       this.#hdg.text(deg3(gl.hdg.value), v.track?.est ?? false)
       dim(this.#hdg.el, v.hdg.est)
+      say(this.#hdgD.el.firstElementChild!, v.hdg.kind)
+      say(this.#hdgD.value, deg3(gl.hdg.value))
+      dim(this.#hdgD.el, v.hdg.est)
     }
     show(this.#wind, v.wind !== null)
     if (v.wind !== null) {
@@ -1556,8 +1735,8 @@ export class FlightFrame {
     const phone = [this.#phone?.matches ?? false, u.alt, u.speed, u.vs].join('/') // the units change sizes too
     const len = (el: Element): number => el.textContent?.length ?? 0
     const keys: Record<BlockId, string> = {
-      left: [phone, v.alt !== null, v.vs !== null, v.agl !== null, this.#alt.leadLength, len(this.#vs.value), len(this.#agl.value)].join(),
-      right: [phone, v.speed?.kind, v.tas !== null, v.gs !== null, this.#spd.leadLength, len(this.#tas.value), len(this.#gs.value)].join(),
+      left: [phone, v.alt !== null, v.vs !== null, v.agl !== null, this.#alt.leadLength, len(this.#vs.value), len(this.#agl.value), len(this.#altD.value)].join(),
+      right: [phone, v.speed?.kind, v.tas !== null, v.gs !== null, this.#spd.leadLength, len(this.#tas.value), len(this.#gs.value), len(this.#spdD.value)].join(),
       top: [phone, v.hdg?.kind, v.wind !== null, v.wind?.rel !== null, len(this.#windText)].join(),
       bottom: [
         phone, v.adi !== null, v.roll !== null, v.pitch !== null, v.g !== null, v.gear !== null, v.flaps !== null, len(this.#flaps),
@@ -1584,11 +1763,11 @@ export class FlightFrame {
     b.hidden = false
     const out: BlockSize[] = []
     const k = Number(b.dataset.k ?? 1) || 1 // the scale it is drawn at: its size at 1 is what it measures over that
-    for (const variant of ['0', '1']) {
+    for (const variant of VARIANTS) {
       b.dataset.v = variant
       const r = b.getBoundingClientRect()
       const s: BlockSize = { w: Math.ceil(r.width / k), h: Math.ceil(r.height / k) }
-      const a = this.#anchor(id)
+      const a = variant === '2' ? null : this.#anchor(id) // the figures alone line up by the card's middle
       if (a !== null) {
         const ar = a.getBoundingClientRect()
         if (id === 'left' || id === 'right') s.ay = Math.round((ar.top + ar.height / 2 - r.top) / k)

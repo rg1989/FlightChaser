@@ -3,9 +3,11 @@
  * The flight-data frame's cards as the viewer arranged them (its edit mode, scene/flightFrame.ts): the cards moved, each
  * by its anchor's offset from the aircraft's middle in sides of the square the cards go round (layoutSide), so a moved
  * card keeps its place in proportion at any zoom; the cards hidden; their stacking, the last moved on top (a card
- * dropped over another stays in sight, and in reach); each card's size (a scale, pulled at its bottom corners); and the
- * units the figures are in (units.ts). Kept in localStorage['fh.hudLayout.v1'], for
- * every aircraft and scenario. Pure: the app passes the stored string and the storage, so Node tests need no DOM.
+ * dropped over another stays in sight, and in reach); each card's size (a scale, pulled at its bottom corners); each
+ * card's variant (full, compact or mini) and the colours (look); and the units the figures are in (units.ts). That is
+ * the viewer's own layout ("Custom"); preset says whether it shows or one of the ready-made ones (scene/framePresets.ts),
+ * each with the option last chosen for it. Kept in localStorage['fh.hudLayout.v1'], for every aircraft and scenario.
+ * Pure: the app passes the stored string and the storage, so Node tests need no DOM.
  */
 import type { BlockId } from '../scene/flightFrame.ts'
 import { DEFAULT_UNITS, readUnits, type Units } from './units.ts'
@@ -17,16 +19,29 @@ export const FRAME_PREFS_KEY = 'fh.hudLayout.v1'
  * variant it keeps (its index: the full card, then smaller ones), the one it had when it was moved.
  */
 export interface Offset { x: number; y: number; v?: number }
+/** The viewer's own layout, or a ready-made one (scene/framePresets.ts). */
+export const PRESET_IDS = ['custom', 'compact', 'stylistic', 'detailed'] as const
+export type PresetId = (typeof PRESET_IDS)[number]
+/** The cards' colours: the glass cockpit's own, or one of three others (flightFrame.css data-look). */
+export const LOOK_IDS = ['glass', 'hud', 'amber', 'ice'] as const
+export type Look = (typeof LOOK_IDS)[number]
+/** A card's variants, by index: the full instrument, a smaller one, the figures alone. */
+export const VARIANT_COUNT = 3
 export interface FramePrefs {
   moved: Partial<Record<BlockId, Offset>>
   hidden: readonly BlockId[]
   order: readonly BlockId[]
   scale: Partial<Record<BlockId, number>> // a card's size over its own (1: as designed); absent: 1
   units: Units
+  preset?: PresetId // absent: custom
+  option?: Partial<Record<PresetId, number>> // a ready-made layout's option, 0 to 2 (absent: its first)
+  variant?: Partial<Record<BlockId, number>> // custom: a card's variant, 1 or 2 (absent: the full one)
+  look?: Look // custom: its colours (absent: glass)
 }
 
 export const NO_FRAME_PREFS: FramePrefs = Object.freeze({
   moved: Object.freeze({}), hidden: Object.freeze([]), order: Object.freeze([]), scale: Object.freeze({}), units: DEFAULT_UNITS,
+  preset: 'custom', option: Object.freeze({}), variant: Object.freeze({}), look: 'glass',
 })
 export const MIN_SCALE = 0.6
 export const MAX_SCALE = 1.8
@@ -72,14 +87,26 @@ export function readFramePrefs(stored: string | null): FramePrefs {
       if (typeof v === 'number' && Number.isFinite(v) && v !== 1) scale[id] = clampScale(v)
     }
   }
-  return { moved, hidden: CARDS.filter((id) => h.includes(id)), order, scale, units: readUnits(saved?.units) }
+  const all = (saved ?? {}) as Record<string, unknown>
+  const small = (v: unknown): v is number => Number.isInteger(v) && (v as number) > 0 && (v as number) < VARIANT_COUNT
+  const each = <K extends string>(from: unknown, keys: readonly K[]): Partial<Record<K, number>> => {
+    const out: Partial<Record<K, number>> = {}
+    if (from !== null && typeof from === 'object' && !Array.isArray(from)) for (const k of keys) if (small((from as Record<string, unknown>)[k])) out[k] = (from as Record<string, number>)[k]
+    return out
+  }
+  return {
+    moved, hidden: CARDS.filter((id) => h.includes(id)), order, scale, units: readUnits(saved?.units),
+    preset: PRESET_IDS.find((id) => id === all.preset) ?? 'custom',
+    option: each(all.option, PRESET_IDS), variant: each(all.variant, CARDS),
+    look: LOOK_IDS.find((id) => id === all.look) ?? 'glass',
+  }
 }
 
 /** Stores the layout as JSON. Storage errors (private mode, quota, blocked) are swallowed: the layout still applies. */
 export function writeFramePrefs(prefs: FramePrefs, storage: Pick<Storage, 'setItem'> | null): void {
   try {
-    const { moved, hidden, order, scale, units } = prefs
-    storage?.setItem(FRAME_PREFS_KEY, JSON.stringify({ moved, hidden, order, scale, units }))
+    const { moved, hidden, order, scale, units, preset, option, variant, look } = prefs
+    storage?.setItem(FRAME_PREFS_KEY, JSON.stringify({ moved, hidden, order, scale, units, preset, option, variant, look }))
   } catch {
     // not kept; the page keeps the layout in memory
   }

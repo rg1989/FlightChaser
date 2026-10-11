@@ -31,7 +31,8 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
   flights. A flight card shows the aircraft's photo, route and flown path.
 - **Chase view.** Follow one aircraft in 3-D: real terrain, sun and moon light for the time of day, city lights at
   night, 3-D buildings, painted runways. Aircraft are type models in airline liveries, with landing gear, lights and
-  glass-cockpit instruments. Nearby traffic is drawn too.
+  glass-cockpit instruments. Nearby traffic is drawn too. The layout button arranges the instruments: drag, size or
+  hide each card, switch a card to a smaller variant, or pick a ready-made layout (Compact, Stylistic, Detailed).
 - **Weather.** Rain radar, airport reports and hazard areas on the map. In the chase, clouds, rain and storms are
   volumes round the aircraft. Over Europe, Africa and the Middle East the clouds stand where the Meteosat weather
   satellite sees them, with the cloud tops it measures. The Weather panel has the master switch (`W`); its button on the rail

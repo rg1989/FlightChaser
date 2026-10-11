@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { FRAME_PREFS_KEY, MAX_SCALE, MIN_SCALE, NO_FRAME_PREFS, readFramePrefs, writeFramePrefs } from './framePrefs.ts'
 import { DEFAULT_UNITS } from './units.ts'
 
-const REST = { scale: {}, units: DEFAULT_UNITS }
+const REST = { scale: {}, units: DEFAULT_UNITS, preset: 'custom', option: {}, variant: {}, look: 'glass' }
 
 test('nothing stored: every card in its place and shown; the key is fh.hudLayout.v1', () => {
   assert.equal(FRAME_PREFS_KEY, 'fh.hudLayout.v1')
@@ -50,7 +50,7 @@ test('writeFramePrefs stores JSON under the key, and it reads back; storage erro
   const storage = { setItem: (k: string, v: string): void => void store.set(k, v) }
   const p = { moved: { right: { x: 1.25, y: -0.5 } }, hidden: ['top' as const], order: ['right' as const], scale: { right: 1.4 }, units: { alt: 'ft+m' as const, speed: 'kmh' as const, vs: 'ms' as const } }
   writeFramePrefs(p, storage)
-  assert.deepEqual(readFramePrefs(store.get(FRAME_PREFS_KEY) ?? null), p)
+  assert.deepEqual(readFramePrefs(store.get(FRAME_PREFS_KEY) ?? null), { ...REST, ...p })
   writeFramePrefs(NO_FRAME_PREFS, storage)
   assert.deepEqual(readFramePrefs(store.get(FRAME_PREFS_KEY) ?? null), { moved: {}, hidden: [], order: [], ...REST })
   assert.doesNotThrow(() => writeFramePrefs(p, { setItem: () => { throw new Error('QuotaExceededError') } }))
@@ -63,3 +63,19 @@ test('scale: kept per card within MIN_SCALE…MAX_SCALE, 1 and junk dropped; uni
   assert.deepEqual(p.units, { alt: 'm', speed: 'kt', vs: 'fpm' })
   assert.equal(readFramePrefs('{"scale":{"top":0.1}}').scale.top, MIN_SCALE)
 })
+
+test('the layout in force, each ready-made one\'s option, the cards\' variants and the colours read back; junk falls back to the viewer\'s own glass layout', () => {
+  const none = readFramePrefs(null)
+  assert.deepEqual([none.preset, none.option, none.variant, none.look], ['custom', {}, {}, 'glass'])
+  const kept = { moved: {}, hidden: [], order: [], scale: {}, units: none.units, preset: 'compact', option: { compact: 1, detailed: 2 }, variant: { left: 2, top: 1 }, look: 'hud' }
+  const back = readFramePrefs(JSON.stringify(kept))
+  assert.deepEqual([back.preset, back.option, back.variant, back.look], ['compact', { compact: 1, detailed: 2 }, { left: 2, top: 1 }, 'hud'])
+  // The first option and the full variant are the absence of one; a number out of range, a foreign name: dropped.
+  const junk = readFramePrefs(JSON.stringify({ preset: 'huge', option: { compact: 0, stylistic: 3, detailed: 'x', other: 1 }, variant: { left: 0, right: 7, nose: 1 }, look: 'pink' }))
+  assert.deepEqual([junk.preset, junk.option, junk.variant, junk.look], ['custom', {}, {}, 'glass'])
+  // What is written reads back.
+  let stored = ''
+  writeFramePrefs(back, { setItem: (_k, v) => (stored = v) })
+  assert.deepEqual(readFramePrefs(stored), back)
+})
+
