@@ -539,6 +539,65 @@ function sweepSetup(codes: string[], opts: Partial<PollerOpts> = {}, bucket: { m
   return { ...s, seen }
 }
 
+/** setup() with a source that answers callsign(list) with one aircraft for each callsign asked (or the next queued reply's status). */
+function lookupSetup(bucket: { maxRps?: number; burst?: number } = {}) {
+  const s = setup(bucket)
+  const asked: { t: number; callsigns: readonly string[] }[] = []
+  s.source.callsign = (callsigns) => {
+    asked.push({ t: s.clock.t, callsigns })
+    const { status, retryAfterS } = s.replies.shift() ?? { status: 200 }
+    const ac = callsigns.map((c, i) => ({ hex: `47100${i}`, flight: `${c}  `, lat: 40 + i, lon: 20, seen_pos: 1, alt_baro: 35_000, gs: 440 }))
+    const body = status !== 200 ? '' : JSON.stringify({ ac, msg: 'No error', now: HEXES_NOW_MS, total: ac.length })
+    return Promise.resolve({ url: 'fake:callsign', status, tSendMs: s.clock.t, tRecvMs: s.clock.t, bytes: body.length || 100, body, retryAfterS: retryAfterS ?? null, snapshot: status === 200 ? normalizeAdsblol(body) : null })
+  }
+  return { ...s, asked }
+}
+
+test('lookup: one request for all the callsigns at the next tick, its aircraft returned and taken into the store', async () => {
+  const s = lookupSetup()
+  const found = s.poller.lookup(['WMT7403', 'WMT4470'])
+  await s.poller.tick()
+  assert.deepEqual((await found)?.map((a) => [a.hex, a.flight?.trim()]), [['471000', 'WMT7403'], ['471001', 'WMT4470']])
+  assert.deepEqual(s.asked.map((a) => a.callsigns), [['WMT7403', 'WMT4470']])
+  assert.ok(s.store.latest('471000') !== null, 'in the store: the page can select it at once')
+  await s.poller.tick()
+  assert.equal(s.asked.length, 1) // asked once
+})
+
+test('lookup: a due chase goes first; a failed request, a source without the lookup and a stopped poller answer null', async () => {
+  const s = lookupSetup()
+  s.poller.touchChase('a448f2')
+  const found = s.poller.lookup(['WMT7403'])
+  await s.poller.tick()
+  assert.equal(s.calls[0].m, 'hexes')
+  assert.equal(s.asked.length, 0)
+  await s.poller.tick()
+  assert.equal((await found)?.length, 1)
+  s.replies.push({ status: 503 })
+  const failed = s.poller.lookup(['WMT7403'])
+  s.clock.t += 5000 // past the chase's back-off
+  await s.poller.tick()
+  await s.poller.tick()
+  assert.equal(await failed, null)
+  assert.equal(await setup().poller.lookup(['WMT7403']), null) // this source has no callsign()
+  assert.equal(await s.poller.lookup([]), null)
+  const waiting = s.poller.lookup(['WMT7403'])
+  s.poller.stop()
+  assert.equal(await waiting, null)
+})
+
+test('lookup: it waits for a token, and gives up when none comes in time', async () => {
+  const s = lookupSetup({ maxRps: 0.001, burst: 1 })
+  s.poller.touchView(KSFO[0], KSFO[1], 40)
+  await s.poller.tick() // the view takes the only token
+  const found = s.poller.lookup(['WMT7403'])
+  await s.poller.tick()
+  assert.equal(s.asked.length, 0) // no token: not sent
+  assert.equal(await Promise.race([found, new Promise((r) => setTimeout(() => r('waiting'), 30))]), 'waiting')
+  s.poller.stop() // (ends the wait: the real timer runs LOOKUP_WAIT_MS)
+  assert.equal(await found, null)
+})
+
 /** The squawk codes asked for, in order. */
 const sweepCodes = (calls: Call[]): string[] => calls.filter((c) => c.m === 'squawk').map((c) => c.args[0] as string)
 

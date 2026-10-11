@@ -51,6 +51,8 @@ export const POLLER_DEFAULTS = {
   chaseTtlMs: 10_000,
 } as const
 
+/** A callsign lookup that could not be sent within this long is given up: the page shows the rest without it. */
+export const LOOKUP_WAIT_MS = 8000
 /** Each swept squawk is asked for this often: 3 codes cost 0.1 req/s of adsb.fi's 0.9 (docs/anomaly-alerts.md §7.2). */
 export const SWEEP_PERIOD_MS = 30_000
 /**
@@ -172,6 +174,7 @@ export class Poller {
   #busy = false
   #asking: CellState | null = null // the area whose request is in flight
   #timer: ReturnType<typeof setInterval> | null = null
+  #lookups: { callsigns: readonly string[]; done: (found: ReadsbAircraft[] | null) => void; timer: ReturnType<typeof setTimeout> }[] = []
 
   constructor(source: Source, store: SampleStore, bucket: TokenBucket, opts: PollerOpts) {
     this.#source = source
@@ -230,6 +233,24 @@ export class Poller {
     this.#chased.set(hex.toLowerCase(), this.#now() + this.#opts.chaseTtlMs)
   }
 
+  /**
+   * Every aircraft sending one of these callsigns now, worldwide (the flight search): one request, which waits its turn for a
+   * token like any other and goes right after a due chase; its answer is taken in as any answer is, so the aircraft are in the
+   * store when the page selects one. null: the source has no such lookup (a replay, a receiver), the request failed, or it
+   * could not be sent within LOOKUP_WAIT_MS (the budget is paused or spent).
+   */
+  lookup(callsigns: readonly string[]): Promise<ReadsbAircraft[] | null> {
+    if (this.#source.callsign === undefined || callsigns.length === 0) return Promise.resolve(null)
+    return new Promise((done) => {
+      const ask = { callsigns, done, timer: setTimeout(() => {
+        this.#lookups = this.#lookups.filter((l) => l !== ask)
+        done(null)
+      }, LOOKUP_WAIT_MS) }
+      ask.timer.unref()
+      this.#lookups.push(ask)
+    })
+  }
+
   /** At most one upstream request. Returns whether one was made. Overlapping calls return false at once. */
   async tick(): Promise<boolean> {
     if (this.#busy) return false
@@ -258,6 +279,15 @@ export class Poller {
           // A failed request is the bucket's to pace (Retry-After, back-off).
           this.#backOff(batch, now)
         }
+        return true
+      }
+      // A callsign looked up for the flight search: someone is waiting for it.
+      if (this.#lookups.length > 0 && this.#source.callsign !== undefined) {
+        if (!this.#bucket.tryTake()) return false
+        const ask = this.#lookups.shift()!
+        clearTimeout(ask.timer)
+        const r = await this.#source.callsign(ask.callsigns)
+        ask.done(this.#ingest(r) ? r.snapshot!.aircraft.filter((ac) => !(this.#opts.hideFlagged && isHidden(ac))) : null)
         return true
       }
       // ponytail: a due sweep goes before the areas, so it can delay a chase circle (an area request) by one token interval:
@@ -306,6 +336,10 @@ export class Poller {
   stop(): void {
     if (this.#timer !== null) clearInterval(this.#timer)
     this.#timer = null
+    for (const ask of this.#lookups.splice(0)) { // nobody will send them now
+      clearTimeout(ask.timer)
+      ask.done(null)
+    }
   }
 
   brief(): StatusBrief {

@@ -17,16 +17,26 @@ import type { Places } from '../../shared/places.ts'
 import { recordingId } from '../scenario/fromRecording.ts'
 import type { ScenarioCard } from '../scenario/types.ts'
 
-export type Kind = 'airport' | 'city' | 'country' | 'flight' | 'recording' | 'scenario'
-export const KINDS: readonly Kind[] = ['airport', 'city', 'country', 'flight', 'recording', 'scenario']
+// The last four are a flight looked up worldwide by its number (search/flights.ts): in the air now, a flight of the past,
+// one a slip of the keyboard away, and a line that asks for more of the past.
+export type Kind = 'airport' | 'city' | 'country' | 'flight' | 'recording' | 'scenario' | 'live' | 'flown' | 'similar' | 'more'
+export const KINDS: readonly Kind[] = ['airport', 'city', 'country', 'flight', 'recording', 'scenario', 'live', 'flown', 'similar', 'more']
 const PLACE_KINDS: ReadonlySet<Kind> = new Set(['airport', 'city', 'country'])
 
-/** Where a pick goes: over a place, round a box, to a flight in view (focus it), or a replay (scenario or recording). */
+/**
+ * Where a pick goes: over a place, round a box, to a flight in view (focus it), or a replay (scenario or recording); for a
+ * flight looked up worldwide: to it where it flies now (live), to its replay (past), to another search (find: the box's
+ * own, also what a past pick of such a flight keeps), or to more of its past (more: the box's own too).
+ */
 export type Go =
   | { to: 'place'; lat: number; lon: number; heightM: number }
   | { to: 'box'; south: number; north: number; west: number; east: number }
   | { to: 'flight'; hex: string }
   | { to: 'play'; id: string }
+  | { to: 'live'; hex: string; lat: number; lon: number }
+  | { to: 'past'; hex: string; callsign: string; fromMs: number; toMs: number; title: string; ends: [lat0: number, lon0: number, lat1: number, lon1: number] }
+  | { to: 'find'; q: string }
+  | { to: 'more'; days: number; deep: boolean }
 
 /** One result as a row shows it. key is unique across kinds, e.g. 'airport:KLAX'. */
 export interface Item {
@@ -210,6 +220,9 @@ export function scenarioCandidates(list: readonly ScenarioCard[]): Candidate[] {
   })
 }
 
+/** A past pick that still goes somewhere when nothing lists it now: a place, or a flight's search (asked afresh). */
+const lasting = (r: Recent): boolean => PLACE_KINDS.has(r.kind) || r.go.to === 'find'
+
 /**
  * The rows for what was typed: every candidate that matches, and every past pick that still exists (a place, or one of
  * the candidates) and matches, best first; at most `limit`. An empty box lists the past picks that still exist, newest
@@ -226,7 +239,7 @@ export function search(typed: string, pools: readonly (readonly Candidate[])[], 
     const out: Hit[] = []
     for (const r of recents) {
       const c = live.get(r.key)
-      if (c !== undefined || PLACE_KINDS.has(r.kind)) out.push(hit(c ?? r, 0, true))
+      if (c !== undefined || lasting(r)) out.push(hit(c ?? r, 0, true))
       if (out.length === EMPTY_MAX) break
     }
     return out
@@ -240,8 +253,8 @@ export function search(typed: string, pools: readonly (readonly Candidate[])[], 
     found.push({ i: c, score: m + c.weight + (recent ? RECENT_BONUS : 0), recent })
   }
   for (const r of recents) {
-    if (live.has(r.key) || !PLACE_KINDS.has(r.kind)) continue
-    const m = scoreOf(Q, candidate(r, { names: [r.label], alt: [r.sub], inits: r.kind === 'city' }, 0))
+    if (live.has(r.key) || !lasting(r)) continue
+    const m = scoreOf(Q, candidate(r, { codes: r.go.to === 'find' ? [r.go.q] : [], names: [r.label], alt: [r.sub], inits: r.kind === 'city' }, 0))
     if (m > 0) found.push({ i: r, score: m + RECENT_BONUS, recent: true })
   }
   found.sort((a, b) => b.score - a.score || a.i.label.length - b.i.label.length || a.i.label.localeCompare(b.i.label))
@@ -301,6 +314,7 @@ const isGo = (g: unknown): g is Go => {
     case 'box': return num('south', 'north', 'west', 'east')
     case 'flight': return typeof o.hex === 'string'
     case 'play': return typeof o.id === 'string'
+    case 'find': return typeof o.q === 'string' // (the other gos of a looked-up flight are never kept)
     default: return false
   }
 }

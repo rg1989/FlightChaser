@@ -26,6 +26,10 @@
 //   GET /api/trace?hex&at               an aircraft's flight leg flying at `at` (default now; adsb.lol's trace: trace.ts), 404: none
 //   GET /api/trace?hex&from&to          its legs over a span of up to 48 h (TraceDay; none: no legs); 503 + Retry-After: 15: a file
 //                                       of the span cannot be had now
+//   GET /api/flights?q[&scan=1&days&deep=1]  a flight by its ticket number or callsign (flightSearch.ts): what it is and where it
+//                                       flies now; with scan=1 also when it flew before, read in the background while the page
+//                                       keeps asking (days: how far back, default 14; deep=1: also with none found yet). 400: q
+//                                       does not read as a flight
 //   GET /*                              dist/ (index.html for client routes)
 // JSON, and a satellite frame's bytes, over 1 KB are gzipped when the client accepts it. ADSB_SOURCE=adsblol with ROUTES=1 also looks up flight routes;
 // any other live source with a CONTACT looks up only the routes of the aircraft selected or recorded (adsbdb.com).
@@ -42,13 +46,20 @@ import { extname, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { gzip } from 'node:zlib'
 import type { ChaseResponse, RecordingInfo, RecordResponse, StatusBrief, ViewResponse } from '../shared/api.ts'
+import { airlineOf, icaoOfIata } from '../shared/airlines.ts'
+import type { LiveFlight } from '../shared/api.ts'
 import { distanceNm } from '../shared/geo.ts'
+import { callsignOf } from '../shared/readsb.ts'
 import { EVERYTHING_NM, SLOT_MS, newestSlotMs } from '../shared/history.ts'
 import type { AircraftInfo } from '../shared/info.ts'
 import type { ReadsbAircraft, Sample } from '../shared/types.ts'
 import { TokenBucket } from './budget.ts'
 import { readServerConfig, type ServerConfig } from './config.ts'
 import { AdsbdbRoutes } from './adsbdb.ts'
+import { FlightRoutes } from './flightRoutes.ts'
+import { FlightSearch } from './flightSearch.ts'
+import { SlotCallsStore } from './slotCalls.ts'
+import { TlvBoard } from './tlvBoard.ts'
 import { Alerts, ntfyPush } from './alerts.ts'
 import { makeEumetsat } from './eumetsat.ts'
 import { FlightLog } from './flightLog.ts'
@@ -118,6 +129,23 @@ const TYPES: Record<string, string> = {
 }
 
 class BadRequest extends Error {}
+
+/**
+ * An aircraft of a callsign lookup as the flight search shows it: none without a callsign or a place. One whose position is
+ * lost (GPS jamming: adsb.fi sends lastPosition in place of lat and lon) is shown where it was last.
+ */
+function liveFlight(ac: ReadsbAircraft): Omit<LiveFlight, 'sinceMs'>[] {
+  const callsign = callsignOf(ac.flight)
+  const last = (ac as { lastPosition?: { lat?: unknown; lon?: unknown } }).lastPosition
+  const lat = typeof ac.lat === 'number' ? ac.lat : last?.lat
+  const lon = typeof ac.lon === 'number' ? ac.lon : last?.lon
+  if (callsign === null || typeof lat !== 'number' || typeof lon !== 'number' || !(Math.abs(lat) <= 90 && Math.abs(lon) <= 180)) return []
+  const text = (v: string | undefined): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
+  return [{
+    hex: ac.hex.toLowerCase(), callsign, reg: text(ac.r), typeCode: text(ac.t), lat, lon,
+    alt: ac.alt_baro === 'ground' ? 'g' : typeof ac.alt_baro === 'number' ? ac.alt_baro : null, gsKt: typeof ac.gs === 'number' ? ac.gs : null,
+  }]
+}
 
 /** A finite number from the query string; `def` when missing or empty, else 400. */
 function num(q: URLSearchParams, name: string, def?: number): number {
@@ -249,6 +277,8 @@ async function serveStatic(root: string, pathname: string, range: string | undef
  * deps.routesFetch replaces fetch for the route lookups (tests); routes run only with ADSB_SOURCE=adsblol and ROUTES=1.
  * deps.wxFetch replaces fetch for the weather (tests): aviationweather.gov, Open-Meteo, and EUMETSAT when cfg.eumetsat has its key.
  * deps.pushFetch replaces fetch for the alerts' ntfy push (tests). A live source with cfg.eventsDir has the alerts; a replay never does.
+ * deps.flightsFetch replaces fetch for the flight search's lists (adsbdb.com, the airlines' callsign lists, Ben Gurion's board; tests); its
+ * past comes through deps.historyFetch.
  * deps.historyFetch replaces fetch for the past (adsb.lol's heatmap and trace files, the type table; tests). deps.rollHistory
  * (default false) keeps the newest two half hours of the past fetched while the server listens: the command line sets it for
  * a live source. deps.historyMeta (default false) loads the type table for the past's aircraft (typeDb.ts) and finds the
@@ -265,6 +295,7 @@ export function createServer(
     routesFetch?: typeof fetch
     wxFetch?: typeof fetch
     pushFetch?: typeof fetch
+    flightsFetch?: typeof fetch
     historyFetch?: typeof fetch
     rollHistory?: boolean
     historyMeta?: boolean
@@ -346,6 +377,24 @@ export function createServer(
   const types = deps.types ?? ownTypes
   let typesWait: Promise<boolean> | null = null // the first ask's wait for the table, shared by the asks meanwhile
   let metaTimer: ReturnType<typeof setInterval> | null = null
+  // The flight search (flightSearch.ts): what a ticket number or callsign is (adsbdb, the airlines' callsign lists), who sends
+  // it now (the live source's lookup, through the poller's budget), and the days it flew (the start of adsb.lol's half hours,
+  // read from a file the history store holds when it does; its aircraft's traces). All asked only when a page searches.
+  const flightRoutes = new FlightRoutes({ userAgent: pastUa, fetchFn: deps.flightsFetch, nowMs })
+  const board = new TlvBoard({ userAgent: pastUa, fetchFn: deps.flightsFetch, nowMs })
+  const slotCalls = new SlotCallsStore({ userAgent: pastUa, fetchFn: deps.historyFetch, nowMs, held: (slotMs) => history.held(slotMs), oldestSlotMs: () => history.oldestSlotMs() })
+  const flightSearch = new FlightSearch({
+    nowMs,
+    route: (id) => flightRoutes.route(id),
+    airlineCallsigns: (icao) => flightRoutes.callsigns(icao),
+    icaoOf: icaoOfIata,
+    airlineOf,
+    live: async (callsigns) => (await poller.lookup(callsigns))?.flatMap(liveFlight) ?? null,
+    calls: (slotMs) => slotCalls.at(slotMs),
+    day: (hex, fromMs, toMs) => traces.day(hex, fromMs, toMs),
+    oldestSlotMs: () => history.oldestSlotMs(),
+    board: (airline, number) => board.times(airline, number),
+  })
 
   /**
    * The AircraftInfo this client lacks for the aircraft in a view answer. since = 0: all of them. Otherwise an
@@ -492,6 +541,17 @@ export function createServer(
     return [200, r]
   }
 
+  /**
+   * A flight by its ticket number or callsign (flightSearch.ts ask): [200, FlightSearchReply]; [400, …] when q does not read
+   * as one. scan=1 reads its past too, in the background: the page asks again for more of it.
+   */
+  async function findFlight(q: URLSearchParams): Promise<[number, unknown]> {
+    const text = q.get('q') ?? ''
+    check(text.length <= 32, 'q is too long')
+    const r = await flightSearch.ask(text, { scan: q.get('scan') === '1', days: q.has('days') ? num(q, 'days') : undefined, deep: q.get('deep') === '1' })
+    return r === null ? [400, { error: 'q must be a flight: a ticket number (W4 3257) or a callsign (WMT7403)' }] : [200, r]
+  }
+
   function recordings(): { recordings: RecordingInfo[] } {
     if (flights === null) throw new BadRequest('recording is off: set FLIGHTS_DIR')
     return { recordings: flights.list() }
@@ -567,6 +627,7 @@ export function createServer(
       else if (url.pathname === '/api/history') [status, body] = await pastSlot(url.searchParams)
       else if (url.pathname === '/api/history/status') body = history.status()
       else if (url.pathname === '/api/trace') [status, body] = await trace(url.searchParams)
+      else if (url.pathname === '/api/flights') [status, body] = await findFlight(url.searchParams)
       else if (url.pathname === '/api/record') body = record(url.searchParams, post)
       else if (url.pathname === '/api/recordings') body = recordings()
       else if (post && url.pathname === '/api/recordings/rename') [status, body] = editRecording(url.searchParams, 'rename')
@@ -663,6 +724,9 @@ export function createServer(
     close(): Promise<void> {
       history.close() // the downloads under way end now
       traces.close()
+      slotCalls.close()
+      flightRoutes.close()
+      board.close()
       ownTypes?.close()
       if (metaTimer !== null) clearInterval(metaTimer)
       metaTimer = null

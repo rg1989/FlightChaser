@@ -36,7 +36,8 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
   volumes round the aircraft. Over Europe, Africa and the Middle East the clouds stand where the Meteosat weather
   satellite sees them, with the cloud tops it measures. The Weather panel has the master switch (`W`); its button on the rail
   shows whether the weather is on.
-- **History.** The map as it was at any time in the last 42 days, on a replay clock.
+- **History.** The map as it was at any time in the last 42 days, on a replay clock. Search a flight number
+  (`W4 3257`) to see where it flies now and the days it flew, and replay any of them.
 - **Recordings.** Record a flight with one button and replay it later.
 - **Scenarios.** Reconstructed flights played back with a timeline and captions from the official record.
 - **Alerts.** Emergency squawks worldwide and steep descents, with optional push to a phone.

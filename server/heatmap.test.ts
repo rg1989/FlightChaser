@@ -2,7 +2,7 @@
 // readSlot and encodeHeatmap on files built in memory, and on records copied from a real adsb.lol file. No network.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { HEAT_MAGIC, encodeHeatmap, hasSliceHeader, readSlot, scanSlot, type HeatIdentIn, type HeatRecordIn, type HeatSliceIn } from './heatmap.ts'
+import { HEAT_MAGIC, encodeHeatmap, hasSliceHeader, readCalls, readSlot, scanSlot, type HeatIdentIn, type HeatRecordIn, type HeatSliceIn } from './heatmap.ts'
 import { destination, distanceNm } from '../shared/geo.ts'
 import { geoidN } from '../shared/geoid.ts'
 import { SLOT_MS } from '../shared/history.ts'
@@ -498,4 +498,30 @@ test('real records: 7c6deb taxiing at Sydney at -250 ft and 19.4 kt is not airbo
   const file = new Uint8Array(Buffer.from([REAL_EMPTY.index0, REAL_EMPTY.head0, REAL_EMPTY.posAu, ident7700, ident7700].join(''), 'hex'))
   const a = scanSlot(file, SLOT, CODES)?.aircraft.get('7c6deb')
   assert.deepEqual([a?.alt, a?.squawks, a?.callsign], [{ t: [0], ft: [-250] }, [], null])
+})
+
+test('readCalls: every callsign of the first slices with the aircraft that sent it; a file cut short is read as far as it goes', () => {
+  const file = encodeHeatmap([
+    at(0, ident('471f67', 'WMT7403 ', '5541'), pos('471f67', 44.57, 26.08, 'g', 5), ident('738a10', 'ELY315  ', null), ident('aaaaaa', null, '1200')),
+    at(10, ident('~abc123', 'ELY315', null), ident('471f67', 'WMT7403 ', '5541'), pos('738a10', 32, 34.9, 3000, 200)),
+    at(20, ident('bbbbbb', 'LATE1   ', null)),
+  ])
+  const all = readCalls(file)!
+  assert.equal(all.slices, 3)
+  assert.deepEqual(all.hexes('WMT7403'), ['471f67']) // sent twice, listed once
+  assert.deepEqual(all.hexes('ELY315'), ['738a10', '~abc123']) // two aircraft under one callsign
+  assert.deepEqual(all.hexes('ELY31'), []) // a whole callsign, not a part of one
+  assert.deepEqual(all.hexes('LATE1'), ['bbbbbb'])
+  assert.deepEqual(all.callsigns().sort(), ['ELY315', 'LATE1', 'WMT7403'])
+  // Only the first two slices: the third's callsign is not in it.
+  const two = readCalls(file, 2)!
+  assert.equal(two.slices, 2)
+  assert.deepEqual(two.hexes('LATE1'), [])
+  assert.deepEqual(two.hexes('WMT7403'), ['471f67'])
+  // The start of the file, cut in the middle of a record (a ranged download): what is whole is read.
+  const cut = readCalls(file.subarray(0, file.length - 16 - 7))!
+  assert.deepEqual(cut.hexes('WMT7403'), ['471f67'])
+  assert.deepEqual(cut.hexes('LATE1'), [])
+  assert.equal(readCalls(new Uint8Array(64)), null) // no slice header: not a heatmap
+  assert.deepEqual(readCalls(encodeHeatmap([at(0, pos('471f67', 1, 2, 3000, 100))]))!.callsigns(), [])
 })

@@ -14,7 +14,7 @@ import type { FleetEntry } from './types.ts'
 registerHooks({
   load: (url, context, nextLoad) => (url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : nextLoad(url, context)),
 })
-const { browseCircle, entriesIn, flagOf, lookupFor, placedHeightM, readParams, relHFor, safeArea, scenarioBaseFor, sceneKey, statusShown, viewRadiusNm, weatherButton, weatherView } =
+const { browseCircle, entriesIn, flagOf, largestClear, lookupFor, placedHeightM, readParams, relHFor, safeArea, scenarioBaseFor, sceneKey, statusShown, viewRadiusNm, weatherButton, weatherView } =
   await import('./app.ts')
 
 const entry = (hex: string, lat: number, lon: number): FleetEntry => ({
@@ -195,4 +195,28 @@ test('scenarioBaseFor: the app base, or in development ?scenarioBase=/a/path/ (t
   for (const bad of ['//evil.test/', 'https://evil.test/', '/a/../b/', '/no-slash', 'harness/', '/a b/']) {
     assert.equal(scenarioBaseFor(`?scenarioBase=${encodeURIComponent(bad)}`, '/app/', true), '/app/', bad)
   }
+})
+
+test('largestClear (a flight\'s replay): the largest part no cover touches, where one cut a cover gives up a whole band', () => {
+  // A wide screen in a replay: the card top left, the instrument panel and the key bottom left, the search bar, the rail, the time bar.
+  const card = { x: 12, y: 12, w: 320, h: 158 }
+  const corner = { x: 12, y: 620, w: 353, h: 192 }
+  const search = { x: 470, y: 12, w: 500, h: 44 }
+  const rail = { x: 1382, y: 12, w: 46, h: 876 }
+  const bar = { x: 12, y: 824, w: 1364, h: 64 }
+  const covers = [rail, card, bar, search, corner]
+  // Right of the card and the corner, under the search bar, over the time bar: the whole middle of the map.
+  assert.deepEqual(largestClear(1440, 900, covers), { x: 373, y: 64, w: 1001, h: 752 })
+  // safeArea, which cuts a side for each cover in turn, keeps less: here it gives up the band under the search bar's card-high row.
+  const cut = safeArea(1440, 900, covers)
+  assert.ok(cut.w * cut.h < 1001 * 752, `${cut.w} × ${cut.h}`)
+  // A phone: the pill and the panel at the top, the card, the time bar and the tabs at the bottom.
+  const phone = [{ x: 8, y: 12, w: 320, h: 104 }, { x: 8, y: 500, w: 374, h: 190 }, { x: 0, y: 700, w: 390, h: 88 }, { x: 0, y: 788, w: 390, h: 56 }]
+  assert.deepEqual(largestClear(390, 844, phone), { x: 8, y: 124, w: 374, h: 368 })
+  // Nothing covers it: the canvas, the pad in; a cover with no size, or outside it, changes nothing.
+  assert.deepEqual(largestClear(800, 600, []), { x: 8, y: 8, w: 784, h: 584 })
+  assert.deepEqual(largestClear(800, 600, [{ x: 0, y: 0, w: 0, h: 0 }, { x: 900, y: 10, w: 50, h: 50 }]), { x: 8, y: 8, w: 784, h: 584 })
+  // All of it covered: no room.
+  const none = largestClear(800, 600, [{ x: 0, y: 0, w: 800, h: 600 }])
+  assert.equal(none.w * none.h, 0)
 })

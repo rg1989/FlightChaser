@@ -25,5 +25,6 @@ export interface Source {
   circle(lat: number, lon: number, radiusNm: number): Promise<FetchResult>
   hexes(hexes: string[]): Promise<FetchResult>
   squawk?(code: string): Promise<FetchResult> // every aircraft on this squawk, worldwide (the alerts' sweep); sources that have it
+  callsign?(callsigns: readonly string[]): Promise<FetchResult> // every aircraft sending one of these callsigns, worldwide (the flight search); sources that have it
   all(): Promise<FetchResult>              // rejects with Error('unsupported') when !caps.fullSnapshot
 }

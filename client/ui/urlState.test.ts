@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { DEFAULT_PREFS, readScenePrefs } from './scenePrefs.ts'
-import { readHist, readScenario, readView, writeUrl } from './urlState.ts'
+import { readFlight, readHist, readScenario, readView, writeUrl } from './urlState.ts'
 
 test('writeUrl: camera, chase, orbit and non-default toggles; other parameters kept; round trip through readView', () => {
   const url = writeUrl('?bench=1&at=1,2,3&glass=1', {
@@ -98,4 +98,18 @@ test('a replay writes ?hist=<unix s> beside the view and the focus, and a reload
   assert.equal(readHist(out), 1_790_088_235_000)
   assert.equal(new URLSearchParams(writeUrl(out, { ...s, hist: null })).get('hist'), null, 'live again: gone')
   for (const bad of ['?hist=', '?hist=abc', '?hist=-5', '?hist=12.5', '?hist=100']) assert.equal(readHist(bad), null, bad)
+})
+
+test('one flight\'s replay adds ?fl=<first s>,<last s>,<callsign>, whole seconds outward; read back; gone when live or unselected', () => {
+  const flight = { callsign: 'WMT7403', fromMs: 1_791_601_897_400, toMs: 1_791_607_408_200 }
+  const s = { at: { lat: 39.8, lon: 25.9, heightKm: 2220 }, hex: '471f67', chase: false, cam: null, prefs: DEFAULT_PREFS, hist: 1_791_601_944_000, flight }
+  const out = writeUrl('', s)
+  assert.equal(out, '?at=39.8000,25.9000,2220&hex=471f67&hist=1791601944&fl=1791601897,1791607409,WMT7403')
+  assert.deepEqual(readFlight(out), { callsign: 'WMT7403', fromMs: 1_791_601_897_000, toMs: 1_791_607_409_000 })
+  assert.equal(new URLSearchParams(writeUrl(out, { ...s, hist: null })).get('fl'), null, 'live again: gone')
+  assert.equal(new URLSearchParams(writeUrl(out, { ...s, hex: null })).get('fl'), null, 'no aircraft: no flight')
+  // Not a flight: no callsign, ends the wrong way round, longer than two days, before the archive, words.
+  for (const bad of ['', '?fl=', '?fl=1791601897,1791607409', '?fl=1791607409,1791601897,WMT7403', '?fl=1791601897,1791801897,WMT7403', '?fl=100000000,100003600,WMT7403', '?fl=a,b,c', '?fl=1791601897,1791607409,wmt 7403']) {
+    assert.equal(readFlight(bad), null, bad)
+  }
 })

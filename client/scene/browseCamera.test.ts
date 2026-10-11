@@ -6,7 +6,7 @@ import { Camera, Cartesian2, Cartesian3, Ellipsoid, GeographicProjection, Headin
 import type { Viewer } from 'cesium'
 import {
   BROWSE_FLY_S, BROWSE_HEIGHT_M, MAX_ZOOM_M, MIN_ZOOM_M,
-  browseDrag, browsePinch, containsDeg, enterBrowse, exitBrowse, heightForViewWidthM, heightToFit, isBrowsing, viewRectangleDeg, viewWidthM,
+  browseDrag, browsePinch, containsDeg, enterBrowse, exitBrowse, heightForViewWidthM, heightToFit, isBrowsing, viewRectangleDeg, viewToFit, viewWidthM,
 } from './browseCamera.ts'
 
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b} (tol ${tol}) ${msg}`)
@@ -294,4 +294,25 @@ test('browsePinch: no closer than MIN_ZOOM_M above the ground under the camera, 
   browsePinch(viewer, 1e-6, 400, 300)
   near(latLonH(camera).h, MAX_ZOOM_M, 1e-2)
   topDown(camera)
+})
+
+test('viewToFit: the box inside a part of the canvas: the whole canvas is heightToFit over its middle; a smaller part is higher, and looks off to the side', () => {
+  const box = { south: 35.4, north: 44.6, west: 26.1, east: 31.4 } // Bucharest to the sea south of Turkey
+  const [w, h] = [1440, 900]
+  const whole = viewToFit(box, w, h, { x: 0, y: 0, w, h })
+  assert.ok(Math.abs(whole.lat - 40) < 1e-9 && Math.abs(whole.lon - 28.75) < 1e-9)
+  assert.ok(Math.abs(whole.heightM / heightToFit(box, w, h) - 1) < 1e-9)
+  // The clear part of the map with a card top left, a bar at the bottom and the rail: lower and to the right of the middle.
+  const part = { x: 330, y: 180, w: 1040, h: 620 }
+  const v = viewToFit(box, w, h, part, 1.25)
+  assert.ok(v.heightM > whole.heightM * 1.25, 'less room: from higher')
+  // The part's middle is right of and below the canvas's: the camera looks west and north of the box's middle.
+  assert.ok(v.lon < 28.75 && v.lat > 40)
+  // What it shows: the box's corners fall inside the part (a pinhole over flat ground, as moveTopDown takes it).
+  const mPerPx = (2 * v.heightM * Math.tan(Math.PI / 6)) / w
+  const px = (lat: number, lon: number): [number, number] => [w / 2 + ((lon - v.lon) * 111_320 * Math.cos((v.lat * Math.PI) / 180)) / mPerPx, h / 2 - ((lat - v.lat) * 111_320) / mPerPx]
+  for (const [lat, lon] of [[box.north, box.west], [box.south, box.east]]) {
+    const [x, y] = px(lat, lon)
+    assert.ok(x >= part.x && x <= part.x + part.w && y >= part.y && y <= part.y + part.h, `(${lat}, ${lon}) at ${x.toFixed(0)}, ${y.toFixed(0)}`)
+  }
 })

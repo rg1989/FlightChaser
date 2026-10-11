@@ -213,6 +213,64 @@ export function readSlot(buf: Uint8Array, q: { slotMs: number; lat: number; lon:
   return { slotMs: q.slotMs, stepS: q.stepS, aircraft }
 }
 
+/**
+ * Who was in the air: every callsign sent in a file's first slices, with the aircraft that sent it (readCalls). Held as one
+ * string, a line per pair, so hundreds of half hours fit in memory (about 150 KB each).
+ */
+export class CallIndex {
+  readonly slices: number // the slices read
+  readonly #lines: string // '\nCALLSIGN\thex\n…', each pair once
+
+  constructor(slices: number, lines: string) {
+    this.slices = slices
+    this.#lines = lines
+  }
+
+  /** The aircraft that sent this callsign (most often one). */
+  hexes(callsign: string): string[] {
+    const out: string[] = []
+    const key = `\n${callsign}\t`
+    for (let i = this.#lines.indexOf(key); i >= 0; i = this.#lines.indexOf(key, i + 1)) {
+      const from = i + key.length
+      out.push(this.#lines.slice(from, this.#lines.indexOf('\n', from)))
+    }
+    return out
+  }
+
+  /** Every callsign in it, once each. */
+  callsigns(): string[] {
+    const out = new Set<string>()
+    for (const line of this.#lines.split('\n')) if (line !== '') out.add(line.slice(0, line.indexOf('\t')))
+    return [...out]
+  }
+}
+
+/**
+ * The callsigns in the first maxSlices slices of a decompressed file, or of the start of one (a record cut short at the end
+ * is not read): an ident comes once a minute per aircraft, so seven slices of 10 s name everyone heard as the half hour began.
+ * null: no slice header.
+ */
+export function readCalls(buf: Uint8Array, maxSlices = Infinity): CallIndex | null {
+  const dv = new DataView(buf.buffer, buf.byteOffset, buf.byteLength)
+  const end = buf.byteLength - (buf.byteLength % REC)
+  let o = firstHeader(dv, end)
+  if (o < 0) return null
+  const pairs = new Set<string>()
+  let slices = 0
+  for (; o < end; o += REC) {
+    const w0 = dv.getUint32(o, true)
+    if (w0 === HEAT_MAGIC) {
+      if (slices === maxSlices) break
+      slices++
+      continue
+    }
+    if (dv.getInt32(o + 4, true) < IDENT) continue
+    const callsign = callsignAt(buf, o + 8)
+    if (callsign !== null && !/[\t\n]/.test(callsign)) pairs.add(`${callsign}\t${hexOf(w0 & KEY_MASK)}`)
+  }
+  return new CallIndex(slices, pairs.size === 0 ? '\n' : `\n${[...pairs].join('\n')}\n`)
+}
+
 /** One aircraft of a half-hour file as the alerts read it (scanSlot). */
 export interface ScanAircraft {
   alt: AltSeries // its altitudes off the ground, whatever its speed (ft, 25 ft steps; baro, or GNSS where readsb had no baro): t in s into the slot

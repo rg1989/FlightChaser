@@ -1,14 +1,16 @@
 // client/api.ts
 // Browser client for the FlightHopper server: GET /view and /chase with a per-key `since`, plus the server clock; the
-// past (/history, /trace) for the flown path and the History mode; the alerts' switch and events (/events).
+// past (/history, /trace) for the flown path and the History mode; the alerts' switch and events (/events); a flight by
+// its number (/flights).
 import type { EventsReply } from '../shared/alerts.ts'
-import type { ChaseResponse, HistorySlot, HistoryStatus, RecordingInfo, RecordingTrack, RecordResponse, TraceDay, TraceReply, ViewResponse } from '../shared/api.ts'
+import type { ChaseResponse, FlightSearchReply, HistorySlot, HistoryStatus, RecordingInfo, RecordingTrack, RecordResponse, TraceDay, TraceReply, ViewResponse } from '../shared/api.ts'
 import { MinOffset } from '../shared/clock.ts'
 
 const OFFSET_WINDOW_MS = 60_000
 const TIMEOUT_MS = 10_000 // a hung request must not stall the 1 Hz poll loop
 const HISTORY_TIMEOUT_MS = 60_000 // the server may first fetch a 12–25 MB file from adsb.lol
 const DAY_TIMEOUT_MS = 30_000 // an aircraft's day file is a few MB, and the server may first fetch it from adsb.lol
+const FLIGHTS_TIMEOUT_MS = 20_000 // the first ask for a flight waits for two or three lookups upstream
 // ponytail: plain insertion-order eviction; a camera panning for hours creates many view keys. Upgrade to real LRU if
 // a key ever gets evicted while still polled (it would only cost one full `since=0` reply).
 const MAX_KEYS = 100
@@ -99,6 +101,18 @@ export class ApiClient {
    */
   traceDay(hex: string, fromMs: number, toMs: number): Promise<TraceDay | null> {
     return this.#getOrNull(`/trace?hex=${encodeURIComponent(hex)}&from=${Math.round(fromMs)}&to=${Math.round(toMs)}`, DAY_TIMEOUT_MS)
+  }
+
+  /**
+   * A flight by its ticket number or callsign (server/flightSearch.ts): what it is and where it flies now; with scan, its past
+   * too, which the server reads while this is asked again (once a second). null: the text does not read as a flight.
+   */
+  async flights(q: string, o: { scan?: boolean; days?: number; deep?: boolean } = {}): Promise<FlightSearchReply | null> {
+    const query = `q=${encodeURIComponent(q)}${o.scan ? '&scan=1' : ''}${o.days === undefined ? '' : `&days=${o.days}`}${o.deep ? '&deep=1' : ''}`
+    const res = await this.#fetch(`${this.#base}/flights?${query}`, { signal: AbortSignal.timeout(FLIGHTS_TIMEOUT_MS) })
+    if (res.status === 400) return null
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return (await res.json()) as FlightSearchReply
   }
 
   /** The alerts' switch and the last 7 days of events; null when the server has no alerts (no EVENTS_DIR, or a replay). */

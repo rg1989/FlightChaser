@@ -43,7 +43,7 @@ import type { ReadsbAircraft, Sample } from '../shared/types.ts'
 import { ApiClient } from './api.ts'
 import { BenchRecorder, countTextures, type CloudsBench } from './bench/overlay.ts'
 import { Fleet, heightM } from './browse/fleet.ts'
-import { BROWSE_HEIGHT_M, browseDrag, browsePinch, containsDeg, enterBrowse, exitBrowse, heightToFit, isBrowsing, viewRectangleDeg } from './scene/browseCamera.ts'
+import { BROWSE_FLY_S, BROWSE_HEIGHT_M, browseDrag, browsePinch, containsDeg, enterBrowse, exitBrowse, heightToFit, isBrowsing, viewRectangleDeg, viewToFit } from './scene/browseCamera.ts'
 import type { RectDeg } from './scene/browseCamera.ts'
 import { ChaseCamera } from './scene/chaseCamera.ts'
 import { FleetLayer } from './scene/fleetLayer.ts'
@@ -60,6 +60,7 @@ import { dayState, legSpans, type DayState } from './history/aircraftDay.ts'
 import { localDay, mountHistoryBar, type AircraftLine, type HistoryBarHandle, type LocalDay } from './history/bar.ts'
 import { HistoryClock } from './history/clock.ts'
 import { HistoryFeed, type Circle } from './history/feed.ts'
+import { mountFlightBar } from './history/flightBar.ts'
 import { KnownHexes, SlotBlock, SlotFailure, askNm, backMs, lookaheadMs, prefetchMs, wantedSlots } from './history/policy.ts'
 import {
   MapMoves, aheadOf, aircraftLine, areaMiddle, cameraTarget, chaseAskAt, dayAsk, daySpan, estimateState, firstDayAsked, historyWait, inArea,
@@ -111,7 +112,8 @@ import { FRAME_PREFS_KEY, readFramePrefs, writeFramePrefs } from './ui/framePref
 import { baseKey, mountSceneToggles, rainTheme } from './ui/sceneToggles.ts'
 import { badgeView } from './ui/imageryBadge.ts'
 import { mountStatusPanel, sourceName, statusDot, type StatusPanelHandle } from './ui/sourceBadge.ts'
-import { readHist, readScenario, readView, writeUrl, type Orbit } from './ui/urlState.ts'
+import { mountTimePill } from './ui/timePill.ts'
+import { readFlight, readHist, readScenario, readView, writeUrl, type FlightSpan, type Orbit } from './ui/urlState.ts'
 import { mountTable, type TableHandle } from './ui/table.ts'
 import { mountSearchBox, type SearchBoxHandle } from './ui/searchBox.ts'
 import { mountWxHud } from './ui/wxHud.ts'
@@ -155,7 +157,7 @@ const FT = 0.3048
 // What covers the canvas where the flight-data frame must not go, measured at most every SAFE_EVERY_MS (a layout read).
 // Not a traffic aircraft's card: opened and closed by a click, it keeps off the frame instead (keepClear), which stays put.
 // A new overlay goes in MAP_COVERS too (History's top-down map keeps its aircraft clear of the same).
-const FRAME_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard), .fh-outage-pill, .fh-playbar, .fh-captions, .fh-event-title, .fh-search, .fh-presets, .fh-wxhud-chip, .fh-wxhud-strip'
+const FRAME_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard), .fh-outage-pill, .fh-playbar, .fh-captions, .fh-event-title, .fh-search, .fh-timepill-solo, .fh-presets, .fh-wxhud-chip, .fh-wxhud-strip'
 // What covers the top-down map in History, where its aircraft must not come to rest: FRAME_COVERS less what History never shows
 // (captions, event title, TV presets, the outage pill) and with the search box's bar, not its list (that slides open and shut
 // over most of the map: it must not move the map under the person typing). The History bar is a .fh-playbar, an open rail
@@ -164,12 +166,19 @@ const FRAME_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard)
 // the whole height.
 // ponytail: the clear part is that one rectangle, so ground beside a small cover that was cut away counts as covered.
 // Upgrade: the largest empty rectangle.
-const MAP_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard), .fh-playbar, .fh-search-bar'
+const MAP_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard), .fh-playbar, .fh-search-bar, .fh-timepill-solo'
 const MAP_KEY_COVER = '.fh-botleft' // the key, and the small instrument panel over it
 const SAFE_EVERY_MS = 100
 const MINI_KEY = 'fh.miniGauges.v1' // the top-down map's instrument panel: '0' folded
 const ROUTE_SPARE = 1.35 // a scenario's route fits its top-down map with this much to spare: clear of the play bar and the rail
 const ROUTE_MIN_M = 20_000 // …from no lower than this (a circuit round one airfield)
+const FLIGHT_SPARE = 1.04 // a past flight's replay opens with its two ends inside the clear part of the map, this much to spare
+const FLIGHT_MIN_M = 60_000 // …from no lower than this
+const FLIGHT_FIT_MS = 1200 // …once its card is laid out, or after this long without it
+const FLIGHT_REFIT_S = 0.4 // …and again, in a short flight, when what covers the map changes before the instrument panel has settled
+const FLIGHT_SETTLED_MS = 300 // …which it has once the clear part stayed the same this long with the aircraft drawn and the panel laid out
+const FLIGHT_SAME_PX = 12 // …the same: its sides moved less than this in all (a card's lines filling in are not a change)
+const FLIGHT_INSET = 0.11 // …that clear part less this much of it on each side: a little more than History's own "in view" (VIEW_INSET)
 const WEATHER_LABEL = 'clouds, hazard areas, looking ahead' // after the state, in the Weather button's words
 const WX_LOOK_MS = 250 // the chase weather's status line, ahead strip and minute labels follow the aircraft this often
 const WX_MINUTES_KEY = 'ahead' // the track line's minute labels: this layer in the names overlay (placeLabels.ts setLayer) …
@@ -360,6 +369,30 @@ export function safeArea(w: number, h: number, covers: readonly Rect[], pad = 8)
     ;({ x0, y0, x1, y1 } = best)
   }
   return { x: x0, y: y0, w: Math.max(0, x1 - x0), h: Math.max(0, y1 - y0) }
+}
+
+/**
+ * The largest part of the w × h canvas that no cover touches (each kept `pad` away, as the canvas's edges are): the largest
+ * empty rectangle, where safeArea cuts one side per cover in turn and so gives up a whole band for a card in a corner. Its
+ * sides lie on the covers' sides, so every pair of those is tried: a dozen covers, a few thousand rectangles. For a past
+ * flight's replay, which is framed in it (fitFlight) and kept in view in it.
+ */
+export function largestClear(w: number, h: number, covers: readonly Rect[], pad = 8): Rect {
+  const boxes = covers.filter((c) => c.w > 0 && c.h > 0).map((c) => ({ x0: c.x - pad, y0: c.y - pad, x1: c.x + c.w + pad, y1: c.y + c.h + pad }))
+  const [left, top, right, bottom] = [pad, pad, w - pad, h - pad]
+  const xs = [...new Set([left, right, ...boxes.flatMap((b) => [b.x0, b.x1])])].filter((x) => x >= left && x <= right).sort((a, b) => a - b)
+  const ys = [...new Set([top, bottom, ...boxes.flatMap((b) => [b.y0, b.y1])])].filter((y) => y >= top && y <= bottom).sort((a, b) => a - b)
+  let best = { x: left, y: top, w: 0, h: 0 }
+  for (let i = 0; i < xs.length; i++) for (let j = i + 1; j < xs.length; j++) {
+    const [x0, x1] = [xs[i], xs[j]]
+    const across = boxes.filter((b) => b.x0 < x1 && b.x1 > x0) // the covers in this column: they cut it into rows
+    for (let k = 0; k < ys.length; k++) for (let l = k + 1; l < ys.length; l++) {
+      const [y0, y1] = [ys[k], ys[l]]
+      if ((x1 - x0) * (y1 - y0) <= best.w * best.h) continue
+      if (!across.some((b) => b.y0 < y1 && b.y1 > y0)) best = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
+    }
+  }
+  return best
 }
 
 // Development only: ?scenarioBase=/harness/fixtures/ loads scenarios from there (the synthetic demo package).
@@ -595,6 +628,13 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     flyUntilMs: number // the map is flying over it until then (performance.now(); -Infinity: not): no other flight meanwhile
     hadAt: boolean // it was drawn last frame (a first position after none brings it into view)
     askedMs: number // performance.now() of the frame's last ask for half hours (-Infinity: ask at the next frame)
+    // One flight's replay (a past flight picked in the search box: replayFlight): the clock and the bar are that flight
+    // alone, from its first point heard to its last; only its aircraft is drawn, on its whole path; no half hour is loaded
+    // (its trace is all it takes); leaving it returns to live with nothing selected. null: History.
+    flight: (FlightSpan & { hex: string; title: string }) | null
+    // …and the box of its two ends, being brought into view (fitFlight: until the card and the panel are laid out); null: done.
+    // clear: the part of the map the last fit used (null: none yet), fitMs: when.
+    fit: { box: RectDeg; sinceMs: number; clear: Rect | null; fitMs: number } | null
   }
   /** The selected aircraft's flights over a local day and the 12 h before it (GET /api/trace?hex&from&to). */
   interface SelectedDay {
@@ -611,6 +651,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   let safeAtMs = -Infinity
   let mapSafe = NO_ROOM.safe // History's top-down map: the part of the canvas nothing covers, as last measured
   let mapSafeAtMs = -Infinity
+  let flightSafe = NO_ROOM.safe // …and a flight's replay's: the largest such part (largestClear)
+  let flightSafeAtMs = -Infinity
 
   // Overlays live in one element so stop() removes them together (mountAttribution returns no handle). layout.css
   // places them; data-mode switches what browse and chase show.
@@ -747,12 +789,18 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   for (const f of ionFell) settings.setFallback('ion', f.what, f.why)
   // Airports, cities, countries, the flights in view, recordings and scenarios (ui/searchBox.ts): top centre, / to focus.
   const placesUrl = `${base}search/places.json` // the chase's place names read it too: one download, the browser's cache shares it
+  // Which time the map shows (ui/timePill.ts): Live, or the past's moment with × back to live. In the search bar on wide
+  // screens, one of its own on phones (where the bar is a tab's sheet); none while a scenario plays (it has its own bar).
+  const pills = [mountTimePill({ zone: zoneName(), onLive: () => exitHistory() }), mountTimePill({ zone: zoneName(), onLive: () => exitHistory(), className: 'fh-timepill-solo' })]
+  ui.append(pills[1].el)
   searchBox = mountSearchBox(ui, {
     placesUrl,
     flights: () => onScreen,
     recordings: () => api.recordings().then((r) => r ?? []),
     scenarios: () => listScenarios(base),
+    flightSearch: (q, o) => api.flights(q, o), // a flight by its number, worldwide: where it is now and when it flew before
     store,
+    tools: [pills[0].el],
     onPick: (item) => goTo(item),
   })
   const photos = new PhotoCache() // shared: a traffic aircraft's photo is there when it is chased
@@ -1066,7 +1114,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const scenario = run === null ? null : { id: run.scenario.id, t: run.player.clock.t, map: !chasing } // replaces at, hex and chase
     // History: the replay time; a time asked for that the clock waits for (HistoryClock.asked) stays, not the one it waits at.
     const histMs = hist === null ? null : (hist.clock.asked ?? hist.clock.now(now))
-    const next = writeUrl(location.search, { at, hex: selected, chase: chasing, cam: orbit, prefs, scenario, hist: histMs })
+    const next = writeUrl(location.search, { at, hex: selected, chase: chasing, cam: orbit, prefs, scenario, hist: histMs, flight: hist?.flight ?? null })
     if (next !== location.search) history.replaceState(history.state, '', `${location.pathname}${next}${location.hash}`)
   }
 
@@ -1076,6 +1124,12 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
    */
   function select(hex: string | null): void {
     if (hex === selected) return
+    // A flight's replay is its aircraft's alone: with another selected, or none (the card's ×, a place searched), it ends:
+    // live again, the map where it is.
+    if (hist !== null && hist.flight !== null && hex !== hist.flight.hex) {
+      exitHistory() // …which selects nothing
+      if (hex === null) return
+    }
     if (hex === null && chasing) setChase(false) // back to the map over the last chased position
     chaseCam.release() // the next chase starts behind its aircraft
     selected = hex
@@ -1138,6 +1192,13 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const base = selTrace === null ? [] : tracePath(selTrace)
     const first = trail.length > 0 ? trail[0].tMs : Infinity
     selPath = trail.length === 0 ? base : base.filter((p) => p.tMs < first).concat(trail)
+  }
+
+  /** A flight's replay: the part of the selected aircraft's path that is that flight (its leg may hold the flights before and after). */
+  let flightCut: { of: PathPoint[]; f: FlightSpan | null; path: PathPoint[] } = { of: [], f: null, path: [] }
+  function flightPath(f: FlightSpan): PathPoint[] {
+    if (flightCut.of !== selPath || flightCut.f !== f) flightCut = { of: selPath, f, path: selPath.filter((p) => p.tMs >= f.fromMs - 1000 && p.tMs <= f.toMs + 1000) }
+    return flightCut.path
   }
 
   /** History: the seconds between the slices of the half hour at t (10 before it is loaded). */
@@ -1308,9 +1369,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     if (chasing || selected === null) {
       h.bring = false
       h.inside = false
+      h.fit = null
       return
     }
-    const area = mapClear(now)
+    if (h.fit !== null) return void fitFlight(h, now, at !== undefined)
+    const area = h.flight !== null ? flightClear(now) : mapClear(now)
     const inside = at !== undefined && inArea(screenOf(at), area)
     const m = viewMove({
       busy: now < h.flyUntilMs || h.seekRestMs !== null, bring: h.bring, had, at: at !== undefined, playing: h.clock.playing,
@@ -1326,6 +1389,48 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     enterBrowse(viewer, to, { heightM: viewer.camera.positionCartographic.height, flyS })
     h.flyUntilMs = now + flyS * 1000
     askSlots(h, t, { lat: to.lat, lon: to.lon, nm: v.nm })
+  }
+
+  /**
+   * A flight's replay, just opened: its two ends brought inside the largest part of the map that nothing covers (flightClear,
+   * less FLIGHT_INSET each side). In one cut once the flight card is laid out (a frame after the selection; FLIGHT_FIT_MS
+   * at most is waited for it), then again, in a short flight, each time that clear part changes: the small instrument
+   * panel comes with the aircraft's first state (when its trace has loaded), and on a phone it takes a band of the map.
+   * Done once the aircraft is drawn (`drawn`), its panel laid out and the clear part has stayed as it is; or when the
+   * person moves the map (theirs from then). The aircraft is then in view all its way, so History moves the map no more
+   * unless the person zooms in.
+   */
+  function fitFlight(h: HistoryMode, now: number, drawn: boolean): void {
+    const fit = h.fit
+    if (fit === null) return
+    if (mapMovedMs > fit.sinceMs) return void (h.fit = null)
+    const was = fit.clear
+    if (was === null) {
+      if (ui.querySelector('.fh-card:not(.fh-tcard):not([hidden])') === null && now - fit.sinceMs < FLIGHT_FIT_MS) return
+      flightSafeAtMs = -Infinity // measured afresh: the bar and the card are new
+    }
+    const same = (r: Rect): boolean => was !== null && Math.abs(r.x - was.x) + Math.abs(r.y - was.y) + Math.abs(r.w - was.w) + Math.abs(r.h - was.h) < FLIGHT_SAME_PX
+    let clear = flightClear(now)
+    // The panel of the aircraft selected before (or of a scenario) may still show: only this flight's own counts. And the
+    // fitting ends on a measure taken now, not on flightClear's kept one: the panel may have come since.
+    if (same(clear) && drawn && now - fit.fitMs > FLIGHT_SETTLED_MS && ui.querySelector('.fh-mini:not([hidden])') !== null) {
+      flightSafeAtMs = -Infinity
+      clear = flightClear(now)
+      if (same(clear)) return void (h.fit = null)
+    }
+    if (same(clear)) return
+    fit.clear = clear
+    fit.fitMs = now
+    const c = viewer.canvas
+    const part = clear.w > 0 && clear.h > 0
+      ? { x: clear.x + clear.w * FLIGHT_INSET, y: clear.y + clear.h * FLIGHT_INSET, w: clear.w * (1 - 2 * FLIGHT_INSET), h: clear.h * (1 - 2 * FLIGHT_INSET) }
+      : { x: 0, y: 0, w: c.clientWidth, h: c.clientHeight }
+    const v = viewToFit(fit.box, c.clientWidth, c.clientHeight, part, FLIGHT_SPARE)
+    const flyS = was === null ? 0 : FLIGHT_REFIT_S
+    enterBrowse(viewer, v, { heightM: Math.max(FLIGHT_MIN_M, v.heightM), flyS })
+    h.bring = false
+    h.inside = true
+    h.flyUntilMs = now + flyS * 1000 + 250 // the view settles before History looks where the aircraft is
   }
 
   /**
@@ -1365,29 +1470,45 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   /**
    * Opens History at tMs (null: the start of the newest published half hour), paused unless play. A tMs further back than
    * the guess of what exists waits in the clock for a status that reaches it (HistoryClock.asked; see HISTORY_GUESS_MS).
+   * flight: one past flight's replay instead (replayFlight): its bar and clock are that flight alone, whatever History was
+   * open before.
    */
-  function enterHistory(tMs: number | null, play = false): void {
+  function enterHistory(tMs: number | null, play = false, flight: HistoryMode['flight'] = null): void {
     if (run !== null || loadingScenario !== null) exitScenario()
     const nowP = performance.now()
     const wall = Date.now()
     // Until the server's status says: HISTORY_GUESS_MS back, and the end of the newest half hour published (the bar's own
-    // guess, too).
-    const minMs = wall - HISTORY_GUESS_MS
-    const maxMs = newestSlotMs(wall) + SLOT_MS
+    // guess, too). A flight's replay: that flight.
+    const minMs = flight === null ? wall - HISTORY_GUESS_MS : flight.fromMs
+    const maxMs = flight === null ? newestSlotMs(wall) + SLOT_MS : flight.toMs
     const asked = tMs ?? maxMs - SLOT_MS
-    if (hist !== null) {
+    if (hist !== null && hist.flight === null && flight === null) {
       hist.clock.seek(asked, nowP) // inside the bounds as the clock knows them
       return jumped(hist)
     }
-    const bar = mountHistoryBar(ui, {
-      zone: zoneName(), nowMs: () => Date.now(),
-      onToggle: () => hist?.clock.toggle(performance.now()),
-      onSeek: (t) => seekHistory(t, false),
-      onRate: () => void hist?.clock.nextRate(performance.now()),
-      onLive: () => exitHistory(),
-      onGoTo: (t) => seekHistory(t, true),
-      describe: (t) => describeSelected(t),
-    })
+    if (hist !== null) closeHistory() // another bar and clock: the replay before ends here (the selection is the caller's)
+    const bar = flight !== null
+      ? mountFlightBar(ui, {
+          title: flight.title, fromMs: flight.fromMs, toMs: flight.toMs, zone: zoneName(),
+          onToggle: () => {
+            // Play at its end starts it over.
+            const p = performance.now()
+            if (hist !== null && !hist.clock.playing && hist.clock.now(p) >= hist.clock.maxMs) seekHistory(flight.fromMs, true)
+            hist?.clock.toggle(p)
+          },
+          onSeek: (t) => seekHistory(t, false),
+          onRate: () => void hist?.clock.nextRate(performance.now()),
+          onClose: () => exitHistory(),
+        })
+      : mountHistoryBar(ui, {
+          zone: zoneName(), nowMs: () => Date.now(),
+          onToggle: () => hist?.clock.toggle(performance.now()),
+          onSeek: (t) => seekHistory(t, false),
+          onRate: () => void hist?.clock.nextRate(performance.now()),
+          onLive: () => exitHistory(),
+          onGoTo: (t) => seekHistory(t, true),
+          describe: (t) => describeSelected(t),
+        })
     bar.setBounds(minMs, maxMs) // the clock's guess, until the server's status
     const clock = new HistoryClock(asked, { minMs, maxMs, playing: play, rate: HISTORY_RATE }, nowP)
     const t0 = clock.now(nowP) // inside the guess
@@ -1396,7 +1517,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       fedMs: t0, regMs: t0, regFrom: null, known: new KnownHexes(), loading: new Set(), block: new SlotBlock(), missing: new Set(),
       missingShown: '', failure: new SlotFailure(), status: null, statusAtMs: -Infinity,
       reload: false, seekRestMs: null, dayOfT: localDay(t0), day: null, dayAsk: null, dayAgain: null, legsShown: NO_LEGS,
-      pathLeg: undefined, bring: false, inside: false, flyUntilMs: -Infinity, hadAt: false, askedMs: -Infinity,
+      pathLeg: undefined, bring: false, inside: false, flyUntilMs: -Infinity, hadAt: false, askedMs: -Infinity, flight, fit: null,
     }
     hist = h
     selTrace = null // before restartHistory: a live leg must not keep the live track
@@ -1424,8 +1545,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     }
   }
 
-  /** Live again: the bar goes, the live Fleet comes back (its polls resume), the selected aircraft is taken up live. */
-  function exitHistory(): void {
+  /** The past ends: the bar goes and the live Fleet comes back (its polls resume). The selection is the caller's to settle. */
+  function closeHistory(): void {
     if (hist === null) return
     hist.bar.destroy()
     hist = null
@@ -1435,13 +1556,26 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     histAt = undefined
     histCardS = null
     delete ui.dataset.history
+    delete ui.dataset.flight
     rail.button('history').setAttribute('aria-pressed', 'false')
     card.setReplay(null)
     trafficCard.setReplay(null)
     statusPanel.setHistory(null)
     applyLayers() // the weather again, as the prefs say
+  }
+
+  /**
+   * Live again, where the map is (the camera does not move). From History the selected aircraft is taken up live. From a
+   * flight's replay nothing stays selected: that aircraft is elsewhere now, and live its card would say "Signal lost" over
+   * a place it left days ago; a chase of it ends on the map over where it was.
+   */
+  function exitHistory(): void {
+    if (hist === null) return
+    const wasFlight = hist.flight !== null
+    closeHistory()
     const hex = selected
-    if (hex !== null) {
+    if (wasFlight) select(null)
+    else if (hex !== null) {
       selected = null // select() ignores the same hex: this one starts afresh, live (a chase stays a chase)
       select(hex)
     }
@@ -1480,6 +1614,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
    * half hour under the clock other than the last asked for starts with no failure (policy.ts SlotFailure).
    */
   function askSlots(h: HistoryMode, t: number, c: Circle): void {
+    if (h.flight !== null) return // a flight's replay is its own trace: no half hour of everyone else
     const wall = Date.now()
     const want = wantedSlots(t, h.clock.maxMs, prefetchMs(h.clock.rate))
     h.failure.asked(want[0])
@@ -1508,6 +1643,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
    */
   function waitFor(h: HistoryMode, t: number, v: Circle): { stall: boolean; ring: boolean } {
     const slot = slotOf(Math.min(t, h.clock.maxMs - 1))
+    // A flight's replay never waits for the traffic round it (its own track is its trace): only for that trace, at first.
+    if (h.flight !== null) {
+      const firstDay = firstDayAsked(selected, h.dayAsk, h.day, h.dayAgain)
+      return { stall: firstDay, ring: firstDay }
+    }
     return historyWait({
       held: h.feed.has(slot), centre: h.feed.reaches(slot, v.lat, v.lon), chasing, missing: h.block.isMissing(slot, Date.now()),
       failing: h.failure.failing, loading: h.loading.has(slot), firstDay: firstDayAsked(selected, h.dayAsk, h.day, h.dayAgain),
@@ -1541,7 +1681,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     fleet.setHintS(2.5 * stepAt(h, t))
     fleet.prune(t, PRUNE_AGE_S)
     if (selected !== null && selectedDay(h, t) === null) rebuildPath() // the feed's samples until its day for t is known
-    h.bar.setNote(h.block.isMissing(slot, wall) ? 'No data for this time' : h.failure.failing ? 'Could not load this time · retrying' : null)
+    // (a flight's replay shows its flight whatever the half-hour files say: no note of them)
+    h.bar.setNote(h.flight !== null ? null : h.block.isMissing(slot, wall) ? 'No data for this time' : h.failure.failing ? 'Could not load this time · retrying' : null)
     if (nowP - h.statusAtMs < HISTORY_STATUS_MS) return
     h.statusAtMs = nowP
     // Not awaited: the next tick does not wait for it.
@@ -1551,7 +1692,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       h.block.fromStatus(st.slots, Date.now())
       const minMs = st.oldestSlotMs
       const maxMs = st.newestSlotMs + SLOT_MS
-      if (Number.isFinite(minMs) && Number.isFinite(maxMs) && minMs <= maxMs) { // a server older than the field: the guess stays
+      if (h.flight === null && Number.isFinite(minMs) && Number.isFinite(maxMs) && minMs <= maxMs) { // a server older than the field: the guess stays; a flight's bounds are its own
         // Every status: the clock goes to a time asked for further back than the guess once one reaches it (a jump).
         if (h.clock.setBounds(minMs, maxMs, performance.now())) jumped(h)
         h.bar.setBounds(minMs, maxMs)
@@ -1641,6 +1782,45 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   }
 
   /**
+   * A flight found worldwide by its number, in the air now: live (History and a scenario end), selected, the map over it.
+   * Its flown path comes with the selection (its trace), and its position as soon as the server has asked for it.
+   */
+  function followFlight(g: Extract<SearchItem['go'], { to: 'live' }>): void {
+    byHand()
+    exitHistory()
+    exitScenario()
+    traffic?.close()
+    select(g.hex)
+    const e = fleet.get(g.hex)
+    if (!chasing) enterBrowse(viewer, e ?? g, { heightM: BROWSE_HEIGHT_M })
+    if (matchMedia('(max-width: 860px)').matches) rail.close()
+  }
+
+  /**
+   * A flight of the past, picked in the search box: its replay. History opens on that flight alone (its bar runs from its
+   * first point heard to its last), playing from its start, its aircraft selected and alone on the map with its whole
+   * path; the map shows both its ends (fitFlight), and History keeps the aircraft in view from there, should the person
+   * zoom in. A chase ends first: a replay begins on the map.
+   */
+  function replayFlight(g: Extract<SearchItem['go'], { to: 'past' }>): void {
+    byHand()
+    exitScenario()
+    traffic?.close()
+    if (chasing) setChase(false)
+    enterHistory(g.fromMs, true, { hex: g.hex, callsign: g.callsign, fromMs: g.fromMs, toMs: g.toMs, title: g.title })
+    select(g.hex)
+    const [lat0, lon0, lat1, lon1] = g.ends
+    if (hist !== null) {
+      // ponytail: a flight across the antimeridian is not framed: History brings its aircraft into view at the zoom the
+      // map has. Upgrade: a box that wraps.
+      const wraps = Math.abs(lon1 - lon0) > 180
+      hist.fit = wraps ? null : { box: { south: Math.min(lat0, lat1), north: Math.max(lat0, lat1), west: Math.min(lon0, lon1), east: Math.max(lon0, lon1) }, sinceMs: performance.now(), clear: null, fitMs: 0 }
+    }
+    ui.dataset.flight = '1'
+    if (matchMedia('(max-width: 860px)').matches) rail.close()
+  }
+
+  /**
    * A search pick: a replay plays; a flight in view is focused as a list row is; a place leaves a scenario, the chase
    * and the focus for the top-down map over it (a country: its box fitted to the screen).
    */
@@ -1648,6 +1828,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const g = item.go
     if (g.to === 'play') return void startScenario(g.id, { play: true })
     if (g.to === 'flight') return pickFromList(g.hex)
+    if (g.to === 'live') return followFlight(g)
+    if (g.to === 'past') return replayFlight(g)
+    if (g.to === 'find' || g.to === 'more') return // the search box's own
     byHand() // a place: the person takes the map there
     exitScenario()
     traffic?.close()
@@ -1708,6 +1891,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       const e = selected === null ? undefined : fleet.get(selected)
       // Over the aircraft (else where the camera is), at the zoom the map had before the chase (a chased reload: the default).
       enterBrowse(viewer, chased ?? (e === undefined ? null : e), { heightM: browseHeightM ?? undefined })
+      // History keeps its aircraft in view by flying the map over it at the height it has: not while this flight climbs back
+      // to the map's own (it would end it a few km up, where the chase was).
+      if (hist !== null) hist.flyUntilMs = performance.now() + BROWSE_FLY_S * 1000 + 100
     }
     sun.setEnabled(on && prefs.light) // chase only (D9): browse stays the unlit street map
     if (!on) flightFrame.edit(false)
@@ -1872,6 +2058,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     let s: RenderState | null = null
     let tSunMs = Date.now() // until the first reply; then the render time (server clock)
     let histLoading = false // History: the data of its time loads (the bar's loader; the clock may wait for it)
+    let pastMs: number | null = null // History: the moment on screen, which the pill says (null: live)
     let viewRect: RectDeg | null | undefined // History: the view as this frame sees it (undefined: not read)
     // A scenario: its aircraft at its clock's time, lit at that instant; no traffic around it.
     const sf = run?.frame(dtS) ?? null
@@ -1900,6 +2087,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       const ds = day === null ? null : dayState(day.legs, t)
       feedHistory(h, t, ds)
       tSunMs = t
+      pastMs = t
       all = fleet.entries(t)
       if (selected !== null) {
         const track = registry.get(selected)
@@ -2132,6 +2320,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const wholeLeg = hist === null && selTrace !== null
     // A scenario's is its whole flight, the aircraft somewhere on it, with the timeline's marks.
     if (sf !== null && scnRoute !== null) routeLine.update(chasing ? null : scnOwn, scnRoute.path, null, null, Infinity, now, false)
+    // A flight's replay too: its whole path, from its first point heard to its last.
+    else if (hist !== null && hist.flight !== null) routeLine.update(at === undefined ? null : at, flightPath(hist.flight), null, null, Infinity, now, false)
     else routeLine.update(at === undefined ? null : at, selPath, hist === null ? chaseDest : null, wholeLeg ? chaseOrigin : null, hist === null ? Infinity : tSunMs)
     scnMarks?.update(chasing || sf === null ? null : viewer.scene, sf?.t ?? 0)
     // The map's small instrument panel: the focused aircraft's numbers and attitude, or the scenario's. The chase has the frame.
@@ -2140,6 +2330,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       scaleAtMs = now
       mapKey.setScale(groundScale())
     }
+    for (const p of pills) p.update(pastMs) // Live, or the past's moment (it writes only a change)
     syncUrl(now)
     bench?.frame(s, clearanceM)
     if (bench !== null && now >= benchSayMs) {
@@ -2180,6 +2371,14 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     if (now - mapSafeAtMs < SAFE_EVERY_MS) return mapSafe
     mapSafeAtMs = now
     return (mapSafe = measureRoom(MAP_COVERS, MAP_KEY_COVER).safe)
+  }
+
+  /** A flight's replay: the largest part of the canvas no overlay covers (largestClear over the same covers), re-measured as often. */
+  function flightClear(now: number): Rect {
+    if (now - flightSafeAtMs < SAFE_EVERY_MS) return flightSafe
+    flightSafeAtMs = now
+    const c = viewer.canvas.getBoundingClientRect()
+    return (flightSafe = largestClear(c.width, c.height, measureRoom(MAP_COVERS, MAP_KEY_COVER).covers))
   }
 
   /** Centre and radius of the view poll: browse, around the visible map; else the chased aircraft, else the globe point at the canvas centre, else below the camera. */
@@ -2373,9 +2572,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     if (hex !== null) {
       byHand()
       select(hex)
-    } else if (!onRunway && !chasing && selected !== null) {
+    } else if (!onRunway && !chasing && selected !== null && hist?.flight == null) {
       byHand()
-      select(null) // a click on the empty map clears the focus
+      select(null) // a click on the empty map clears the focus (not a flight's replay: a stray click would end it)
     }
   }, ScreenSpaceEventType.LEFT_CLICK)
   // Hover over an icon: its callsign label and a pointer cursor; over a traffic bracket, the pointer; over a runway end's
@@ -2419,7 +2618,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     else if (chasing) {
       byHand()
       setChase(false)
-    } else if (selected !== null || hist === null) {
+    } else if (hist !== null && hist.flight !== null) exitHistory() // a flight's replay: back to live
+    else if (selected !== null || hist === null) {
       byHand()
       select(null)
     } else exitHistory() // nothing else open: History closes too
@@ -2473,8 +2673,14 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     back,
   }) : null
   const urlHist = readHist(location.search) // ?hist=<unix s>: History at that time, paused
+  const urlFlight = readFlight(location.search) // ?fl=…: …in one flight's replay (with ?hex=)
   if (urlScenario !== null) void startScenario(urlScenario.id, { t: urlScenario.t ?? undefined, cam: urlView.cam, fromUrl: true, map: urlScenario.map })
-  else if (urlHist !== null) enterHistory(urlHist) // fetches the selected aircraft's leg itself
+  else if (urlHist !== null) {
+    // (History fetches the selected aircraft's leg itself)
+    const flight = urlFlight !== null && selected !== null ? { ...urlFlight, hex: selected, title: urlFlight.callsign } : null
+    enterHistory(urlHist, false, flight)
+    if (flight !== null) ui.dataset.flight = '1'
+  }
   else if (selected !== null) fetchTrace(selected) // ?hex= selects without select(): its flown path all the same
 
   return {
@@ -2510,6 +2716,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       settings.destroy()
       table.destroy()
       scnMarks?.destroy()
+      for (const p of pills) p.destroy()
       miniGauges.destroy()
       mapKey.destroy()
       rail.destroy()

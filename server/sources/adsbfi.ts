@@ -1,6 +1,6 @@
 // server/sources/adsbfi.ts
 // adsb.fi open data as a Source (github.com/adsbfi/opendata): /api/v3/lat/{lat}/lon/{lon}/dist/{nm} (≤ 250 nm),
-// /api/v2/hex/{hex} and /api/v2/sqk/{code}. Same envelope as adsb.lol ({ ac, msg, now (ms), total }), checked with one
+// /api/v2/hex/{hex}, /api/v2/sqk/{code} and /api/v2/callsign/{callsigns}. Same envelope as adsb.lol ({ ac, msg, now (ms), total }), checked with one
 // real request per endpoint (data/fixtures/golden/adsbfi-*.json; sqk: an empty answer, 2026-10-03). Terms: personal,
 // non-commercial use; cite adsb.fi with a link; public endpoints 1 request/s, and 400/404/429 answers can get the IP
 // restricted, so the bucket paces with burst 1.
@@ -10,6 +10,7 @@ import type { FetchResult, Source } from './types.ts'
 
 export const ADSBFI_BASE = 'https://opendata.adsb.fi/api'
 const MAX_RADIUS_NM = 250
+const MAX_CALLSIGNS = 20
 
 /** An answer for a request never sent (it could answer 400 or 404, which count toward adsb.fi's IP restriction). */
 function notAsked(msg: string): FetchResult {
@@ -39,6 +40,13 @@ export function makeAdsbfi(opts: { userAgent: string; baseUrl?: string; timeoutM
     // octal digits is not sent. An empty answer is a 200 (checked 2026-10-03: {"ac":[],"msg":"No error","now":…,"total":0}).
     async squawk(code) {
       return /^[0-7]{4}$/.test(code) ? get(`/v2/sqk/${code}`) : notAsked('not asked: not a squawk')
+    },
+    // Every aircraft sending one of these callsigns, worldwide (/v2/callsign/{a,b,…}: the flight search, server/flightSearch.ts).
+    // Checked 2026-10-11: two callsigns in one request answer with both aircraft; one nobody sends is a 200 with no aircraft.
+    // Anything that is not 3 to 8 letters and digits is left out, and with none left nothing is sent.
+    async callsign(callsigns) {
+      const list = [...new Set(callsigns.map((c) => c.trim().toUpperCase()))].filter((c) => /^[A-Z0-9]{3,8}$/.test(c)).slice(0, MAX_CALLSIGNS)
+      return list.length === 0 ? notAsked('not asked: no callsign') : get(`/v2/callsign/${list.join(',')}`)
     },
     async all() {
       throw new Error('unsupported')

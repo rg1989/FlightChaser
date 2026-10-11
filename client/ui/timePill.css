@@ -1,0 +1,162 @@
+/* client/ui/timePill.css */
+/* The pill that says which time the map shows (timePill.ts): "Live" with a green dot; in the past the day and the clock
+   in amber, and under the pointer or the focus an × in place of the dot (a press: back to live). On touch screens the ×
+   always shows. In the search box's bar on wide screens; on phones, where that bar is a tab's sheet, one of its own in
+   the top left corner. A scenario has its own bar, clock and exit: no pill there. */
+.fh-timepill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  margin-right: 7px;
+  padding: 0 11px 0 9px;
+  border: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--fh-text);
+  font: 600 12px/1 var(--fh-font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  cursor: default;
+  pointer-events: auto;
+  transition: background var(--fh-fast) var(--fh-ease), box-shadow var(--fh-fast) var(--fh-ease);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.fh-timepill-dot,
+.fh-timepill-x {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.fh-timepill-dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--fh-ok);
+  box-shadow: 0 0 0 3px rgba(60, 207, 110, 0.2);
+}
+
+.fh-timepill-x {
+  display: none;
+  background: #fff;
+  color: #10141c;
+}
+
+.fh-timepill[data-state='live'] .fh-timepill-text {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* The past: amber, the Replay colour of the cards and the time bar. */
+.fh-timepill[data-state='past'] {
+  background: rgba(242, 181, 58, 0.14);
+  box-shadow: inset 0 0 0 1px rgba(242, 181, 58, 0.34);
+  color: #ffd98a;
+  cursor: pointer;
+}
+
+.fh-timepill[data-state='past'] .fh-timepill-dot::before {
+  background: var(--fh-warn);
+  box-shadow: 0 0 0 3px rgba(242, 181, 58, 0.22);
+}
+
+.fh-timepill[data-state='past']:hover,
+.fh-timepill[data-state='past']:focus-visible {
+  background: rgba(242, 181, 58, 0.26);
+  box-shadow: inset 0 0 0 1px rgba(242, 181, 58, 0.6);
+  color: #fff;
+  outline: none;
+}
+
+.fh-timepill[data-state='past']:hover .fh-timepill-dot,
+.fh-timepill[data-state='past']:focus-visible .fh-timepill-dot {
+  display: none;
+}
+
+.fh-timepill[data-state='past']:hover .fh-timepill-x,
+.fh-timepill[data-state='past']:focus-visible .fh-timepill-x {
+  display: grid;
+}
+
+/* Nothing hovers on a touch screen: the × stands beside the dot's place from the start. */
+@media (hover: none) {
+  .fh-timepill[data-state='past'] .fh-timepill-dot {
+    display: none;
+  }
+
+  .fh-timepill[data-state='past'] .fh-timepill-x {
+    display: grid;
+  }
+}
+
+/* The pill of its own: phones only (the search bar is a sheet there), top left; none while a scenario plays. */
+.fh-timepill-solo {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .fh-timepill-solo {
+    position: absolute;
+    z-index: 17;
+    top: var(--fh-top);
+    left: 8px;
+    display: inline-flex;
+    height: 32px;
+    margin: 0;
+    background: var(--fh-glass);
+    box-shadow: var(--fh-shadow), inset 0 0 0 1px var(--fh-hairline);
+    -webkit-backdrop-filter: blur(16px) saturate(140%);
+    backdrop-filter: blur(16px) saturate(140%);
+  }
+
+  .fh-timepill-solo[data-state='past'] {
+    background: rgba(46, 36, 14, 0.92);
+    box-shadow: var(--fh-shadow), inset 0 0 0 1px rgba(242, 181, 58, 0.45);
+  }
+
+  .fh-ui[data-scenario] .fh-timepill-solo {
+    display: none;
+  }
+}
+
+/* With the pill in it the search bar holds less of the field: a little wider, and more so in the past, where the pill is longer. */
+@media (min-width: 641px) {
+  .fh-search:has(.fh-timepill) {
+    --w: 440px;
+  }
+
+  .fh-search.fh-open:has(.fh-timepill) {
+    --w: 540px;
+  }
+
+  .fh-ui[data-history] .fh-search {
+    --w: 540px;
+  }
+
+  .fh-ui[data-history] .fh-search.fh-open {
+    --w: 580px;
+  }
+}
+
+/* A flight's replay bar (history/flightBar.ts): the two moments under the rail's ends start and end with it. */
+.fh-flightbar .fh-playbar-scale > span:first-child {
+  transform: none;
+}
+
+.fh-flightbar .fh-playbar-scale > span:last-child {
+  transform: translateX(-100%);
+}
+
+@media (max-width: 640px) {
+  .fh-flightbar .fh-playbar-scale > span:nth-child(even) {
+    display: block; /* both ends, on phones too (the play bar hides every other label of a day's hours) */
+  }
+}
