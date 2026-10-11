@@ -442,6 +442,15 @@
   border-width: 1.5px;
 }
 
+/* A flight's past being searched, said under its flights: as tall as the row it took the place of ("Search older days"),
+   its spinner where the tiles are, so the list keeps its place and the next flights come in where that row was. */
+.fh-search-doing {
+  box-sizing: border-box;
+  gap: 23px;
+  height: 52px;
+  padding: 0 12px 0 20px;
+}
+
 .fh-search-skel-row {
   display: flex;
   align-items: center;
@@ -679,6 +688,12 @@
   .fh-search-skel-row {
     gap: 12px;
     height: 62px;
+  }
+
+  .fh-search-doing {
+    gap: 26px;
+    height: 62px;
+    padding-left: 22px;
   }
 
   .fh-search-glow {

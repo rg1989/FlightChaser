@@ -29,7 +29,7 @@
 //   GET /api/flights?q[&scan=1&days&deep=1]  a flight by its ticket number or callsign (flightSearch.ts): what it is and where it
 //                                       flies now; with scan=1 also when it flew before, read in the background while the page
 //                                       keeps asking (days: how far back, default 14; deep=1: also with none found yet). 400: q
-//                                       does not read as a flight
+//                                       does not read as a flight; 503: the route lists did not answer
 //   GET /*                              dist/ (index.html for client routes)
 // JSON, and a satellite frame's bytes, over 1 KB are gzipped when the client accepts it. ADSB_SOURCE=adsblol with ROUTES=1 also looks up flight routes;
 // any other live source with a CONTACT looks up only the routes of the aircraft selected or recorded (adsbdb.com).
@@ -543,12 +543,14 @@ export function createServer(
 
   /**
    * A flight by its ticket number or callsign (flightSearch.ts ask): [200, FlightSearchReply]; [400, …] when q does not read
-   * as one. scan=1 reads its past too, in the background: the page asks again for more of it.
+   * as one; [503, …] when what it is could not be found out now (asked again, it is tried again). scan=1 reads its past
+   * too, in the background: the page asks again for more of it.
    */
   async function findFlight(q: URLSearchParams): Promise<[number, unknown]> {
     const text = q.get('q') ?? ''
     check(text.length <= 32, 'q is too long')
     const r = await flightSearch.ask(text, { scan: q.get('scan') === '1', days: q.has('days') ? num(q, 'days') : undefined, deep: q.get('deep') === '1' })
+    if (r === 'failed') return [503, { error: 'the route lists did not answer: the flight could not be looked up' }]
     return r === null ? [400, { error: 'q must be a flight: a ticket number (W4 3257) or a callsign (WMT7403)' }] : [200, r]
   }
 

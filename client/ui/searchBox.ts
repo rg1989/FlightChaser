@@ -266,7 +266,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
   /** Asks the server about the flight in the box, then again while its past is being searched; an answer for a text since changed is dropped. */
   function askFlight(): void {
     const l = look
-    if (l === null || opts.flightSearch === undefined || l.state === 'loading') return
+    if (l === null || opts.flightSearch === undefined || l.state === 'loading' || l.state === 'offer') return
     stopLook()
     l.state = 'loading'
     schedule()
@@ -276,12 +276,19 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
         l.reply = r ?? l.reply
         l.state = r === null ? 'error' : 'ok'
         if (r === null || !isOpen) return
+        stopLook() // one timer at a time (the box may have closed and opened again while this was asked)
         // Its past days: asked for once the text has stayed a little longer; then again and again while they are read.
+        // A timer acts only for the flight it was set for.
         if (!l.past && r.known) lookTimer = setTimeout(() => {
+          lookTimer = null
+          if (look !== l) return
           l.past = true
           askFlight()
         }, PAST_AFTER_MS)
-        else if (l.past && (r.scan.state === 'running' || r.scan.state === 'idle')) lookTimer = setTimeout(askFlight, POLL_MS)
+        else if (l.past && (r.scan.state === 'running' || r.scan.state === 'idle')) lookTimer = setTimeout(() => {
+          lookTimer = null
+          if (look === l) askFlight()
+        }, POLL_MS)
       },
       (e: unknown) => {
         if (look !== l || destroyed) return
@@ -301,8 +308,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
   function syncFlight(asked = false): void {
     const id = opts.flightSearch === undefined || !isOpen ? null : parseFlightId(input.value)
     if (id === null) {
-      stopLook()
-      if (!isOpen && look !== null && look.state === 'loading') look.state = 'ok' // its answer will not be waited for
+      stopLook() // (an ask on its way is let land: it sets no timer while the box is closed)
       if (isOpen || opts.flightSearch === undefined) look = null
       return
     }
@@ -437,7 +443,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
     if (!flight.hidden) {
       // The looked-up flight's heading says what there is to say; under its flights, how far the search has got, again.
       if (view !== null && view.doing !== null && own.length > 0) {
-        const line = h('div', 'fh-search-state-line')
+        const line = h('div', 'fh-search-state-line fh-search-doing')
         line.append(h('span', 'fh-spin'), view.doing)
         state.append(line)
       }
@@ -497,9 +503,9 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
     if (go.to === 'more') {
       if (look === null) return
       stopLook()
-      look.past = true
-      look.days = Math.max(look.days, go.days)
-      look.deep ||= go.deep
+      if (look.reply !== null) look.past = true // (Try again on the first lookup asks what the flight is, no more)
+      look.days = go.days // as the row says: its days, and whether to read them with nothing found yet
+      look.deep = go.deep
       if (look.state !== 'loading') look.state = 'ok'
       moved = false
       return askFlight()

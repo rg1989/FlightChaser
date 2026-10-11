@@ -81,7 +81,7 @@ test('flightView: nothing before the lookup; the heading with its route; not in 
   assert.equal(done.busy, false)
   assert.deepEqual(done.rows.map((r) => r.kind), ['flown', 'flown', 'more'])
   assert.equal(done.rows[2].label, 'Search older days')
-  assert.deepEqual(done.rows[2].go, { to: 'more', days: 28, deep: true })
+  assert.deepEqual(done.rows[2].go, { to: 'more', days: 28, deep: false })
   // Nothing found in what was read: said, with the line to read on.
   const none = flightView(look({ past: true, reply: reply({ scan: { state: 'done', fromMs: at(9, 15, 30), oldestMs: at(1, 0), more: true } }) }), env, 0)!
   assert.deepEqual(none.notes, ['Callsign WMT7403.', 'Not in the air now.', 'No flight heard in the last 2 days.'])
@@ -104,7 +104,7 @@ test('flightView: in the air now; flown under other callsigns; adsb.lol could no
   assert.equal(failed.notes.at(-1), 'The past days could not be read from adsb.lol.')
   assert.equal(failed.rows.at(-1)?.label, 'Try again')
   const down = flightView(look({ state: 'error', reply: null }), env, 0)!
-  assert.deepEqual(down.notes, ['The FlightHopper server did not answer.'])
+  assert.deepEqual(down.notes, ['The flight could not be looked up.'])
   assert.equal(down.rows[0].label, 'Try again')
   // …or stopped answering while the past was searched: what it found stays, nothing spins, the search is offered again.
   const lost = flightView(look({ state: 'error', past: true, reply: reply({ past: [flown(10, 6, 92)], scan: { state: 'running', fromMs: at(9, 15), oldestMs: at(1, 0), more: true } }) }), env, 0)!

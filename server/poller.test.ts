@@ -598,6 +598,14 @@ test('lookup: it waits for a token, and gives up when none comes in time', async
   assert.equal(await found, null)
 })
 
+test('lookup: a source that throws leaves nobody waiting: the lookup answers null', async () => {
+  const s = lookupSetup()
+  s.source.callsign = () => Promise.reject(new Error('socket hang up'))
+  const found = s.poller.lookup(['WMT7403'])
+  await assert.rejects(s.poller.tick())
+  assert.equal(await Promise.race([found, new Promise((r) => setTimeout(() => r('waiting'), 30))]), null)
+})
+
 /** The squawk codes asked for, in order. */
 const sweepCodes = (calls: Call[]): string[] => calls.filter((c) => c.m === 'squawk').map((c) => c.args[0] as string)
 

@@ -127,3 +127,15 @@ test('at: once a half hour of some time of day was read, the same time on anothe
   assert.ok(up.asked.length >= 4)
   assert.ok(typeof busy !== 'string' && busy.slices >= CALL_SLICES)
 })
+
+test('at: a server that sends the whole file where a part was asked for is not read', async () => {
+  let read = false
+  // (nothing queued ahead: pull runs only when the body is read)
+  const body = new ReadableStream<Uint8Array>({ pull: (c) => { read = true; c.enqueue(new Uint8Array(1000)) } }, { highWaterMark: 0 })
+  const fetchFn = (async () => new Response(body, { status: 200, headers: { 'content-length': '18000000' } })) as typeof fetch
+  const s = new SlotCallsStore({ base: 'https://x', userAgent: 'test', fetchFn, nowMs: () => NOW, oldestSlotMs: () => OLDEST })
+  assert.equal(await s.at(SLOT), 'unavailable')
+  assert.equal(s.bytes, 0)
+  assert.equal(read, false)
+})
+

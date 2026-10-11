@@ -37,12 +37,22 @@ function legOf(f: Flown, calls?: [number, string][]): TraceReply {
 interface Sky {
   flown: Flown[]
   routes?: Record<string, FlightRoute | null | 'failed'>
-  lists?: Record<string, Record<string, string>>
+  lists?: Record<string, Record<string, string> | 'failed'>
   iata?: Record<string, string>
   live?: (callsigns: readonly string[]) => { hex: string; callsign: string; lat?: number; lon?: number }[] | null
   down?: Set<number> // half hours that cannot be read
   board?: { arrival: boolean; times: number[] } | null // Ben Gurion's board for the ticket number (undefined: this sky has no board)
   legs?: (hex: string) => TraceReply[] | undefined // a trace other than one leg a flight
+  cut?: boolean // a leg is given only as far as the span asked for holds it, as adsb.lol's day files give it
+}
+
+/** A leg's part inside [fromMs, toMs], or null when none of it is. */
+function clip(l: TraceReply, fromMs: number, toMs: number): TraceReply | null {
+  const keep = l.t.map((t, i) => (l.t0Ms + t * 1000 >= fromMs && l.t0Ms + t * 1000 <= toMs ? i : -1)).filter((i) => i >= 0)
+  if (keep.length === 0) return null
+  const t0 = l.t[keep[0]]
+  const pick = <T,>(a: T[]): T[] => keep.map((i) => a[i])
+  return { ...l, t0Ms: l.t0Ms + t0 * 1000, t: pick(l.t).map((t) => t - t0), lat: pick(l.lat), lon: pick(l.lon), alt: pick(l.alt), gs: pick(l.gs), trk: pick(l.trk), vs: pick(l.vs), roll: pick(l.roll), nM: pick(l.nM) }
 }
 
 function world(sky: Sky): { deps: FlightSearchDeps; read: number[]; days: string[]; clock: { now: number } } {
@@ -52,7 +62,10 @@ function world(sky: Sky): { deps: FlightSearchDeps; read: number[]; days: string
   const deps: FlightSearchDeps = {
     nowMs: () => clock.now,
     route: async (id) => sky.routes?.[id] ?? null,
-    airlineCallsigns: async (icao) => (sky.lists?.[icao] === undefined ? null : new Map(Object.entries(sky.lists[icao]))),
+    airlineCallsigns: async (icao) => {
+      const list = sky.lists?.[icao]
+      return list === undefined ? null : list === 'failed' ? 'failed' : new Map(Object.entries(list))
+    },
     icaoOf: (iata) => sky.iata?.[iata] ?? null,
     live: async (callsigns) => {
       const l = sky.live?.(callsigns)
@@ -71,7 +84,8 @@ function world(sky: Sky): { deps: FlightSearchDeps; read: number[]; days: string
     day: async (hex, fromMs, toMs) => {
       days.push(`${hex}@${new Date(fromMs).toISOString().slice(0, 10)}`)
       const legs = sky.legs?.(hex) ?? sky.flown.filter((f) => f.hex === hex).map((f) => legOf(f))
-      const got = legs.filter((l) => l.t0Ms <= toMs && l.t0Ms + l.t.at(-1)! * 1000 >= fromMs).sort((a, b) => a.t0Ms - b.t0Ms)
+      const whole = legs.filter((l) => l.t0Ms <= toMs && l.t0Ms + l.t.at(-1)! * 1000 >= fromMs).sort((a, b) => a.t0Ms - b.t0Ms)
+      const got = sky.cut ? whole.flatMap((l) => clip(l, fromMs, toMs) ?? []) : whole
       return { hex, reg: 'A6-FEA', typeCode: 'B38M', fromMs, toMs, legs: got } satisfies TraceDay
     },
     oldestSlotMs: () => OLDEST,
@@ -81,10 +95,17 @@ function world(sky: Sky): { deps: FlightSearchDeps; read: number[]; days: string
   return { deps, read, days, clock }
 }
 
+/** One ask that must be answered: the id reads as a flight, and what it is could be found out. */
+async function ask(s: FlightSearch, text: string, o: { scan?: boolean; days?: number; deep?: boolean } = {}): Promise<FlightSearchReply> {
+  const r = await s.ask(text, o)
+  assert.ok(r !== null && r !== 'failed', `no answer for ${text}`)
+  return r
+}
+
 /** Asks until the reading of the past rests (done, failed or paused), as the page does once a second. */
 async function settle(s: FlightSearch, text: string, o: { days?: number; deep?: boolean } = {}): Promise<FlightSearchReply> {
   for (let i = 0; i < 500; i++) {
-    const r = (await s.ask(text, { scan: true, ...o }))!
+    const r = await ask(s, text, { scan: true, ...o })
     if (r.scan.state !== 'running') return r
     await new Promise((go) => setImmediate(go))
   }
@@ -142,7 +163,7 @@ test('a ticket number its airline flies under: the route, the one callsign, ever
     lists: { FDB: { FDB1073: 'OMDB-LLBG', FDB1081: 'OMDB-LLBG' } },
   })
   const s = new FlightSearch(w.deps)
-  const first = (await s.ask('fz 1073'))!
+  const first = await ask(s, 'fz 1073')
   assert.equal(first.id, 'FZ1073')
   assert.equal(first.ticket, 'FZ 1073')
   assert.equal(first.airline, 'Fly Dubai')
@@ -169,7 +190,7 @@ test('a ticket number its airline flies under: the route, the one callsign, ever
   assert.ok(Math.min(...w.read) >= r.scan.fromMs!, 'nothing older than asked for is read')
   assert.equal(new Set(w.days).size, 14) // one trace a flight
   // Asked again: what it has, at no cost.
-  const again = (await s.ask('FZ1073', { scan: true }))!
+  const again = await ask(s, 'FZ1073', { scan: true })
   assert.equal(again.past.length, 14)
   assert.equal(slots(), 29)
   // Further back when asked.
@@ -233,7 +254,7 @@ test('a ticket number flown under other callsigns: its airline\'s callsigns on t
   }
   const w = world(sky)
   const s = new FlightSearch(w.deps)
-  const first = (await s.ask('W43257'))!
+  const first = await ask(s, 'W43257')
   assert.deepEqual(first.callsigns, ['WMT3257']) // its own first: most airlines fly under their ticket numbers
   assert.equal(first.byRoute, false)
   assert.equal(first.known, true)
@@ -252,12 +273,12 @@ test('a ticket number flown under other callsigns: its airline\'s callsigns on t
   assert.deepEqual(o.past.map((f) => f.callsign), ['WMT3257', 'WMT3257'])
   // One of the others in the air now and its own not: they join at once.
   const live = world({ ...sky, live: () => [{ hex: '471f67', callsign: 'WMT7403' }] })
-  const l = (await new FlightSearch(live.deps).ask('W43257'))!
+  const l = await ask(new FlightSearch(live.deps), 'W43257')
   assert.equal(l.byRoute, true)
   assert.deepEqual(l.live?.map((x) => x.callsign), ['WMT7403'])
   // …but not one that is nowhere near the route (the callsign is flown elsewhere today).
   const far = world({ ...sky, live: () => [{ hex: '471f67', callsign: 'WMT7403', lat: 52, lon: 0 }] })
-  const f = (await new FlightSearch(far.deps).ask('W43257'))!
+  const f = await ask(new FlightSearch(far.deps), 'W43257')
   assert.equal(f.byRoute, false)
   assert.deepEqual(f.live, [])
 })
@@ -297,7 +318,7 @@ test('a ticket number whose own callsign is another flight\'s: that callsign is 
     live: () => [{ hex: 'abc123', callsign: 'WMT3257' }],
   }
   const s = new FlightSearch(world(sky).deps)
-  const first = (await s.ask('W43257'))!
+  const first = await ask(s, 'W43257')
   assert.deepEqual(first.callsigns, ['WMT7403'])
   assert.equal(first.byRoute, true)
   assert.deepEqual(first.live, []) // WMT3257 in the air is the other flight
@@ -318,7 +339,7 @@ test('nothing known under the id: nothing of the past is read by itself, and ids
     live: () => [],
   })
   const s = new FlightSearch(w.deps)
-  const r = (await s.ask('LY316'))!
+  const r = await ask(s, 'LY316')
   assert.equal(r.known, false)
   assert.deepEqual(r.callsigns, ['ELY316']) // the app's own table of airlines says LY is ELY
   assert.deepEqual(r.live, [])
@@ -326,7 +347,7 @@ test('nothing known under the id: nothing of the past is read by itself, and ids
   assert.equal(r.scan.state, 'idle')
   assert.equal(w.read.length, 1) // the newest half hour, for who is in the air
   // A callsign typed that nobody knows, with no airline: the id itself, nothing like it.
-  const raw = (await s.ask('N123AB'))!
+  const raw = await ask(s, 'N123AB')
   assert.deepEqual(raw.callsigns, ['N123AB'])
   assert.equal(raw.known, false)
   assert.deepEqual(raw.similar, [])
@@ -351,11 +372,11 @@ test('a known flight that nobody flew: two days are read and no more, until aske
 test('the reading goes on only while it is asked for, and from where it stopped', async () => {
   const w = world({ flown: daily('FDB1073', 3, 210, 14), routes: { FZ1073: { callsign: 'FDB1073', airline: null, from: DXB, to: TLV } }, lists: {} })
   const s = new FlightSearch(w.deps)
-  const r1 = (await s.ask('FZ1073', { scan: true }))!
+  const r1 = await ask(s, 'FZ1073', { scan: true })
   assert.equal(r1.scan.state, 'running')
   w.clock.now += ALIVE_MS + 1 // the page went elsewhere
   await new Promise((go) => setTimeout(go, 20))
-  const paused = (await s.ask('FZ1073'))!
+  const paused = await ask(s, 'FZ1073')
   assert.equal(paused.scan.state, 'idle')
   const readSoFar = w.read.length
   assert.ok(readSoFar < 29, `stopped early (${readSoFar} read)`)
@@ -375,7 +396,7 @@ test('a half hour that cannot be read: tried again, then the search says so and 
   assert.equal(r.past.length, 3) // today and the two days before
   assert.ok(w.read.filter((x) => x === Date.UTC(2026, 9, 8, 5, 0)).length >= 3) // three tries
   down.clear()
-  assert.equal((await s.ask('FZ1073', { scan: true }))!.scan.state, 'failed') // the next poll does not start it again
+  assert.equal((await ask(s, 'FZ1073', { scan: true })).scan.state, 'failed') // the next poll does not start it again
   w.clock.now += 5000 // Retry, a while after
   const ok = await settle(s, 'FZ1073')
   assert.equal(ok.scan.state, 'done')
@@ -395,7 +416,7 @@ test('in the air now: the live flight with since when, kept out of the past; a c
     live: (callsigns) => (callsigns.includes('FDB1073') ? [{ hex: '896abc', callsign: 'FDB1073' }] : []),
   })
   const s = new FlightSearch(w.deps)
-  const first = (await s.ask('fdb1073'))!
+  const first = await ask(s, 'fdb1073')
   assert.equal(first.ticket, null) // a callsign: no ticket number is made up for it
   assert.equal(first.live?.length, 1)
   assert.equal(first.live![0].hex, '896abc')
@@ -404,4 +425,83 @@ test('in the air now: the live flight with since when, kept out of the past; a c
   assert.equal(r.live![0].sinceMs, flying.t0) // from its trace
   assert.equal(r.past.length, 3) // the flight in the air is not of the past
   assert.ok(r.past.every((f) => f.hex !== '896abc'))
+})
+
+test('a search kept too long is begun afresh: its past would end where its first ask began', async () => {
+  // (a flight a day at 03:00, tomorrow's too: not flown yet at the first ask)
+  const flown = [...daily('FDB1073', 3, 210, 14), { hex: '896fff', callsign: 'FDB1073', t0: TODAY + DAY + 3 * H, durMin: 210 }]
+  const w = world({ flown, routes: { FZ1073: { callsign: 'FDB1073', airline: null, from: DXB, to: TLV } } })
+  const s = new FlightSearch(w.deps)
+  assert.equal((await settle(s, 'FZ1073')).past.length, 14)
+  w.clock.now += 10 * 60_000 // a while after: the same search, as it was
+  const kept = await ask(s, 'FZ1073')
+  assert.deepEqual([kept.scan.state, kept.past.length], ['done', 14])
+  w.clock.now += DAY
+  const fresh = await ask(s, 'FZ1073')
+  assert.deepEqual([fresh.scan.state, fresh.past.length], ['idle', 0])
+  const r = await settle(s, 'FZ1073')
+  assert.equal(r.past.length, 14) // the newest 14 days: tomorrow's flight is in, the oldest is out
+  assert.equal(r.past[0].hex, '896fff')
+})
+
+test('a route list that does not answer: a ticket number is not guessed at, nor kept, and the next ask tries again; a callsign is searched as it is', async () => {
+  const routes: Record<string, FlightRoute | null | 'failed'> = { W43257: 'failed', ELY315: 'failed' }
+  const lists: Record<string, Record<string, string> | 'failed'> = { WMT: { WMT7403: 'LROP-LLBG' } }
+  const w = world({ flown: daily('WMT7403', 4, 150, 3, [OTP, TLV]), routes, lists, live: () => [] })
+  const s = new FlightSearch(w.deps)
+  assert.equal(await s.ask('W43257'), 'failed')
+  assert.equal(await s.ask('W43257', { scan: true }), 'failed')
+  assert.equal(w.read.length, 0) // nothing of the past was read for it
+  routes.W43257 = { callsign: 'WMT3257', airline: { name: 'Wizz Air Malta', icao: 'WMT' }, from: OTP, to: TLV }
+  lists.WMT = 'failed' // adsbdb answers now, the airline's callsign list does not
+  assert.equal(await s.ask('W43257'), 'failed')
+  lists.WMT = { WMT7403: 'LROP-LLBG' }
+  const ok = await ask(s, 'W43257')
+  assert.deepEqual([ok.known, ok.route?.[1].icao], [true, 'LLBG'])
+  // A callsign needs neither: it is looked for as typed, with no route to show.
+  const raw = await ask(s, 'ELY315')
+  assert.deepEqual([raw.callsigns, raw.route, raw.live], [['ELY315'], null, []])
+})
+
+test('a flight across midnight UTC beside another of the same aircraft: each is listed once and whole', async () => {
+  // adsb.lol gives a day at a time: the night flight comes in two parts, and the morning one's day holds the second part.
+  const night: Flown = { hex: 'a1b2c3', callsign: 'N123AB', t0: TODAY - 2 * H, durMin: 240 }
+  const morning: Flown = { hex: 'a1b2c3', callsign: 'N123AB', t0: TODAY + 6 * H, durMin: 120 }
+  const w = world({ flown: [night, morning], cut: true, live: () => [] })
+  const r = await settle(new FlightSearch(w.deps), 'N123AB', { days: 2, deep: true })
+  assert.equal(r.scan.state, 'done')
+  // (10 minutes on the ground first and 5 after; shown from 30 minutes before the first point in the air at most)
+  assert.deepEqual(r.past.map((f) => [f.from.tMs, f.to.tMs]), [[morning.t0, morning.t0 + 120 * 60_000], [night.t0, night.t0 + 240 * 60_000]])
+})
+
+test('a number whose own callsign the list gives another route, with no other on its route: that callsign is still searched, on the route', async () => {
+  const routes = { W43257: { callsign: 'WMT3257', airline: { name: 'Wizz Air Malta', icao: 'WMT' }, from: OTP, to: TLV } }
+  const w = world({ flown: daily('WMT3257', 4, 150, 3, [OTP, TLV]), routes, lists: { WMT: { WMT3257: 'EGBB-LRCV' } }, live: () => [] })
+  const s = new FlightSearch(w.deps)
+  const first = await ask(s, 'W43257')
+  assert.deepEqual([first.known, first.callsigns, first.byRoute], [true, ['WMT3257'], false])
+  const r = await settle(s, 'W43257')
+  assert.deepEqual([r.scan.state, r.past.length], ['done', 3])
+})
+
+test('two flights of a route within the hour of each other: each is followed at its own time of day', async () => {
+  const SOF = place('LBSF', 42.7, 23.4)
+  const routes = { W4999: { callsign: 'WMT999', airline: { name: 'Wizz Air Malta', icao: 'WMT' }, from: OTP, to: SOF } }
+  const flown = [...daily('WMT1111', 6, 50, 5, [OTP, SOF]), ...daily('WMT2222', 7, 50, 5, [OTP, SOF])]
+  const w = world({ flown, routes, lists: { WMT: { WMT1111: 'LROP-LBSF', WMT2222: 'LROP-LBSF' } }, live: () => [] })
+  const r = await settle(new FlightSearch(w.deps), 'W4999')
+  assert.deepEqual([r.scan.state, r.byRoute, r.past.filter((f) => f.callsign === 'WMT1111').length, r.past.filter((f) => f.callsign === 'WMT2222').length], ['done', true, 5, 5])
+})
+
+test('flights never heard to their route\'s end: the hours after are read for the newest three only', async () => {
+  const short = place('LTAI', 36.9, 30.8) // Antalya: 300 nm short of Tel Aviv
+  const routes = { W43257: { callsign: 'WMT7403', airline: null, from: OTP, to: TLV } }
+  const w = world({ flown: daily('WMT7403', 4, 100, 10, [OTP, short]), routes, live: () => [] })
+  const r = await settle(new FlightSearch(w.deps), 'W43257')
+  assert.deepEqual([r.scan.state, r.past.length], ['done', 10])
+  // The newest day evenly; a half hour for each of the nine days before with a flight, seven for each of the four without;
+  // and the 12 h after three of the flights, not after all nine.
+  const step = stepFor([OTP, TLV])
+  const most = 48 / step + 9 + 4 * 7 + 3 * (24 / step)
+  assert.ok(new Set(w.read).size <= most, `${new Set(w.read).size} half hours read, ${most} at most`)
 })

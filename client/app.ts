@@ -374,8 +374,8 @@ export function safeArea(w: number, h: number, covers: readonly Rect[], pad = 8)
 /**
  * The largest part of the w × h canvas that no cover touches (each kept `pad` away, as the canvas's edges are): the largest
  * empty rectangle, where safeArea cuts one side per cover in turn and so gives up a whole band for a card in a corner. Its
- * sides lie on the covers' sides, so every pair of those is tried: a dozen covers, a few thousand rectangles. For a past
- * flight's replay, which is framed in it (fitFlight) and kept in view in it.
+ * sides lie on the covers' sides, so every pair of those is tried: with a dozen covers some 100,000 candidates, nearly all
+ * passed over by their area alone. For a past flight's replay, which is framed in it (fitFlight) and kept in view in it.
  */
 export function largestClear(w: number, h: number, covers: readonly Rect[], pad = 8): Rect {
   const boxes = covers.filter((c) => c.w > 0 && c.h > 0).map((c) => ({ x0: c.x - pad, y0: c.y - pad, x1: c.x + c.w + pad, y1: c.y + c.h + pad }))

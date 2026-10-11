@@ -78,10 +78,15 @@ test('route: asked once and kept, an unknown number too; a failure is not kept; 
   assert.equal(up.asked.length, 7)
 })
 
-test('callsigns: an airline\'s list by its designator, kept a day; none for an airline the list lacks', async () => {
-  const up = upstream({ [`${STANDING_URL}W/WMT-all.csv`]: { status: 200, body: 'Callsign,Code,Number,AirlineCode,AirportCodes\nWMT7403,WMT,7403,WMT,LROP-LLBG\n' } })
+test('callsigns: an airline\'s list by its designator, kept a day; none for an airline the list lacks; a failure says so and is not kept', async () => {
+  const up = upstream({
+    [`${STANDING_URL}W/WMT-all.csv`]: { status: 200, body: 'Callsign,Code,Number,AirlineCode,AirportCodes\nWMT7403,WMT,7403,WMT,LROP-LLBG\n' },
+    [`${STANDING_URL}D/DWN-all.csv`]: 'down',
+    [`${STANDING_URL}B/BSY-all.csv`]: { status: 429, body: '' },
+  })
   const r = new FlightRoutes({ userAgent: 'test', fetchFn: up.fetchFn, nowMs: () => 0 })
-  assert.equal((await r.callsigns('WMT'))?.get('WMT7403'), 'LROP-LLBG')
+  const list = await r.callsigns('WMT')
+  assert.equal(list !== null && list !== 'failed' && list.get('WMT7403'), 'LROP-LLBG')
   await r.callsigns('WMT')
   assert.equal(up.asked.length, 1)
   assert.equal(await r.callsigns('ZZZ'), null)
@@ -89,4 +94,6 @@ test('callsigns: an airline\'s list by its designator, kept a day; none for an a
   assert.equal(up.asked.length, 2)
   assert.equal(await r.callsigns('W4'), null) // not a designator: never sent
   assert.equal(up.asked.length, 2)
+  for (const icao of ['DWN', 'BSY', 'DWN']) assert.equal(await r.callsigns(icao), 'failed', icao)
+  assert.equal(up.asked.length, 5) // asked again each time
 })

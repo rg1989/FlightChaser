@@ -110,14 +110,14 @@ export class FlightRoutes {
     })
   }
 
-  /** An airline's callsigns with their routes, by its ICAO designator; null when the list has none for it, or could not be had. */
-  async callsigns(icao: string): Promise<ReadonlyMap<string, string> | null> {
+  /** An airline's callsigns with their routes, by its ICAO designator; null when the list has none for it, 'failed' when it could not be had. */
+  async callsigns(icao: string): Promise<ReadonlyMap<string, string> | null | 'failed'> {
     if (!/^[A-Z]{3}$/.test(icao)) return null
     const hit = this.#lists.get(icao)
     if (hit !== undefined && this.#now() - hit.ms < hit.ttlMs) return hit.value
     return this.#once(`l:${icao}`, async () => {
       const res = await this.#get(`${STANDING_URL}${icao[0]}/${icao}-all.csv`)
-      if (res === null || (res.status !== 200 && res.status !== 404)) return null // not kept: asked again next time
+      if (res === null || (res.status !== 200 && res.status !== 404)) return 'failed' as const // not kept: asked again next time
       const value = res.status === 200 ? parseStanding(res.body) : null
       this.#keep(this.#lists, icao, value !== null && value.size > 0 ? value : null, LIST_TTL_MS)
       return value !== null && value.size > 0 ? value : null

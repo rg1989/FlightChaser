@@ -3,7 +3,8 @@
 // readCalls), which the flight search (flightSearch.ts) reads to find the days a flight flew. A whole file is 12-25 MB;
 // its first 1.4 MB holds the first minute and more, and an ident comes once a minute per aircraft, so that start names
 // everyone heard then. adsb.lol serves a part of a file on request (Range; checked 2026-10-11: 206, the bytes of the gzip
-// stream, which is read as far as it goes). A file the history store already holds is read in place of a download.
+// stream, which is read as far as it goes); should it ever send a whole file instead, that is refused ('unavailable'). A
+// file the history store already holds is read in place of a download.
 // Memory only: an index is about 150 KB, the newest `max` are kept. A half hour with no file is 'missing' (404, 410, or
 // older than adsb.lol keeps) or 'unavailable' (not published yet, a failed download): as HistoryStore says it.
 import { gunzipSync, constants } from 'node:zlib'
@@ -128,7 +129,8 @@ export class SlotCallsStore {
       const calls = readCalls(part.body, CALL_SLICES)
       if (calls === null) return best === null ? 'unavailable' : this.#keep(slotMs, best)
       best = calls
-      // The slice a part ends in may be cut: CALL_SLICES whole ones are there once one more has begun, or the file ended.
+      // The slice a part ends in may be cut: with CALL_SLICES begun, the ones before the last are whole (a minute and
+      // more: every ident). Or the file ended.
       if (calls.slices >= CALL_SLICES || part.whole) break
     }
     return this.#keep(slotMs, best!)
@@ -158,8 +160,15 @@ export class SlotCallsStore {
         this.#missing.set(slotMs, this.#now() + MISSING_MS)
         return 'missing'
       }
+      // A server that sends the whole file where a part was asked for (12-25 MB a half hour) is not read: a search reads
+      // hundreds of half hours.
+      const sent = Number(res.headers.get('content-length') ?? NaN)
+      if (res.status === 200 && sent > 2 * bytes) {
+        void res.body?.cancel().catch(() => {})
+        return 'unavailable'
+      }
       let body = new Uint8Array(await res.arrayBuffer())
-      this.bytes += Number(res.headers.get('content-length') ?? body.length) || body.length
+      this.bytes += sent || body.length
       // adsb.lol sends the gzip stream's bytes and says so; fetch undoes it as far as the part goes. Bytes still gzip (no
       // such header) are undone here, the same way: to where they end.
       if (body[0] === 0x1f && body[1] === 0x8b) {

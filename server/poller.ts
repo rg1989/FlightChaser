@@ -286,8 +286,13 @@ export class Poller {
         if (!this.#bucket.tryTake()) return false
         const ask = this.#lookups.shift()!
         clearTimeout(ask.timer)
-        const r = await this.#source.callsign(ask.callsigns)
-        ask.done(this.#ingest(r) ? r.snapshot!.aircraft.filter((ac) => !(this.#opts.hideFlagged && isHidden(ac))) : null)
+        let found: ReadsbAircraft[] | null = null
+        try {
+          const r = await this.#source.callsign(ask.callsigns)
+          if (this.#ingest(r)) found = r.snapshot!.aircraft.filter((ac) => !(this.#opts.hideFlagged && isHidden(ac)))
+        } finally {
+          ask.done(found) // whatever happened: its timer is gone, and someone waits for it
+        }
         return true
       }
       // ponytail: a due sweep goes before the areas, so it can delay a chase circle (an area request) by one token interval:

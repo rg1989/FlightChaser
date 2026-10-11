@@ -11,16 +11,19 @@
 // - Now: the live source's worldwide callsign lookup (adsb.fi: one request for all the callsigns).
 // - Before: the callsigns at the start of adsb.lol's half hours (slotCalls.ts: about 1 MB a half hour, not the 12-25 MB of a
 //   whole file) say which aircraft flew it and when; that aircraft's trace of the day (trace.ts) gives the flight itself. The
-//   newest 24 h are read at even steps, which finds every flight of the day; each day before is read at the times of day
-//   found (a flight keeps its time), a slot or three to either side when it is not there. A flight that was not heard to
-//   its route's end (lost on the way, or it went elsewhere) has the hours after it read evenly too: what flew on under
-//   its callsign (a diversion's last leg) flies at no usual time. With nothing found the even reading stops after
-//   UNANCHORED_DAYS unless asked to go on: a number nobody flew costs no more than that.
+//   newest 24 h are read at even steps (stepFor: close enough for a flight of the route's length to hold one; an hour with
+//   no route, so a shorter flight of a route-less callsign may fall between two); each day before is read at the times of
+//   day found, a callsign at a time (a flight keeps its time), a slot or three to either side when it is not there. A
+//   flight that was not heard to its route's end (lost on the way, or it went elsewhere) has the hours after it read
+//   evenly too, for the first AFTER_MAX such flights: what flew on under its callsign (a diversion's last leg) flies at no
+//   usual time. With nothing found the even reading stops after UNANCHORED_DAYS unless asked to go on: a number nobody
+//   flew costs no more than that.
 // - Nothing known under the id (no route, not in its airline's list, not in the air): nothing is searched; ids one slip of
 //   the keyboard away that the lists know are offered instead (similar).
-// A search is a job kept by its id: asking again returns what it has so far, and the reading of the past goes on only while
-// it is asked for (ALIVE_MS), so a search the page has left costs no more. A flight shorter than a half hour that crosses no
-// half hour's start is not found. Memory only.
+// A search is a job kept by its id for JOB_TTL_MS: asking again returns what it has so far, and the reading of the past goes
+// on only while it is asked for (ALIVE_MS), so a search the page has left costs no more. After that the id is looked up
+// afresh (its past ended where its first ask began). A lookup the route lists could not answer is not kept at all: a ticket
+// number means nothing without them, so ask() says 'failed' and the next ask tries again. Memory only.
 import type { FlightPlace, FlightSearchReply, LiveFlight, PastFlight, SimilarFlight, TraceDay, TraceReply } from '../shared/api.ts'
 import { parseFlightId, slips, ticketText, type FlightId } from '../shared/flightId.ts'
 import { distanceNm } from '../shared/geo.ts'
@@ -59,11 +62,14 @@ const BOARD_TAXI_MS = 40 * 60_000
 const BOARD_AIRPORT = 'LLBG'
 const SHORT_NM = 80 // a flight last heard farther than this from its route's last airport was not heard to its end
 const AFTER_MS = 12 * 3_600_000 // …and this long after it is read evenly for what flew on under its callsign
+// ponytail: …for a job's first few such flights only (the newest): where receivers end short of an airport every flight
+// looks cut, and each would cost half a day of reading. Upgrade: tell a diversion from lost coverage.
+const AFTER_MAX = 3
 
 export interface FlightSearchDeps {
   nowMs(): number
   route(id: string): Promise<FlightRoute | null | 'failed'> // adsbdb (FlightRoutes.route)
-  airlineCallsigns(icao: string): Promise<ReadonlyMap<string, string> | null> // FlightRoutes.callsigns
+  airlineCallsigns(icao: string): Promise<ReadonlyMap<string, string> | null | 'failed'> // FlightRoutes.callsigns (null: it has no list)
   icaoOf(iata: string): string | null // an airline's ICAO designator from its ticket designator, where the app's own table knows it
   airlineOf?(callsign: string): string | null // an airline's name from its callsign, where the app's own table knows it (adsbdb's comes first)
   live(callsigns: readonly string[]): Promise<Omit<LiveFlight, 'sinceMs'>[] | null> // null: cannot be asked here, or failed
@@ -91,7 +97,9 @@ interface Job {
   similar: SimilarFlight[]
   resolved: Promise<void>
   flights: PastFlight[]
-  anchors: number[] // a slot start inside each flight of the newest day read: the times of day the days before are read at
+  // A slot start inside each flight of the newest day read: the times of day the days before are read at, each for its
+  // callsign (two flights of a route may fly within the hour of each other).
+  anchors: { callsign: string; at: number }[]
   endMs: number | null // the scan reads back from here (the end of the newest half hour published when it began)
   fromMs: number | null // …and has read down to here
   days: number // how far back it is asked to read
@@ -101,7 +109,8 @@ interface Job {
   failed: boolean
   failedMs: number
   askedMs: number // the last ask that wanted the past
-  usedMs: number
+  madeMs: number
+  broken: boolean // what it is could not be found out (a route list did not answer): not kept, and ask() says so
 }
 
 const lastMs = (leg: TraceReply): number => leg.t0Ms + (leg.t.at(-1) ?? 0) * 1000
@@ -214,21 +223,27 @@ export class FlightSearch {
   /**
    * What is known of the flight `text` names, now: null when it does not read as a flight. The first ask for an id waits for
    * what it is and whether it flies now (two or three requests); scan asks for its past too, back `days` (while nothing is
-   * found only UNANCHORED_DAYS, unless deep), which is read in the background: ask again for more of it.
+   * found only UNANCHORED_DAYS, unless deep), which is read in the background: ask again for more of it. 'failed': what it
+   * is could not be found out now (a route list did not answer); nothing is kept, the next ask tries again.
    */
-  async ask(text: string, o: { scan?: boolean; days?: number; deep?: boolean } = {}): Promise<FlightSearchReply | null> {
+  async ask(text: string, o: { scan?: boolean; days?: number; deep?: boolean } = {}): Promise<FlightSearchReply | null | 'failed'> {
     const id = parseFlightId(text)
     if (id === null) return null
     const now = this.#deps.nowMs()
     let job = this.#jobs.get(id.id)
+    // A job answers for JOB_TTL_MS: an older one's past would end where its first ask began. One being read is left to finish.
+    if (job !== undefined && !job.scanning && now - job.madeMs > JOB_TTL_MS) job = undefined
     if (job === undefined) {
       job = this.#create(id, now)
       this.#evict(now)
     }
     this.#jobs.delete(id.id) // the most recently used
     this.#jobs.set(id.id, job)
-    job.usedMs = now
     await job.resolved
+    if (job.broken) {
+      if (this.#jobs.get(id.id) === job) this.#jobs.delete(id.id)
+      return 'failed'
+    }
     if (now - job.liveAtMs > LIVE_TTL_MS && job.callsigns.length > 0) void this.#refreshLive(job)
     if (o.scan === true && job.callsigns.length > 0) {
       job.askedMs = this.#deps.nowMs()
@@ -254,17 +269,20 @@ export class FlightSearch {
     const job: Job = {
       id, ticket: id.ticket === null ? null : ticketText(id.ticket), airline: null, route: null, primary: id.callsign, callsigns: [], others: [], byRoute: false, boarded: false, reread: new Set(),
       known: false, live: null, liveAtMs: -Infinity, similar: [], resolved: Promise.resolve(), flights: [], anchors: [], endMs: null, fromMs: null,
-      days: 0, evenDays: UNANCHORED_DAYS, stepSlots: 2, scanning: false, failed: false, failedMs: -Infinity, askedMs: -Infinity, usedMs: now,
+      days: 0, evenDays: UNANCHORED_DAYS, stepSlots: 2, scanning: false, failed: false, failedMs: -Infinity, askedMs: -Infinity, madeMs: now, broken: false,
     }
-    job.resolved = this.#resolve(job).catch((e: unknown) => console.error('flights: the lookup failed:', e))
+    job.resolved = this.#resolve(job).catch((e: unknown) => {
+      job.broken = true
+      console.error('flights: the lookup failed:', e)
+    })
     return job
   }
 
-  /** The jobs not used for JOB_TTL_MS go, then the least recently used over MAX_JOBS (never one being read). */
+  /** The jobs older than JOB_TTL_MS go, then the least recently used over MAX_JOBS (never one being read). */
   #evict(now: number): void {
     for (const [key, j] of this.#jobs) {
       if (j.scanning) continue
-      if (now - j.usedMs > JOB_TTL_MS || this.#jobs.size >= MAX_JOBS) this.#jobs.delete(key)
+      if (now - j.madeMs > JOB_TTL_MS || this.#jobs.size >= MAX_JOBS) this.#jobs.delete(key)
     }
   }
 
@@ -272,6 +290,9 @@ export class FlightSearch {
   async #resolve(job: Job): Promise<void> {
     const { id } = job
     const r = await this.#deps.route(id.id)
+    // A ticket number is read through the route lists (where it flies, and under which callsign): without their answer what
+    // would be shown is a guess. A callsign is looked for as it is, with what is known of it.
+    if (r === 'failed' && id.ticket !== null) return void (job.broken = true)
     let airlineIcao: string | null = id.callsign !== null && /^[A-Z]{3}\d/.test(id.callsign) ? id.callsign.slice(0, 3) : null
     if (r !== null && r !== 'failed') {
       job.route = [r.from, r.to]
@@ -286,16 +307,20 @@ export class FlightSearch {
     }
     job.stepSlots = stepFor(job.route)
     if (job.airline === null && job.primary !== null) job.airline = this.#deps.airlineOf?.(job.primary) ?? null
-    const list = airlineIcao === null ? null : await this.#deps.airlineCallsigns(airlineIcao)
+    const asked = airlineIcao === null ? null : await this.#deps.airlineCallsigns(airlineIcao)
+    if (asked === 'failed' && id.ticket !== null) return void (job.broken = true)
+    const list = asked === 'failed' ? null : asked
     let listed = job.primary !== null && list !== null && list.has(job.primary)
     if (id.ticket !== null && job.route !== null && list !== null && job.route[0].icao !== null && job.route[1].icao !== null) {
       // A ticket number with its route: the airline's list says whether the number's own callsign flies it (then that is
-      // the flight), flies another route (then it is another flight: not looked for), or is not in use (then perhaps).
+      // the flight), flies another route (then it is another flight: not looked for when the list names others on the
+      // route; with none it is still tried, as the list may be behind, and a flight off the route is not listed anyway),
+      // or is not in use (then perhaps).
       const route = `${job.route[0].icao}-${job.route[1].icao}`
       const its = job.primary === null ? undefined : list.get(job.primary)
       if (its !== route) {
         for (const [callsign, r2] of list) if (r2 === route && callsign !== job.primary && job.others.length < MAX_CALLSIGNS) job.others.push(callsign)
-        if (its !== undefined) job.primary = null
+        if (its !== undefined && job.others.length > 0) job.primary = null
       }
       listed = its === route || job.others.length > 0
     }
@@ -341,6 +366,7 @@ export class FlightSearch {
     job.others = []
     job.callsigns = [job.primary]
     job.flights = job.flights.filter((f) => f.callsign === job.primary)
+    job.anchors = job.anchors.filter((a) => a.callsign === job.primary)
     if (job.live !== null) job.live = job.live.filter((l) => l.callsign === job.primary)
   }
 
@@ -400,28 +426,29 @@ export class FlightSearch {
    */
   async #even(job: Job, from: number, to: number, daily = true): Promise<boolean> {
     const slots = evenSlots(from, to, job.stepSlots)
-    const found: number[] = []
+    const found: [PastFlight, number][] = []
     for (let i = 0; i < slots.length; i += 3) {
       if (!this.#alive(job)) return false
       const batch = slots.slice(i, i + 3)
       const read = await Promise.all(batch.map((s) => this.#read(job, s)))
       if (read.includes(null)) return false
       read.forEach((flights, k) => {
-        for (const f of flights!) found.push(anchorOf(f, batch[k]))
+        for (const f of flights!) found.push([f, batch[k]])
       })
     }
-    if (daily) for (const a of found) this.#anchor(job, a)
+    // (a callsign that has left the search since, #own, gives no time of day)
+    if (daily) for (const [f, slot] of found) if (job.callsigns.includes(f.callsign)) this.#anchor(job, f.callsign, anchorOf(f, slot))
     return true
   }
 
   /**
    * A flight of a known route that was not heard to its end: the AFTER_MS after it are read evenly, once, for what flew on
-   * under the job's callsigns then (on any aircraft). Such a leg is no daily flight: it gives the days before no time of day.
-   * false: stopped.
+   * under the job's callsigns then (on any aircraft); for AFTER_MAX flights of a job at most. Such a leg is no daily flight:
+   * it gives the days before no time of day. false: stopped.
    */
   async #afterShort(job: Job, f: PastFlight): Promise<boolean> {
     const key = `${f.hex}:${f.from.tMs}`
-    if (job.route === null || job.endMs === null || job.reread.has(key)) return true
+    if (job.route === null || job.endMs === null || job.reread.has(key) || job.reread.size >= AFTER_MAX) return true
     const dest = job.route[1]
     if (distanceNm(dest.lat, dest.lon, f.to.lat, f.to.lon) <= SHORT_NM) return true
     const from = Math.ceil(f.to.tMs / SLOT_MS) * SLOT_MS
@@ -430,9 +457,10 @@ export class FlightSearch {
     return ok
   }
 
-  /** One time of day for each flight of a day: a flight read at two half hours gave the same one twice. */
-  #anchor(job: Job, a: number): void {
-    if (!job.anchors.some((b) => Math.abs(sameTimeIn(b, a - DAY_MS / 2, a + DAY_MS / 2)! - a) < 3 * SLOT_MS)) job.anchors.push(a)
+  /** One time of day for each flight of a day, by its callsign: a flight read at two half hours gave the same one twice. */
+  #anchor(job: Job, callsign: string, at: number): void {
+    const has = job.anchors.some((b) => b.callsign === callsign && Math.abs(sameTimeIn(b.at, at - DAY_MS / 2, at + DAY_MS / 2)! - at) < 3 * SLOT_MS)
+    if (!has) job.anchors.push({ callsign, at })
   }
 
   /**
@@ -461,18 +489,22 @@ export class FlightSearch {
     job.flights = job.flights.filter((f) => its.has(f.callsign))
     if (job.live !== null) job.live = job.live.filter((l) => its.has(l.callsign))
     job.anchors = []
-    for (const f of job.flights) this.#anchor(job, anchorOf(f, Math.round((f.from.tMs + f.to.tMs) / 2 / SLOT_MS) * SLOT_MS))
+    for (const f of job.flights) this.#anchor(job, f.callsign, anchorOf(f, Math.round((f.from.tMs + f.to.tMs) / 2 / SLOT_MS) * SLOT_MS))
   }
 
-  /** The day [from, to) read at each time of day a flight was found at, a slot or three to either side when it is not there. false: stopped. */
+  /**
+   * The day [from, to) read at each time of day a flight was found at, a slot or three to either side when its callsign is
+   * not there (another's flight in that half hour is added too, and is looked for at its own time). false: stopped.
+   */
   async #anchored(job: Job, from: number, to: number, target: number): Promise<boolean> {
     // The days before this one, as far as the reading will go, asked for ahead: their downloads run while this one is read.
     for (let d = 1; d <= AHEAD; d++) for (const a of job.anchors) {
-      const at = sameTimeIn(a, from - d * DAY_MS, to - d * DAY_MS)
+      const at = sameTimeIn(a.at, from - d * DAY_MS, to - d * DAY_MS)
       if (at !== null && at >= target) void this.#deps.calls(at).catch(() => {})
     }
-    for (let i = 0; i < job.anchors.length; i++) {
-      const base = sameTimeIn(job.anchors[i], from, to)
+    for (const anchor of [...job.anchors]) {
+      if (!job.anchors.includes(anchor)) continue // its callsign left the search meanwhile (#own)
+      const base = sameTimeIn(anchor.at, from, to)
       if (base === null) continue
       for (const off of NEAR) {
         if (!this.#alive(job)) return false
@@ -480,9 +512,10 @@ export class FlightSearch {
         if (slot < this.#deps.oldestSlotMs()) continue
         const flights = await this.#read(job, slot)
         if (flights === null) return false
-        if (flights.length === 0) continue
-        job.anchors[i] = anchorOf(flights[0], slot) // the flight's time that day: a schedule that drifts is followed
-        for (const f of flights) if (!(await this.#afterShort(job, f))) return false
+        const its = flights.filter((f) => f.callsign === anchor.callsign)
+        if (its.length === 0) continue
+        anchor.at = anchorOf(its[0], slot) // the flight's time that day: a schedule that drifts is followed
+        for (const f of its) if (!(await this.#afterShort(job, f))) return false
         break
       }
     }
@@ -559,9 +592,11 @@ export class FlightSearch {
         continue
       }
       const made = this.#add(job, hex, callsign, leg, span, day)
-      // The same aircraft's other flights under the callsign in the files just read cost nothing more.
+      // The same aircraft's other flights under the callsign in the files just read cost nothing more. Not one the files'
+      // edge cuts: that is a part of a flight, read whole when its own half hour is.
       for (const other of day.legs) {
         if (other === leg) continue
+        if ((other.t0Ms - from < EDGE_MS && from > oldest) || (to - lastMs(other) < EDGE_MS && to < now)) continue
         other.calls.forEach(([sec, c]) => {
           const part = c === callsign ? spanUnder(other, callsign, other.t0Ms + sec * 1000) : null
           if (part !== null) this.#add(job, hex, callsign, other, part, day)
@@ -578,7 +613,7 @@ export class FlightSearch {
     const f: PastFlight = { hex, callsign, reg: day.reg, typeCode: day.typeCode, from: end(i), to: end(j) }
     if (job.id.ticket !== null && job.route !== null && !onRoute(f, job.route)) return null
     const has = job.flights.find((x) => x.hex === hex && x.from.tMs === f.from.tMs)
-    if (has !== undefined) return Object.assign(has, f) // a flight still in the air grows
+    if (has !== undefined) return f.to.tMs >= has.to.tMs ? Object.assign(has, f) : has // a flight still in the air grows; none shrinks
     job.flights.push(f)
     return f
   }

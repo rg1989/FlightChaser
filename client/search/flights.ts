@@ -140,7 +140,7 @@ export function flightView(look: FlightLookup | null, env: FlightEnv, otherRows:
     return { title: look.id, route: null, notes: [], busy: false, doing: null, rows: [{ key: 'find', kind: 'more', label: `Look up flight ${look.id}`, sub: 'Where it flies now and when it flew before', iso2: null, go: { to: 'find', q: look.id } }] }
   }
   if (r === null) {
-    if (look.state === 'error') return { title: look.id, route: null, notes: ['The FlightHopper server did not answer.'], busy: false, doing: null, rows: [more('Try again', 'Look the flight up once more', look.days, look.deep)] }
+    if (look.state === 'error') return { title: look.id, route: null, notes: ['The flight could not be looked up.'], busy: false, doing: null, rows: [more('Try again', 'Look it up once more', look.days, look.deep)] }
     return look.state === 'loading' ? { title: look.id, route: null, notes: ['Looking the flight up…'], busy: true, doing: null, rows: [] } : null
   }
   const title = [r.ticket ?? r.id, r.airline].filter(Boolean).join(' · ')
@@ -176,7 +176,8 @@ export function flightView(look: FlightLookup | null, env: FlightEnv, otherRows:
     const days = daysBack(scan.fromMs, env.nowMs)
     const next = nextDays(days)
     if (r.past.length === 0) notes.push(`No flight heard in the last ${days} days.`)
-    if (scan.more && next !== null) rows.push(more(r.past.length === 0 ? `Search the last ${next} days` : 'Search older days', `Searched back to ${back} · adsb.lol keeps about 42 days`, next, true))
+    // (with nothing found the days are read at even steps, which only a row that says so asks for: deep)
+    if (scan.more && next !== null) rows.push(more(r.past.length === 0 ? `Search the last ${next} days` : 'Search older days', `Searched back to ${back} · adsb.lol keeps about 42 days`, next, r.past.length === 0))
   } else if (!r.known && !look.past) {
     rows.push(more('Search the past days anyway', 'Reads the last 2 days for this callsign', 2, true))
   }
