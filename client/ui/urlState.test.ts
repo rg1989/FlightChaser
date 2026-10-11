@@ -51,18 +51,27 @@ test('writeUrl: a running scenario writes its id, t in whole seconds and the orb
     scenario: { id: 'jal123', t: 66275.9 },
   })
   assert.equal(url, '?bench=1&scenarioBase=%2Fharness%2Ffixtures%2F&scenario=jal123&t=66275&cam=12,-12,150')
-  assert.deepEqual(readScenario(url), { id: 'jal123', t: 66275 })
+  assert.deepEqual(readScenario(url), { id: 'jal123', t: 66275, map: false })
   assert.deepEqual(readView(url).cam, { headingDeg: 12, pitchDeg: -12, rangeM: 150 })
   assert.equal(writeUrl('?scenario=jal123&t=1&cam=1,2,3', { at: null, hex: null, chase: false, cam: null, prefs: DEFAULT_PREFS }), '', 'left: all of it goes')
   assert.equal(writeUrl('', { at: null, hex: null, chase: false, cam: null, prefs: DEFAULT_PREFS, scenario: { id: 'demo', t: 5 } }), '?scenario=demo&t=5')
 })
 
+test('a scenario on its top-down map says ?view=map in place of the chase orbit, and a reload reads it back', () => {
+  const state = { at: null, hex: null, chase: false, cam: null, prefs: DEFAULT_PREFS }
+  const url = writeUrl('?scenario=jal123&t=1&cam=10,-20,300', { ...state, scenario: { id: 'jal123', t: 66275.4, map: true } })
+  assert.equal(url, '?scenario=jal123&t=66275&view=map')
+  assert.deepEqual(readScenario(url), { id: 'jal123', t: 66275, map: true })
+  const back = writeUrl(url, { ...state, cam: { headingDeg: 10, pitchDeg: -20, rangeM: 300 }, scenario: { id: 'jal123', t: 66280 } })
+  assert.equal(back, '?scenario=jal123&t=66280&cam=10,-20,300') // the 3-D view again: no ?view
+})
+
 test('readScenario: an id of letters, digits, - and _; t a number of seconds, else null; no id, no scenario', () => {
-  assert.deepEqual(readScenario('?scenario=jal123&t=65475'), { id: 'jal123', t: 65475 })
-  assert.deepEqual(readScenario('?scenario=demo'), { id: 'demo', t: null })
-  assert.deepEqual(readScenario('?scenario=demo&t=abc'), { id: 'demo', t: null })
-  assert.deepEqual(readScenario('?scenario=demo&t=-5'), { id: 'demo', t: null })
-  assert.deepEqual(readScenario('?scenario=my_scn-2&t=12.5'), { id: 'my_scn-2', t: 12.5 })
+  assert.deepEqual(readScenario('?scenario=jal123&t=65475'), { id: 'jal123', t: 65475, map: false })
+  assert.deepEqual(readScenario('?scenario=demo'), { id: 'demo', t: null, map: false })
+  assert.deepEqual(readScenario('?scenario=demo&t=abc'), { id: 'demo', t: null, map: false })
+  assert.deepEqual(readScenario('?scenario=demo&t=-5'), { id: 'demo', t: null, map: false })
+  assert.deepEqual(readScenario('?scenario=my_scn-2&t=12.5'), { id: 'my_scn-2', t: 12.5, map: false })
   for (const q of ['', '?t=5', '?scenario=', '?scenario=../x', '?scenario=a/b', '?scenario=%3Cb%3E']) assert.equal(readScenario(q), null, q)
 })
 

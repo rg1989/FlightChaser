@@ -26,6 +26,7 @@ const KEYS: Section[] = [
     ['Space', 'Play or pause'],
     ['← →', 'Back or ahead 10 s; with Shift, 60 s'],
     ['M', 'Mute or unmute the voices'],
+    ['V', 'The top-down map with the whole route, or back to the 3-D view'],
   ] },
 ]
 

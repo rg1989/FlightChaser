@@ -98,7 +98,7 @@ export function selectedInfo(day: { hex: string; reg: string | null; typeCode: s
 }
 
 /** e as the track's state s: where it is drawn at the replay time, never aged out by the fleet's rule (its day decides). */
-function fromState(e: FleetEntry, hex: string, s: RenderState, info: AircraftInfo | null): FleetEntry {
+export function fromState(e: FleetEntry, hex: string, s: RenderState, info: AircraftInfo | null): FleetEntry {
   e.hex = hex
   e.lat = s.lat
   e.lon = s.lon

@@ -5,7 +5,7 @@
 // (?cam=heading,pitch,range: offset from the nose °, look pitch °, distance m) and the scene toggles that differ from
 // the defaults (?topo=0 …, read by scenePrefs). A running scenario replaces at, hex and chase with ?scenario=<id>&t=<s>
 // (t: the scenario clock in whole seconds since its local midnight, as in the package files, so a link survives a
-// package whose start moves) and keeps ?cam=. A replay of the past (History) adds ?hist=<unix s> to the view, so a
+// package whose start moves) and keeps ?cam=, or says ?view=map for its top-down map. A replay of the past (History) adds ?hist=<unix s> to the view, so a
 // reload returns to that moment, paused. Other parameters (?bench, ?sun, ?airport, ?scenarioBase) are kept as they
 // are. Pure: the app passes location.search and writes the result with history.replaceState.
 import { DEFAULT_PREFS, PREF_KEYS } from './scenePrefs.ts'
@@ -29,7 +29,7 @@ export interface UrlState {
   chase: boolean // in the 3-D chase view (?chase=1)
   cam: Orbit | null
   prefs: ScenePrefs
-  scenario?: { id: string; t: number } | null // a running scenario and its clock
+  scenario?: { id: string; t: number; map?: boolean } | null // a running scenario and its clock; map: on the top-down map
   hist?: number | null // History: the replay time, UTC ms (written in whole seconds)
 }
 
@@ -60,14 +60,14 @@ export function readView(search: string): { at: ViewAt | null; cam: Orbit | null
   }
 }
 
-/** ?scenario=<id>&t=<s>: the scenario to start on load and where (t null: its start); null without a valid id. */
-export function readScenario(search: string): { id: string; t: number | null } | null {
+/** ?scenario=<id>&t=<s>[&view=map]: the scenario to start on load, where (t null: its start) and in which view; null without a valid id. */
+export function readScenario(search: string): { id: string; t: number | null; map: boolean } | null {
   const q = new URLSearchParams(search)
   const id = q.get('scenario') ?? ''
   if (!SCENARIO_ID.test(id)) return null
   const t = q.get('t')
   const n = t === null || t.trim() === '' ? Number.NaN : Number(t)
-  return { id, t: Number.isFinite(n) && n >= 0 ? n : null }
+  return { id, t: Number.isFinite(n) && n >= 0 ? n : null, map: q.get('view') === 'map' }
 }
 
 const HIST_MIN_S = 1_672_531_200 // 2023-01-01: adsb.lol's archive starts in 2023; anything earlier is a typo
@@ -81,12 +81,13 @@ export function readHist(search: string): number | null {
 /** The search string for s, keeping every parameter this module does not own. Rounded so small moves do not churn history. */
 export function writeUrl(search: string, s: UrlState): string {
   const q = new URLSearchParams(search)
-  for (const k of ['at', 'hex', 'chase', 'cam', 'scenario', 't', 'hist', ...PREF_KEYS]) q.delete(k)
+  for (const k of ['at', 'hex', 'chase', 'cam', 'scenario', 't', 'view', 'hist', ...PREF_KEYS]) q.delete(k)
   const cam = s.cam && `${Math.round(s.cam.headingDeg)},${Math.round(s.cam.pitchDeg)},${Math.round(s.cam.rangeM)}`
   if (s.scenario) {
     q.set('scenario', s.scenario.id)
     q.set('t', String(Math.floor(s.scenario.t)))
-    if (cam) q.set('cam', cam)
+    if (s.scenario.map) q.set('view', 'map')
+    else if (cam) q.set('cam', cam)
   } else {
     if (s.at) q.set('at', `${s.at.lat.toFixed(4)},${s.at.lon.toFixed(4)},${Number(s.at.heightKm.toPrecision(3))}`)
     if (s.hex) q.set('hex', s.hex)

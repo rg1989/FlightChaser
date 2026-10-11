@@ -3,9 +3,10 @@
 // step, what the scenario shows at its time: the pose, the flight-data frame's numbers, the events, the captions and
 // the ending. ScenarioRun adds what lives in the page: the play bar, the captions, the marks' titles and the ending card
 // in the app's overlay, the era imagery under the night lights, the audio (only when the package has it), and the keys (Space
-// play/pause, ←/→ ±10 s, Shift ±60 s, M mute). The app (app.ts) draws the rest from the frame: the model, the chase camera, the
-// sun at the scenario's instant and the frame around the aircraft. Dresser puts the scenario's type, livery, span,
-// damage and gear on the chase model.
+// play/pause, ←/→ ±10 s, Shift ±60 s, M mute, V the view). The app (app.ts) draws the rest from the frame: in the 3-D view
+// the model, the chase camera, the sun at the scenario's instant and the frame around the aircraft; in the top-down map
+// (the play bar's Map button) its icon on its route. Dresser puts the scenario's type, livery, span, damage and gear on the
+// chase model.
 import { Color, ImageryLayer, Rectangle, UrlTemplateImageryProvider } from 'cesium'
 import type { Viewer } from 'cesium'
 import type { Livery } from '../scene/livery.ts'
@@ -13,6 +14,7 @@ import type { FlightData, ModelManifestEntry, RenderState } from '../types.ts'
 import { mountCaptions, type CaptionView } from '../ui/captions.ts'
 import { mountEnding } from '../ui/ending.ts'
 import { mountEventTitle } from '../ui/eventTitle.ts'
+import { icon } from '../ui/icons.ts'
 import { clockText, mountPlaybar } from '../ui/playbar.ts'
 import { mountStory } from '../ui/story.ts'
 import { AudioSync } from './audio.ts'
@@ -116,16 +118,17 @@ export interface KeyLike {
 }
 
 /**
- * What a keydown asks of the player: Space plays or pauses, ←/→ step 10 s, Shift+←/→ 60 s. null with Cmd, Ctrl or Alt
- * (the browser's), on auto-repeat, while typing in a field (the play bar's scrubber takes its own keys), and for Space on
- * a focused button (Space presses it).
+ * What a keydown asks of the player: Space plays or pauses, ←/→ step 10 s, Shift+←/→ 60 s, M mutes, V switches between
+ * the 3-D view and the top-down map. null with Cmd, Ctrl or Alt (the browser's), on auto-repeat, while typing in a field
+ * (the play bar's scrubber takes its own keys), and for Space on a focused button (Space presses it).
  */
-export function scenarioKey(e: KeyLike): { toggle: true } | { stepS: number } | { mute: true } | null {
+export function scenarioKey(e: KeyLike): { toggle: true } | { stepS: number } | { mute: true } | { view: true } | null {
   if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return null
   const t = e.target as { tagName?: string; isContentEditable?: boolean } | null
   if (t?.isContentEditable || TYPING.has(t?.tagName ?? '')) return null
   if (e.key === ' ') return t?.tagName === 'BUTTON' ? null : { toggle: true }
   if (e.key === 'm' || e.key === 'M') return { mute: true }
+  if (e.key === 'v' || e.key === 'V') return { view: true }
   const step = e.shiftKey ? 60 : 10
   return e.key === 'ArrowLeft' ? { stepS: -step } : e.key === 'ArrowRight' ? { stepS: step } : null
 }
@@ -225,6 +228,7 @@ export interface ScenarioRunOpts {
   play?: boolean // start playing (the Scenarios panel's Play)
   under: ImageryLayer | null // the era imagery goes right under this layer (the night lights), over the base
   onExit(): void // the play bar's exit, the ending card's Close
+  onView?(): void // the play bar's Map / 3-D button, and V: the app switches the view and answers through setView()
 }
 
 /** A scenario playing in the page. frame() once a frame; destroy() removes everything it added. */
@@ -241,6 +245,7 @@ export class ScenarioRun {
   readonly #audioEl: HTMLAudioElement | null = null
   readonly #audio: AudioSync | null = null
   #gain = 1 // the play bar's volume, 0 when muted
+  readonly #view: HTMLButtonElement | null = null // the play bar's Map / 3-D button
   readonly #onKey: (e: KeyboardEvent) => void
 
   static start(o: ScenarioRunOpts): ScenarioRun {
@@ -259,12 +264,23 @@ export class ScenarioRun {
     this.#story = mountStory(o.ui)
     this.#title = mountEventTitle(o.ui)
     this.#ending = mountEnding(o.ui, { onClose: () => o.onExit() })
+    if (o.onView) {
+      const view = (this.#view = document.createElement('button'))
+      view.type = 'button'
+      view.className = 'fh-pill fh-pill-secondary fh-playbar-view'
+      view.addEventListener('click', (e) => {
+        o.onView!()
+        if (e.detail > 0) view.blur() // a later Space plays or pauses
+      })
+      this.setView(false)
+    }
     this.#bar = mountPlaybar(o.ui, {
       start: s.start, stop: clock.stop, end: s.end, marks: marks(s.events), clockLabel: s.clockLabel, title: s.title,
       onToggle: () => this.player.toggle(),
       onSeek: (t) => this.player.seek(t),
       onRate: () => void clock.nextRate(),
       onExit: () => o.onExit(),
+      tools: this.#view === null ? undefined : [this.#view],
       sound: s.audio !== null && s.present.audio ? { reenacted: s.audio.reenacted, onGain: (g) => (this.#gain = g) } : null,
     })
     // Over the base imagery, under the night lights: in the order the package lists them, the first lowest.
@@ -289,6 +305,7 @@ export class ScenarioRun {
       e.preventDefault() // no page scroll, no click on the focused element
       if ('toggle' in k) this.player.toggle()
       else if ('mute' in k) this.#bar.toggleMute()
+      else if ('view' in k) o.onView?.()
       else this.player.seekBy(k.stepS)
     }
     window.addEventListener('keydown', this.#onKey)
@@ -296,6 +313,22 @@ export class ScenarioRun {
 
   get scenario(): Scenario {
     return this.player.scenario
+  }
+
+  /** The view on screen, for the play bar's button: it offers the other one (Map in the 3-D view, 3-D on the map). */
+  setView(topDown: boolean): void {
+    const b = this.#view
+    if (b === null) return
+    const label = document.createElement('span')
+    label.className = 'fh-playbar-view-l'
+    label.textContent = topDown ? '3-D' : 'Map'
+    const glyph = document.createElement('span')
+    glyph.className = 'fh-pill-icon'
+    glyph.append(icon(topDown ? 'plane' : 'map', 16))
+    b.replaceChildren(glyph, label)
+    const name = topDown ? '3-D view' : 'Top-down map'
+    b.setAttribute('aria-label', name)
+    b.title = `${name} (V)`
   }
 
   frame(dtS: number): ScenarioFrame {

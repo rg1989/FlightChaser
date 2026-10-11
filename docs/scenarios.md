@@ -2,7 +2,8 @@
 # Scenarios: the package format and what to send
 
 A scenario is a recorded flight that FlightHopper plays back. The app reads it from static files in
-`public/scenarios/`. Only that aircraft is drawn, in chase view. A timeline plays, pauses and drags the flight. The
+`public/scenarios/`. Only that aircraft is drawn, in chase view or on the top-down map (the play bar's Map button, or V): there
+the whole route is drawn in the altitude colours, with the timeline's marks as dots on it. A timeline plays, pauses and drags the flight. The
 aircraft's position is a function of the scenario clock. Captions show what the crew and ATC said, from the official
 record.
 
@@ -53,7 +54,8 @@ Every time in the package is a **local clock time** on the scenario's `date`, in
 - The loader turns each time into `t`, the seconds since local midnight of `date`.
 - The sun, the moon and the sky come from `date`, the time and `utcOffset`. You do not send them.
 - In each file, times do not go backwards. In `track.csv` they must go forwards (no two rows at the same time).
-- A link can open a scenario, paused: `/?scenario=jal123&t=66270` opens JAL 123 at 18:24:30 (t = 66,270 s).
+- A link can open a scenario, paused: `/?scenario=jal123&t=66270` opens JAL 123 at 18:24:30 (t = 66,270 s). Add
+  `&view=map` to open it on the top-down map.
 
 ### 1.3 scenario.json
 

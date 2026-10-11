@@ -306,14 +306,15 @@ export class RouteLine {
    * entry will do (its altFt is not needed: the join keeps the last run's colour). path: its points in time order; the
    * part after cutMs is not drawn (cutMs: Infinity live, the replay time in history); a cut inside a hole (cutInGap)
    * joins the aircraft dotted, along the great circle where the hole's line runs once its far end is reached. dest,
-   * origin: where its route ends and starts (null: unknown, no line ahead, no lead-in).
+   * origin: where its route ends and starts (null: unknown, no line ahead, no lead-in). join false: the path is the whole
+   * flight, the aircraft somewhere on it (a scenario): no line from its last point to the aircraft.
    * Redrawn at most every REDRAW_MS (at once for another path or route), and only when something moved: a point added
    * or cut, the aircraft by STILL_DEG, the route. Otherwise nothing is allocated.
    * ponytail: the line ahead keeps the aircraft's height all the way, the lead-in the first point's (a descent or climb
    * profile would need the airports' elevations); a hill higher than that under the line hides that bit of it.
    */
   update(at: { lat: number; lon: number; hM: number; altFt?: number | null } | null, path: readonly PathPoint[],
-    dest: RoutePlace | null, origin: RoutePlace | null, cutMs: number, nowMs = performance.now()): void {
+    dest: RoutePlace | null, origin: RoutePlace | null, cutMs: number, nowMs = performance.now(), join = true): void {
     const show = at !== null
     this.#runs.show = this.#lines.show = this.#points.show = this.#labels.show = show
     if (!show) return
@@ -332,7 +333,7 @@ export class RouteLine {
     if (newPath) this.#grounds.clear()
     if (newPoints || newGround) this.#drawPath(path, cutMs, nowMs)
     if (newPath || newOrigin) this.#drawLeadIn(first, origin)
-    if (newPoints || newGround || moved) this.#drawJoin(last, at, cutInGap(path, n))
+    if (newPoints || newGround || moved) this.#drawJoin(join ? last : null, at, cutInGap(path, n))
     if (moved || newDest) this.#drawAhead(at, dest)
     this.#first = first
     this.#last = last

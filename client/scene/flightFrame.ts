@@ -624,13 +624,13 @@ function line(cls: string, name: string, unit: string): { el: HTMLDivElement; va
 const altTape = (u: Units): TapeSpec => (u.alt === 'm' ? ALT_TAPE_M : ALT_TAPE)
 const speedTape = (u: Units): TapeSpec => (u.speed === 'kmh' ? SPEED_TAPE_KMH : u.speed === 'mph' ? SPEED_TAPE_MPH : SPEED_TAPE)
 /** Vertical speed in ft/min (vsText) or m/s to 0.1, with its arrow. */
-function vsTextIn(fpm: number, ms: boolean): { arrow: '↑' | '↓' | ''; text: string } {
+export function vsTextIn(fpm: number, ms: boolean): { arrow: '↑' | '↓' | ''; text: string } {
   const t = vsText(fpm)
   if (!ms || t.arrow === '') return t
   return { arrow: t.arrow, text: Math.abs(fpm * MS_PER_FPM).toFixed(1) }
 }
 /** An altitude figure in its unit: feet to 10 ft, metres whole. */
-const altTextIn = (ft: number, u: Units): string => (u.alt === 'm' ? num(ft * M_PER_FT) : altText(ft))
+export const altTextIn = (ft: number, u: Units): string => (u.alt === 'm' ? num(ft * M_PER_FT) : altText(ft))
 
 /** A figure under its label: "BANK / 13° R". */
 function stat(cls: string, name: string): { el: HTMLDivElement; value: HTMLSpanElement } {

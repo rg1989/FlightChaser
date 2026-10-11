@@ -11,7 +11,9 @@
 //   is drawn there too, round the aircraft and live only (scene/weather3d.ts), with what is ahead on its heading in a status line
 //   and a side-view strip at the top centre (scene/wxAhead.ts, ui/wxHud.ts).
 // - Scenario (the Scenarios panel's Play, or ?scenario=<id>&t=<s>): a recorded flight played from static files
-//   (scenario/run.ts) in the chase view: only its aircraft, no polls, no card (the frame carries the data), no 3-D
+//   (scenario/run.ts) in the chase view, or on the top-down map (the play bar's Map button, V, ?view=map): there its icon
+//   on its whole route, coloured by altitude, with the timeline's marks on it. Only its aircraft, no polls, no card (the
+//   frame carries the data; on the map the small instrument panel, ui/miniGauges.ts, as for a focused aircraft), no 3-D
 //   buildings (they are modern), its era imagery, the sun at its instant. Esc or exit goes back to the map over it.
 // - History (the rail's History button, or ?hist=<unix s>): the map in the past (history/), from adsb.lol's half-hour
 //   files, every aircraft in view at a replay clock's time, played through the same Fleet, track, card and chase as live;
@@ -61,7 +63,7 @@ import { HistoryFeed, type Circle } from './history/feed.ts'
 import { KnownHexes, SlotBlock, SlotFailure, askNm, backMs, lookaheadMs, prefetchMs, wantedSlots } from './history/policy.ts'
 import {
   MapMoves, aheadOf, aircraftLine, areaMiddle, cameraTarget, chaseAskAt, dayAsk, daySpan, estimateState, firstDayAsked, historyWait, inArea,
-  inSight, keepLegs, placeLost, placeSelected, replayStatus, restartsTrack, selectedInfo, trackSource, viewMove,
+  fromState, inSight, keepLegs, placeLost, placeSelected, replayStatus, restartsTrack, selectedInfo, trackSource, viewMove,
 } from './history/selected.ts'
 import { tracePath, traceSamples } from './history/trace.ts'
 import { liveryCode, liveryFromSpec, liveryOf, type Livery } from './scene/livery.ts'
@@ -81,6 +83,7 @@ import { createViewer } from './scene/viewer.ts'
 import { eoxOnEsriFailure, imageryStatus } from './scene/imagery.ts'
 import { listScenarios, loadScenario } from './scenario/format.ts'
 import { recordingFile, recordingScenario } from './scenario/fromRecording.ts'
+import { scenarioRoute, type ScenarioRoute } from './scenario/routePath.ts'
 import { Dresser, ScenarioRun } from './scenario/run.ts'
 import { damageOf } from './scenario/timeline.ts'
 import type { Scenario } from './scenario/types.ts'
@@ -94,6 +97,9 @@ import type { Lookup } from './ui/detail.ts'
 import { FOCUS_ASK_MS, entryState, lostAfterS, mountFlightCard } from './ui/flightCard.ts'
 import { icon } from './ui/icons.ts'
 import { mountMapKey } from './ui/mapKey.ts'
+import { mountMiniGauges } from './ui/miniGauges.ts'
+import { clockText } from './ui/playbar.ts'
+import { mountRouteMarks, type RouteMarksHandle } from './ui/routeMarks.ts'
 import { SHEET_MEDIA, mountRail } from './ui/rail.ts'
 import { PICK_PX, cameraStep, mountRemote, tvMode } from './ui/remote.ts'
 import { mountChasePresets } from './ui/chasePresets.ts'
@@ -159,8 +165,11 @@ const FRAME_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard)
 // ponytail: the clear part is that one rectangle, so ground beside a small cover that was cut away counts as covered.
 // Upgrade: the largest empty rectangle.
 const MAP_COVERS = '.fh-rail, .fh-corner-b, .fh-panel, .fh-card:not(.fh-tcard), .fh-playbar, .fh-search-bar'
-const MAP_KEY_COVER = '.fh-mapkey'
+const MAP_KEY_COVER = '.fh-botleft' // the key, and the small instrument panel over it
 const SAFE_EVERY_MS = 100
+const MINI_KEY = 'fh.miniGauges.v1' // the top-down map's instrument panel: '0' folded
+const ROUTE_SPARE = 1.35 // a scenario's route fits its top-down map with this much to spare: clear of the play bar and the rail
+const ROUTE_MIN_M = 20_000 // …from no lower than this (a circuit round one airfield)
 const WEATHER_LABEL = 'clouds, hazard areas, looking ahead' // after the state, in the Weather button's words
 const WX_LOOK_MS = 250 // the chase weather's status line, ahead strip and minute labels follow the aircraft this often
 const WX_MINUTES_KEY = 'ahead' // the track line's minute labels: this layer in the names overlay (placeLabels.ts setLayer) …
@@ -544,10 +553,17 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const landing = new LandingEstimate(() => getJson<RunwayTable>(`${base}airports/runways.json`))
   const lostAll: FleetEntry[] = []
   const lostOwn: FleetEntry = { ...histOwn }
+  const scnOwn: FleetEntry = { ...histOwn }
   const moves = new MapMoves() // the person moving the map: History's map does not follow its aircraft meanwhile
   // A scenario playing (run) or being fetched (loadingScenario): either way the polls wait.
   let run: ScenarioRun | null = null
   let dress: Dresser | null = null // the scenario's aircraft on the chase model
+  // Its top-down map (setChase(false) while it plays): its whole route with the timeline's marks, and its aircraft as the
+  // one icon on the map.
+  let scnRoute: ScenarioRoute | null = null
+  let scnMarks: RouteMarksHandle | null = null
+  let scnInfo: AircraftInfo | null = null
+  const scnAll: FleetEntry[] = []
   let loadingScenario: string | null = urlScenario?.id ?? null // set before the poll loop's first turn
   // History (the rail button, ?hist=): the past on its own clock, through a Fleet of its own; null: live.
   interface HistoryMode {
@@ -773,7 +789,20 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // Live data stopped (offline, our server, the source): a card over the greyed map, or a pill (outage.ts).
   const outage = mountOutage(ui)
   let lastOkMs: number | null = null // the last good answer from our server (Date.now clock)
-  const mapKey = mountMapKey(ui) // bottom left, top-down only: altitude colours and the scale
+  // Bottom left, top-down only: the small instrument panel (the focused aircraft's, or a scenario's) over the map key
+  // (altitude colours and the scale). Folded or open as this browser left it.
+  const corner = div('fh-botleft', ui)
+  const miniGauges = mountMiniGauges(corner, {
+    open: store?.getItem(MINI_KEY) !== '0',
+    onOpen: (open) => {
+      try {
+        store?.setItem(MINI_KEY, open ? '1' : '0')
+      } catch {
+        // not remembered
+      }
+    },
+  })
+  const mapKey = mountMapKey(corner)
   let scaleAtMs = -Infinity
   const keyA = new Cartesian2()
   const keyB = new Cartesian2()
@@ -1034,7 +1063,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const at = !chasing ? (isBrowsing(viewer) ? here : null) : chased !== null ? { lat: chased.lat, lon: chased.lon, heightKm } : here
     const o = chaseCam.orbit
     const orbit = chasing ? { headingDeg: o.headingOffsetDeg, pitchDeg: o.pitchDeg, rangeM: o.rangeM } : null
-    const scenario = run === null ? null : { id: run.scenario.id, t: run.player.clock.t } // replaces at, hex and chase
+    const scenario = run === null ? null : { id: run.scenario.id, t: run.player.clock.t, map: !chasing } // replaces at, hex and chase
     // History: the replay time; a time asked for that the clock waits for (HistoryClock.asked) stays, not the one it waits at.
     const histMs = hist === null ? null : (hist.clock.asked ?? hist.clock.now(now))
     const next = writeUrl(location.search, { at, hex: selected, chase: chasing, cam: orbit, prefs, scenario, hist: histMs })
@@ -1658,7 +1687,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
 
   /** The selected aircraft in the 3-D chase view (on), or back to the top-down map over it (off). */
   function setChase(on: boolean): void {
-    if (on === chasing || (on && selected === null)) return
+    if (on === chasing || (on && selected === null && run === null)) return
     chasing = on
     chaseCam.release() // hands the mouse back to Cesium's controls; a chase starts behind its aircraft
     if (on) {
@@ -1668,6 +1697,12 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       relatchPending = true
       acGround.ok = camGround.ok = false
       arrivalAgesS.length = 0 // a focus asked rarely: its arrival ages say nothing about the chase's
+    } else if (scnRoute !== null) {
+      // A scenario: its whole route in view.
+      applyLayers()
+      const b = scnRoute.box
+      const heightM = Math.max(ROUTE_MIN_M, heightToFit(b, viewer.canvas.clientWidth, viewer.canvas.clientHeight, ROUTE_SPARE))
+      enterBrowse(viewer, { lat: (b.south + b.north) / 2, lon: (b.west + b.east) / 2 }, { heightM })
     } else {
       applyLayers()
       const e = selected === null ? undefined : fleet.get(selected)
@@ -1677,6 +1712,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     sun.setEnabled(on && prefs.light) // chase only (D9): browse stays the unlit street map
     if (!on) flightFrame.edit(false)
     ui.dataset.mode = on ? 'chase' : 'browse'
+    run?.setView(!on)
     // The TV: the 3-D view clear of panels (a remote cannot push one aside), the focus on its camera views.
     if (on && presets !== null) {
       rail.close()
@@ -1715,7 +1751,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
    * with the orbit of ?cam=). A failed load leaves the app as it was.
    * ponytail: a failed load only reaches the console (the packages ship with the app and a test validates them).
    */
-  async function startScenario(id: string, o: { t?: number; play?: boolean; cam?: Orbit | null; fromUrl?: boolean } = {}): Promise<void> {
+  async function startScenario(id: string, o: { t?: number; play?: boolean; cam?: Orbit | null; fromUrl?: boolean; map?: boolean } = {}): Promise<void> {
     loadingScenario = id
     let scn: Scenario
     let recLivery: Livery | null = null // a recording flies in its airline's livery (or grey, military), as live
@@ -1765,7 +1801,13 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       : recLivery ?? (scn.aircraft.callsign ? liveryOf(liveryCode(scn.aircraft.callsign, scn.aircraft.registration || null)) : null)
     liveGear = null
     dress = new Dresser(e, livery, scn.aircraft.shape?.halfSpanM ?? null, recPlaceholder) // a package names its own model
-    run = ScenarioRun.start({ viewer, ui, scenario: scn, t: o.t, play: o.play, under: night, onExit: exitScenario })
+    const playing = (run = ScenarioRun.start({ viewer, ui, scenario: scn, t: o.t, play: o.play, under: night, onExit: exitScenario, onView: () => setChase(!chasing) }))
+    scnRoute = scenarioRoute(scn)
+    scnInfo = {
+      hex: `scn-${scn.id}`, callsign: scn.aircraft.callsign || null, reg: scn.aircraft.registration || null, typeCode: scn.aircraft.model.toUpperCase() || null, // a model's id is its type's designator: the icon's shape
+      category: null, squawk: null, emergency: null, military: false, route: null,
+    }
+    scnMarks = mountRouteMarks(root, scnRoute.marks.map((m) => ({ ...m, label: `${m.label} · ${clockText(m.t)} ${scn.clockLabel}` })), (t) => playing.player.seek(t))
     applyLayers() // with the run set: its weather is "Live only"
     if (aps.length > 0) {
       airfield = addRunways(viewer, aps, { markers: false }) // a replay's airfields: no live-map threshold dots
@@ -1780,12 +1822,16 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       firstData = true
       hooks.onFirstData?.()
     }
+    if (o.map) setChase(false) // a reload on its top-down map
   }
 
   /** The scenario's own parts go (its overlays, imagery, keys; the model's scenario look); the view stays. */
   function endRun(): void {
     run?.destroy()
     run = null
+    scnMarks?.destroy()
+    scnMarks = null
+    scnRoute = null
     if (airfield !== null) {
       airfield.destroy()
       airfield = null
@@ -1802,10 +1848,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     loadingScenario = null // one still loading is dropped when it arrives
     if (run === null) return
     endRun()
+    const wasChasing = chasing
     chasing = false
     chaseCam.release()
     applyLayers()
-    enterBrowse(viewer, chased, { heightM: browseHeightM ?? undefined })
+    if (wasChasing) enterBrowse(viewer, chased, { heightM: browseHeightM ?? undefined }) // on its map already: the view stays
     chased = null
     groundM = null
     sun.setEnabled(false)
@@ -1828,8 +1875,13 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     let viewRect: RectDeg | null | undefined // History: the view as this frame sees it (undefined: not read)
     // A scenario: its aircraft at its clock's time, lit at that instant; no traffic around it.
     const sf = run?.frame(dtS) ?? null
-    if (sf !== null) s = sf.state
-    else if (hist !== null) {
+    if (sf !== null) {
+      s = sf.state
+      if (!chasing) { // on the map: the one icon
+        scnAll[0] = fromState(scnOwn, s.hex, s, scnInfo)
+        all = scnAll
+      }
+    } else if (hist !== null) {
       // History: everything at the replay clock's time with no render delay (the selected aircraft's track has its
       // samples ahead of it), lit at that instant. A playing clock holds (stalls) only while nothing of its time is loaded
       // where the view is (waitFor); a view partly out of what is loaded is asked for and plays on.
@@ -1909,7 +1961,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     fleetLayer.setTerrain(tf) // ground icons follow the grow and sink
     // Chase shows the traffic in range as 3-D models and no flat icons (none at all without the traffic model).
     const chaseModels = traffic?.select(all, selected, chasing && s !== null ? s : null, trafficRangeNm(chaseCam.orbit.rangeM)) ?? NO_HEXES
-    fleetLayer.update(all, selected, tableHover ?? mapHover, chasing && s !== null && model !== null, chasing ? chaseModels : null)
+    fleetLayer.update(all, sf !== null ? scnOwn.hex : selected, tableHover ?? mapHover, chasing && s !== null && model !== null, chasing ? chaseModels : null)
     const tTable = measure === null ? 0 : performance.now()
     measure?.('fh:fleet', now)
     if (sf === null) { // a scenario leaves the list as it was
@@ -2071,14 +2123,19 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     rail.setBusy('aircraft', sf === null && hist === null && (known === null || (known.degraded === null && (known.pendingAreas ?? 0) > 0)))
     rail.setBusy('history', hist !== null && histLoading)
     // In trouble too (they are still not loaded), but none shown as loading: no answer is coming.
-    pendingLayer.update(hist === null ? status.pendingBoxes : undefined, !chasing, known !== null && known.degraded === null)
+    pendingLayer.update(hist === null && sf === null ? status.pendingBoxes : undefined, !chasing, known !== null && known.degraded === null)
     // Top-down only: the chase has its own view of where it goes. In History the path is cut at the replay time, and it
     // joins the aircraft as drawn (none before its first leg, or that day: no line).
     const at = chasing || sf !== null || selected === null ? undefined : hist !== null ? histAt : fleet.get(selected)
     // The lead-in from the origin and its "First heard" only with the whole leg (the trace): live samples alone start at
     // the selection, not at the first reception. Live only: the past's day of flights knows no route.
     const wholeLeg = hist === null && selTrace !== null
-    routeLine.update(at === undefined ? null : at, selPath, hist === null ? chaseDest : null, wholeLeg ? chaseOrigin : null, hist === null ? Infinity : tSunMs)
+    // A scenario's is its whole flight, the aircraft somewhere on it, with the timeline's marks.
+    if (sf !== null && scnRoute !== null) routeLine.update(chasing ? null : scnOwn, scnRoute.path, null, null, Infinity, now, false)
+    else routeLine.update(at === undefined ? null : at, selPath, hist === null ? chaseDest : null, wholeLeg ? chaseOrigin : null, hist === null ? Infinity : tSunMs)
+    scnMarks?.update(chasing || sf === null ? null : viewer.scene, sf?.t ?? 0)
+    // The map's small instrument panel: the focused aircraft's numbers and attitude, or the scenario's. The chase has the frame.
+    miniGauges.update(chasing || s === null ? null : sf !== null ? sf.data : liveFlightData(s, s.landing === undefined ? chaseRaw : null, null), frameUnits, now)
     if (!chasing && now - scaleAtMs > 200) {
       scaleAtMs = now
       mapKey.setScale(groundScale())
@@ -2309,6 +2366,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     // Chase traffic first (openTrafficAt); a click anywhere else closes an open one, and does nothing more.
     if (openTrafficAt(e.position)) return
     if (!flightFrame.editing && traffic?.close()) return
+    if (run !== null) return // a scenario's map has its aircraft alone: nothing to focus
     const hex = fleetLayer.pick(e.position, tapPx)
     // A runway end spells itself out (a tap on a phone, where nothing hovers) until the next click elsewhere.
     const onRunway = runways.hover(hex === null ? e.position : null, tapPx)
@@ -2407,7 +2465,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       const at = new Cartesian2(viewer.canvas.clientWidth / 2, viewer.canvas.clientHeight / 2)
       if (openTrafficAt(at)) return true
       const hex = fleetLayer.pick(at, PICK_PX)
-      if (hex === null || hex === selected) return false
+      if (hex === null || hex === selected || run !== null) return false
       byHand()
       select(hex)
       return true
@@ -2415,7 +2473,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     back,
   }) : null
   const urlHist = readHist(location.search) // ?hist=<unix s>: History at that time, paused
-  if (urlScenario !== null) void startScenario(urlScenario.id, { t: urlScenario.t ?? undefined, cam: urlView.cam, fromUrl: true })
+  if (urlScenario !== null) void startScenario(urlScenario.id, { t: urlScenario.t ?? undefined, cam: urlView.cam, fromUrl: true, map: urlScenario.map })
   else if (urlHist !== null) enterHistory(urlHist) // fetches the selected aircraft's leg itself
   else if (selected !== null) fetchTrace(selected) // ?hex= selects without select(): its flown path all the same
 
@@ -2451,6 +2509,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       trafficCard.destroy()
       settings.destroy()
       table.destroy()
+      scnMarks?.destroy()
+      miniGauges.destroy()
       mapKey.destroy()
       rail.destroy()
       ui.remove()
