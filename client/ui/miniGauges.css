@@ -1,0 +1,189 @@
+/* client/ui/miniGauges.css */
+/* The top-down map's small instrument panel (miniGauges.ts), in the bottom left corner over the map key (.fh-botleft):
+   the attitude indicator (flightFrame.css draws it; its colours and size are set here) with bank and pitch beside it,
+   then altitude, vertical speed, speed and heading. Folded, it is its button alone. The chase has the flight-data frame
+   instead (the app hides this there). */
+.fh-botleft {
+  position: absolute;
+  z-index: 12;
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  left: var(--fh-left);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+
+/* A scenario's play bar and History's time bar run along the bottom: the corner stands on them. */
+.fh-ui[data-scenario] .fh-botleft,
+.fh-ui[data-history] .fh-botleft {
+  bottom: calc(var(--fh-playbar-space) + 8px);
+}
+
+.fh-mini {
+  position: relative;
+  display: flex;
+  border-radius: var(--fh-radius);
+  color: var(--fh-text);
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+  user-select: none;
+  /* The attitude indicator's colours and size (flightFrame.css sets them on the frame). */
+  --fh-i-line: rgba(255, 255, 255, 0.8);
+  --fh-i-text: #f1f4f8;
+  --fh-i-amber: #ffbe3b;
+  --fh-i-sky0: #0b3f86;
+  --fh-i-sky1: #3b8be0;
+  --fh-i-gnd0: #8c5a2b;
+  --fh-i-gnd1: #3a220c;
+  --fh-adi: 64px;
+}
+
+.fh-mini[hidden],
+.fh-mini [hidden] {
+  display: none !important;
+}
+
+.fh-mini-body {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 34px 10px 12px; /* the right side leaves the fold button its corner */
+}
+
+.fh-mini-att {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.fh-mini-angles {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 44px;
+}
+
+.fh-mini-nums {
+  display: grid;
+  grid-template-columns: auto auto;
+  gap: 8px 16px;
+  padding-left: 14px;
+  border-left: 1px solid var(--fh-hairline);
+}
+
+.fh-mini-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.fh-mini-l {
+  color: var(--fh-faint);
+  font: 600 10px/1 var(--fh-font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fh-mini-fig {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  white-space: nowrap;
+}
+
+.fh-mini-v {
+  font: 600 15px/1 var(--fh-font);
+  letter-spacing: -0.01em;
+}
+
+.fh-mini-u {
+  color: var(--fh-muted);
+  font: 500 10px/1 var(--fh-font);
+}
+
+.fh-mini-cell[data-dir='up'] .fh-mini-v { color: #3fdc8e; }
+.fh-mini-cell[data-dir='down'] .fh-mini-v { color: #4fd4ff; }
+
+/* An estimate (a live aircraft's attitude is worked out from its path): dimmer, as in the frame. */
+.fh-mini-cell.fh-est .fh-mini-v {
+  opacity: 0.62;
+}
+
+.fh-mini-toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+}
+
+/* Open or folded it is a plain button: not the accent a pressed rail button takes. */
+.fh-mini-toggle[aria-expanded='true'] {
+  background: transparent;
+  color: var(--fh-muted);
+}
+
+.fh-mini-toggle[aria-expanded='true']:hover {
+  background: var(--fh-hover);
+  color: var(--fh-text);
+}
+
+/* Folded: the button alone, a round dot. */
+.fh-mini[data-open='false'] {
+  border-radius: 50%;
+}
+
+.fh-mini[data-open='false'] .fh-mini-toggle {
+  position: static;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  color: var(--fh-text);
+}
+
+@media (pointer: coarse) {
+  .fh-mini[data-open='false'] .fh-mini-toggle {
+    width: 44px;
+    height: 44px;
+  }
+
+  .fh-mini-toggle {
+    width: 36px;
+    height: 36px;
+  }
+
+  .fh-mini-body {
+    padding-right: 42px;
+  }
+}
+
+/* Phones: the corner stands on the tab strip; the flight card takes the bottom there… */
+@media (max-width: 640px) {
+  .fh-botleft {
+    bottom: calc(var(--fh-tabbar-h) + 8px);
+    left: 8px;
+  }
+
+  /* …so with a card showing (the map key gives way to it, mapKey.css) the panel goes to the top left corner. */
+  .fh-ui:has(.fh-card:not([hidden])) .fh-botleft {
+    top: var(--fh-top);
+    bottom: auto;
+  }
+
+  .fh-mini {
+    --fh-adi: 54px;
+  }
+
+  .fh-mini-body {
+    gap: 10px;
+  }
+
+  .fh-mini-nums {
+    gap: 6px 12px;
+    padding-left: 10px;
+  }
+}

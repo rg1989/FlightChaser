@@ -187,6 +187,7 @@ test('scenarioKey: Space plays or pauses, ←/→ step 10 s, with Shift 60 s, M 
   assert.deepEqual(k('ArrowRight', { shiftKey: true }), { stepS: 60 })
   assert.deepEqual(k('m'), { mute: true })
   assert.deepEqual(k('M', { shiftKey: true }), { mute: true })
+  assert.deepEqual(k('v'), { view: true }) // the top-down map, or back to the 3-D view
   for (const key of ['a', 'Enter', 'ArrowUp', 'Escape', 't']) assert.equal(k(key), null, key)
 })
 

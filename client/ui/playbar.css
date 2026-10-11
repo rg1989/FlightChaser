@@ -358,6 +358,19 @@
   gap: 4px;
 }
 
+/* A scenario's Map / 3-D button (scenario/run.ts): the flight card's pill; on phones its icon alone. */
+@media (max-width: 640px) {
+  .fh-playbar-view {
+    width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .fh-playbar-view-l {
+    display: none;
+  }
+}
+
 /* The scale (opts.scale: the hours): small labels under the rail, each centred on its time, inset as the rail is. The
    track gives them room below the scrubber. */
 .fh-playbar.fh-has-scale .fh-playbar-track {

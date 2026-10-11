@@ -90,6 +90,8 @@ const P: Record<string, string> = {
   // Record (a dot in a ring) and stop (a square): a flight recorded to a file.
   record: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z',
   stop: 'M7.5 7.5h9v9h-9z',
+  // A dial and its needle: the top-down map's small instrument panel.
+  gauge: 'M4.6 17.5a8.5 8.5 0 1 1 14.8 0M12 13.5l4-5.5M12 13.5h.01',
 }
 
 const NS = 'http://www.w3.org/2000/svg'

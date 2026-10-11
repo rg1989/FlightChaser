@@ -1,11 +1,8 @@
 /* client/ui/mapKey.css */
 /* The top-down map's key (mapKey.ts), bottom left: the altitude colours bar, the scale rulers under it. Never takes the
-   pointer; the chase hides it. On phones it sits above the tab strip and gives way to a card there. */
+   pointer; the chase hides it. It stands in the bottom left corner (.fh-botleft, miniGauges.css) under the small
+   instrument panel; on phones it gives way to a card there. */
 .fh-mapkey {
-  position: absolute;
-  z-index: 12;
-  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  left: var(--fh-left);
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -90,10 +87,6 @@
 }
 
 @media (max-width: 640px) {
-  .fh-mapkey {
-    bottom: calc(var(--fh-tabbar-h) + 8px);
-  }
-
   .fh-ui:has(.fh-card:not([hidden])) .fh-mapkey {
     display: none;
   }
