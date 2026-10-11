@@ -71,6 +71,11 @@ html[data-tv] .fh-playbar .fh-ibtn[title]:focus::after {
   bottom: calc(100% + 10px);
 }
 
+html[data-tv] .fh-ui[data-scenario] .fh-spot-bottom .fh-ibtn[data-tip]:focus::after {
+  left: 0;
+  transform: none;
+}
+
 html[data-tv] .fh-panel-head .fh-ibtn[data-tip]:focus::after {
   left: auto;
   right: 0;

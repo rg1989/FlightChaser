@@ -148,6 +148,12 @@
   transform: translateX(-50%);
 }
 
+/* In a scenario that button stands in the bottom left corner: its tooltip starts at its left edge, inside the view. */
+.fh-ui[data-scenario] .fh-spot-bottom .fh-ibtn[data-tip]:hover::after {
+  left: 0;
+  transform: none;
+}
+
 .fh-panel {
   position: absolute;
   z-index: 19;
