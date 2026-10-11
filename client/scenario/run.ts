@@ -315,7 +315,8 @@ export class ScenarioRun {
     const f = this.player.step(dtS)
     const clock = this.player.clock
     this.#bar.update({ t: f.t, playing: clock.playing, rate: clock.rate, clock: clockText(f.t), phase: f.event.phase })
-    this.#pill.update(`${scenarioDay(this.scenario.date, f.t)} · ${clockText(f.t)} ${this.scenario.clockLabel}`)
+    // (the pill says the day, so its clock is that day's: the play bar's runs on past 24:00)
+    this.#pill.update(`${scenarioDay(this.scenario.date, f.t)} · ${clockText(f.t - Math.floor(f.t / 86_400) * 86_400)} ${this.scenario.clockLabel}`)
     this.#captions.update(f.lines.map((l) => this.#views.get(l)!))
     this.#story.update(f.story === null ? null : { key: f.story.key, clock: `${clockText(f.story.t)} ${this.scenario.clockLabel}`, text: f.story.text })
     this.#title.update(f.mark === null ? null : { key: f.mark.key, text: f.mark.label }, f.jumped)

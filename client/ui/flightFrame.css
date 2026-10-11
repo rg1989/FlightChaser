@@ -971,8 +971,25 @@
   min-width: 26px;
 }
 
+/* Room for the usual figures (38,000 ft, 480 kt, 4,000 ft/min), so a digit more or less does not move the card. */
+.fh-fblock[data-v='2'][data-block='left'] :is(.fh-dig, .fh-vsl) .fh-v {
+  min-width: 3.3em;
+}
+
+.fh-fblock[data-v='2'][data-block='right'] .fh-v {
+  min-width: 1.75em;
+}
+
 .fh-fblock[data-v='2'] :is(.fh-bhead, .fh-brow, .fh-dual, .fh-agl, .fh-tas, .fh-hdgcol, .fh-thrust, .fh-gload, .fh-annun) {
   display: none;
+}
+
+/* The wind keeps its name: without the dial (no heading to draw it against) it is a bare figure. */
+.fh-fblock[data-v='2'] .fh-wind .fh-bhead {
+  display: flex;
+  min-width: 26px;
+  min-height: 0;
+  margin-right: 5px;
 }
 
 .fh-fblock[data-v='2'] .fh-wind {
@@ -1022,6 +1039,24 @@
 
 .fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-adi-ladder text {
   fill: var(--fh-i-text);
+}
+
+/* An estimated attitude (every live one) mutes the glass look's own sky and ground: in a look, the look's, a little dimmed. */
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-adi.fh-est {
+  --fh-i-sky0: inherit;
+  --fh-i-sky1: inherit;
+  --fh-i-gnd0: inherit;
+  --fh-i-gnd1: inherit;
+  opacity: 0.86;
+}
+
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-ann {
+  border-color: var(--fh-i-line);
+  background: none;
+}
+
+.fh-frame:is([data-look='hud'], [data-look='amber'], [data-look='ice']) .fh-vsi-bar {
+  background: var(--fh-i-green);
 }
 
 /* A head-up display: green figures and lines on a faint green glass, no card behind them to speak of. */
@@ -1617,6 +1652,13 @@
   color-scheme: dark;
 }
 
+.fh-fbar-sel:hover {
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 14px) 13px, calc(100% - 9.5px) 13px;
+  background-size: 4.5px 4.5px, 4.5px 4.5px;
+  background-repeat: no-repeat;
+}
+
 .fh-fbar-sel.fh-off {
   color: var(--fh-muted);
 }
@@ -1667,7 +1709,7 @@
     margin: 0;
   }
 
-  .fh-fbar .fh-funits-seg .fh-funits-b {
+  .fh-fbar-row .fh-funits-b {
     flex: 1;
     height: 34px;
     padding: 0 6px;
@@ -1682,7 +1724,8 @@
     flex: 1 0 100%;
   }
 
-  .fh-fbar .fh-fbar-sel {
+  .fh-fbar .fh-fbar-sel,
+  .fh-fbar .fh-fbar-sel:hover {
     flex: 1 0 40%;
     background-position: calc(100% - 14px) 17px, calc(100% - 9.5px) 17px;
   }

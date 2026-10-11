@@ -774,6 +774,7 @@ export class FlightFrame {
   #area: Rect = { x: 0, y: 0, w: 0, h: 0 } // the view inside PAD: where a moved card may go
   #avoid: readonly Rect[] = [] // what a moved card keeps clear of: the covers, and the toolbar while editing
   #bar0: Rect | null = null // the toolbar's place this edit session (null: not placed yet)
+  #barCheck = false // the layout changed under the toolbar: it is measured again, and moved off a card that now lies under it
   // A card being resized by a bottom corner: the corner, its box when pressed (layer px) and scale, where the pointer pressed.
   #rs: { id: BlockId; corner: 'bl' | 'br'; pointer: number; k0: number; x0: number; y0: number; w0: number; h0: number; px: number; py: number; v?: number } | null = null
   readonly #guideV = h('div', 'fh-fguide fh-fguide-v') // the lines a moved or resized card snapped to
@@ -1054,6 +1055,13 @@ export class FlightFrame {
     this.#idRect = idShown ? { x: sq.x - w / 2, y: idB - ID_H, w, h: ID_H } : null
     move(this.#id, `translate(-50%, ${Math.max(0, (sq.side - ls) / 2).toFixed(1)}px)`)
     if (this.#editing && this.#bar0 === null) this.#placeBar(room.covers, at)
+    else if (this.#editing && this.#barCheck) {
+      const b = this.#bar0!
+      const bar = { ...b, w: this.#bar.offsetWidth, h: this.#bar.offsetHeight } // its second row changed
+      this.#bar0 = bar
+      if (underCard(bar.x, bar.y, bar.x + bar.w, bar.y + bar.h)) this.#placeBar(room.covers, at)
+    }
+    this.#barCheck = false
   }
 
   destroy(): void {
@@ -1390,9 +1398,12 @@ export class FlightFrame {
     this.#arrange(() => {
       const p = this.#prefs
       p.hidden = p.hidden.filter((x) => x !== id)
-      if (v === null) p.hidden.push(id)
-      else if (v === 0) delete p.variant[id]
+      if (v === null) return void p.hidden.push(id)
+      if (v === 0) delete p.variant[id]
       else p.variant[id] = v
+      // A moved card kept the variant it had when it was pinned: the one chosen now takes its place.
+      const m = p.moved[id]
+      if (m !== undefined) p.moved[id] = { x: m.x, y: m.y }
     })
   }
 
@@ -1413,6 +1424,7 @@ export class FlightFrame {
     this.#textAt = -Infinity
     this.#placed = {} // no hysteresis from the layout before
     this.#auto = {}
+    this.#barCheck = true
     this.#reset.disabled = ready !== null || this.#plain()
     this.#paintBar()
   }

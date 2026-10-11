@@ -48,4 +48,9 @@ test('dockAt, the edges: the tapes at the sides, level with the middle by their 
   assert.deepEqual(at.top, { x: 720 - 135, y: 158 })
   assert.deepEqual(at.bottom, { x: 720 - 135, y: 158 + 490 - 118 })
   assert.equal(dockAt('edges', full, { ...safe, w: 480 }, view, [], 10), null) // no width for the tapes beside the heading
+  // A low room: the tapes stay inside it; the flight card open on a small window (the room starts at 320): the attitude
+  // would lie on the altitude tape, so there is no such layout there.
+  const low = dockAt('edges', full, { ...safe, h: 240 }, view, [], 10)!
+  assert.ok(low.left!.y >= 158 && low.left!.y + 227 <= 158 + 240, `altitude at ${low.left!.y}`)
+  assert.equal(dockAt('edges', full, { x: 320, y: 62, w: 680, h: 420 }, { x: 12, y: 12, w: 1000, h: 500 }, [], 10), null)
 })

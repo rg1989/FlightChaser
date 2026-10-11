@@ -65,21 +65,25 @@ export function dockAt(
     // The heading and the attitude over and under the view's middle (the aircraft's), kept inside the frame's room.
     const mid = { x: view.x + view.w / 2, y: safe.y + safe.h / 2 }
     const inX = (x: number, b: BlockSize): number => Math.min(Math.max(x, safe.x), safe.x + safe.w - b.w)
+    const inY = (y: number, b: BlockSize): number => Math.min(Math.max(y, safe.y), safe.y + safe.h - b.h)
     const at: Record<BlockId, (b: BlockSize) => { x: number; y: number }> = {
-      left: (b) => ({ x: safe.x, y: mid.y - (b.ay ?? b.h / 2) }),
-      right: (b) => ({ x: safe.x + safe.w - b.w, y: mid.y - (b.ay ?? b.h / 2) }),
+      left: (b) => ({ x: safe.x, y: inY(mid.y - (b.ay ?? b.h / 2), b) }),
+      right: (b) => ({ x: safe.x + safe.w - b.w, y: inY(mid.y - (b.ay ?? b.h / 2), b) }),
       top: (b) => ({ x: inX(mid.x - (b.ax ?? b.w / 2), b), y: safe.y }),
       bottom: (b) => ({ x: inX(mid.x - (b.ax ?? b.w / 2), b), y: safe.y + safe.h - b.h }),
     }
-    for (const id of ROW) {
-      const b = sizes[id]
-      if (b === undefined) continue
+    const ids = ROW.filter((id) => sizes[id] !== undefined)
+    for (const id of ids) {
+      const b = sizes[id]!
       if (b.w > safe.w || b.h > safe.h) return null
       out[id] = at[id](b)
     }
-    // The tapes at the sides need the width the heading and the attitude take between them.
-    const [l, r, t] = [sizes.left, sizes.right, sizes.top ?? sizes.bottom]
-    return l !== undefined && r !== undefined && t !== undefined && l.w + r.w + t.w + 2 * gap > safe.w ? null : out
+    // No room for it where two of them would meet (a narrow or low room: a tape under the heading, the attitude on a tape).
+    const meet = (a: BlockId, b: BlockId): boolean => {
+      const [p, q, s, t] = [out[a]!, out[b]!, sizes[a]!, sizes[b]!]
+      return p.x < q.x + t.w + gap && q.x < p.x + s.w + gap && p.y < q.y + t.h + gap && q.y < p.y + s.h + gap
+    }
+    return ids.some((a, i) => ids.slice(i + 1).some((b) => meet(a, b))) ? null : out
   }
   if (dock === 'row') {
     const ids = ROW.filter((id) => sizes[id] !== undefined)
