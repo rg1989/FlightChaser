@@ -98,6 +98,8 @@ test('detailRows: emergency squawks and the emergency field are flagged', () => 
   // info wins over raw for identity fields
   const i = detailRows(null, RAW, { ...INFO, squawk: '7700', emergency: 'general' }, NONE)[1].rows.find((r) => r.key === 'squawk')!
   assert.deepEqual([i.value, i.alert], ['7700 · general', true])
+  assert.match(i.hint ?? '', /^7700: general emergency\.[^\n]*$/)
+  assert.equal(row(RAW).hint, null, 'a plain code has no tooltip')
 })
 
 test('detailRows: WGS84 altitude is hinted as uncertain below ADS-B v2', () => {

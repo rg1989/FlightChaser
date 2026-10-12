@@ -1,7 +1,7 @@
 // shared/alerts.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { ongoing, pushBody, pushTitle, what, who, type AlertEvent } from './alerts.ts'
+import { explain, ongoing, pushBody, pushTitle, what, who, type AlertEvent } from './alerts.ts'
 
 const ev = (o: Partial<AlertEvent> = {}): AlertEvent => ({
   id: '89645a-1000', hex: '89645a', kind: 'squawk', callsign: 'FDB1073', reg: 'A6-FNC', type: 'B38M', squawk: '7700',
@@ -25,6 +25,17 @@ test('what: the status, else the meaning of the squawk, then the code; a fall fi
   const dive = ev({ kind: 'dive', drop: { fromFt: 34_678, toFt: 30_045, overS: 30, lost: true } })
   assert.equal(what(dive), 'Dived 4,633 ft in 30 s, then lost · 7700')
   assert.equal(what(ev({ kind: 'descent', squawk: null, drop: { fromFt: 30_000, toFt: 19_000, overS: 120, lost: false } })), 'Fell 11,000 ft in 2 min from FL300')
+})
+
+test('explain: a line for each code that is known; a status that only repeats the squawk is left out', () => {
+  assert.match(explain('7700', null), /^7700: general emergency\./)
+  assert.match(explain('7600', null), /^7600: radio failure\./)
+  assert.match(explain('7500', 'unlawful'), /^7500: unlawful interference\.[^\n]*$/, 'one line: the status says the same')
+  assert.equal(explain('7700', 'minfuel').split('\n').length, 2)
+  assert.match(explain(null, 'general'), /^Emergency: /)
+  assert.match(explain(null, null, { fromFt: 35_000, toFt: 22_700, overS: 110, lost: false }), /^Fall: /)
+  assert.match(explain('7700', null, { fromFt: 34_678, toFt: 30_045, overS: 30, lost: true }), /\nDive: /)
+  assert.equal(explain('2000', 'constructor'), '', 'a code swept for a test, and a status that is no entry of the table')
 })
 
 test('what: a lost fall reads as a dive, whatever opened the event (a squawk event that a dive was added to)', () => {

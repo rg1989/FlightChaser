@@ -1,6 +1,7 @@
 // client/ui/detail.ts
 // The selected aircraft's details as pure text: callsign and hex, identity, then Spatial, Signal, FMS SEL and Wind
 // sections. flightCard.ts shows them (expanded) under its photo.
+import { explain } from '../../shared/alerts.ts'
 import type { AircraftInfo } from '../../shared/info.ts'
 import type { Quality, ReadsbAircraft } from '../../shared/types.ts'
 import type { RenderState } from '../types.ts'
@@ -134,7 +135,7 @@ export function detailRows(s: RenderState | null, raw: ReadsbAircraft | null, in
       row('airline', 'Airline', lookup.airline),
       row('dbFlags', 'DB flags', flags.length ? flags.join(' · ') : null),
       row('type', 'Type', info?.typeCode ?? s?.typeCode ?? str(raw?.t)),
-      row('squawk', 'Squawk', squawkText, emergency !== null || meaning !== undefined),
+      row('squawk', 'Squawk', squawkText, emergency !== null || meaning !== undefined, explain(squawk, emergency) || null),
       row('route', 'Route', route),
     ] },
     { id: 'spatial', title: 'Spatial', rows: [

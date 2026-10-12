@@ -16,7 +16,7 @@
 // what following and replaying do.
 // ponytail: a browser that freezes or discards a background tab runs no timer there, so no notification comes; ntfy is the
 // path then.
-import { ongoing, what, who, type AlertEvent, type EventsReply } from '../../shared/alerts.ts'
+import { explain, ongoing, what, who, type AlertEvent, type EventsReply } from '../../shared/alerts.ts'
 import { PUBLISH_DELAY_MS, SLOT_MS, slotOf } from '../../shared/history.ts'
 import { icon, type IconName } from './icons.ts'
 import './sceneToggles.css' // the switch rows are the Layers panel's (.fh-scene-row and its parts)
@@ -587,6 +587,8 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
     setAttr(r.main, 'aria-label', rowLabel(e, now))
     const tip = r.action === 'replay' ? 'Replay in History' : ongoing(e, now) ? 'Follow live' : 'Go to where it was last heard'
     if (r.main.title !== tip) r.main.title = tip
+    const means = explain(e.squawk, e.emergency, e.drop) // over the tag and the words, in place of the button's own tip
+    if (r.tag.title !== means) r.tag.title = r.what.title = means
     show(r.dot, ongoing(e, now)) // live
     show(r.late, e.late)
     show(r.altBtn, r.alt === 'replay')
@@ -728,6 +730,7 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
     el.dataset.id = e.id
     el.dataset.tone = tag.tone
     el.dataset.action = action
+    el.title = explain(e.squawk, e.emergency, e.drop)
     const tagEl = h('span', 'fh-alerts-tag fh-num', tag.text)
     tagEl.setAttribute('aria-hidden', 'true')
     const go = h('button', 'fh-pill fh-alerts-toast-go', action === 'follow' ? 'Follow' : 'Replay')

@@ -62,6 +62,22 @@ const STATUS_TEXT: Record<string, string> = {
   downed: 'Downed aircraft',
 }
 
+// What each code means, in a sentence: the text shown when the pointer rests on a code.
+const SQUAWK_MEANING: Record<string, string> = {
+  '7700': '7700: general emergency. The crew set this code to tell air traffic control the aircraft is in trouble.',
+  '7600': '7600: radio failure. The crew cannot talk to air traffic control.',
+  '7500': '7500: unlawful interference. The crew signals a hijack.',
+}
+const STATUS_MEANING: Record<string, string> = {
+  general: 'Emergency: the aircraft reports a general emergency.',
+  lifeguard: 'Lifeguard: a medical flight that asks for priority.',
+  minfuel: 'Minimum fuel: a delay could leave the aircraft short of its reserve.',
+  nordo: 'No radio: the crew cannot talk to air traffic control.',
+  unlawful: 'Unlawful interference: the aircraft reports a hijack.',
+  downed: 'Downed aircraft: it reports a crash or a forced landing.',
+}
+const SAME_AS_SQUAWK: Record<string, string> = { general: '7700', nordo: '7600', unlawful: '7500' } // the status a code sets by itself
+
 /** A table's own entry for the key: not an inherited name such as 'constructor'. */
 const text = (table: Record<string, string>, key: string): string | undefined => (Object.hasOwn(table, key) ? table[key] : undefined)
 
@@ -97,6 +113,18 @@ export function what(e: AlertEvent): string {
   else if (e.squawk !== null) parts.push(text(SQUAWK_TEXT, e.squawk) ?? 'Squawk')
   if (e.squawk !== null) parts.push(e.squawk)
   return parts.join(' · ')
+}
+
+/**
+ * What the codes mean, a line each: the squawk, the aircraft's own status (unless it only repeats the squawk), then a fall.
+ * '' when none of them is known (a code swept for a test).
+ */
+export function explain(squawk: string | null, emergency: string | null, drop: AlertDrop | null = null): string {
+  const lines: (string | undefined)[] = []
+  if (squawk !== null) lines.push(text(SQUAWK_MEANING, squawk))
+  if (emergency !== null && text(SAME_AS_SQUAWK, emergency) !== (squawk ?? '')) lines.push(text(STATUS_MEANING, emergency))
+  if (drop !== null) lines.push(drop.lost ? 'Dive: it lost height very fast, then its signal stopped.' : 'Fall: it lost height much faster than a normal descent.')
+  return lines.filter((l) => l !== undefined).join('\n')
 }
 
 /** ASCII only (an HTTP header carries the push's title): ' · ' becomes ' - ', anything else outside ASCII goes. */
