@@ -53,7 +53,7 @@ interface Aid { key: 'track' | 'slice' | 'strip'; icon: IconName; label: string;
 const AIDS: Aid[] = [
   { key: 'track', icon: 'plane', label: 'Track line', hint: 'The next six minutes on this heading' },
   { key: 'slice', icon: 'layers', label: 'Level slice', hint: "The weather at the aircraft's own altitude" },
-  { key: 'strip', icon: 'altitude', label: 'Ahead strip', hint: 'Side view of the next 80 km' },
+  { key: 'strip', icon: 'altitude', label: 'Ahead strip', hint: 'Side view of the next 6 minutes' },
 ]
 const NO_SLICE = 'Not in the Sculpted look yet' // the level slice's hint in that look, where it is not drawn
 /** A control group or a row, in use or not: its controls, and the box that says so. */

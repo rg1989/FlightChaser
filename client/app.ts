@@ -939,12 +939,14 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // profile takes up to 6 ms and the look's own work up to 5, which in one frame was a hold of 11 ms. So the strip shows the sky as
   // it was a quarter second ago, and comes a quarter second after it is switched on. Hidden with the weather: nothing is worked out.
   // Until a source of clouds has answered (weather3d.known) the status line says "No weather data" and the strip has no cells.
-  // wxAids are the Looking ahead choices of the Weather menu (wxPrefs: the track line, the level slice, the ahead strip).
+  // wxAids are the Looking ahead choices of the Weather menu (wxPrefs: the track line, the level slice, the ahead strip); the heights
+  // the strip shows (round the way, or the whole sky) are chosen on the strip itself, and kept with them.
   // ponytail: the minute labels are placed with the names (placeLabels.ts), a few times a second, so they trail the track line by up to
   // WX_LOOK_MS. (They are a layer of the names overlay, like the hazard areas' labels: they show whether or not Borders & places is on, and
   // while they do the overlay places its names every frame.) Upgrade: PlaceLabels moves a layer's labels in place, every frame.
-  const wxHud = mountWxHud(ui)
+  const wxHud = mountWxHud(ui, (view) => setWxPrefs({ ...wxPrefs, view }))
   const wxAids = { track: wxPrefs.track, slice: wxPrefs.slice, strip: wxPrefs.strip }
+  let wxSky = wxPrefs.view === 'sky' // the strip shows the whole sky, not the heights round the way (its own two buttons)
   let wxLookMs = -Infinity
   let wxHudUp = false // the HUD shows something
   let wxKept: KeptProfile | null = null // the ahead strip's profile, kept while it would show the same (scene/wxAhead.ts keepProfile)
@@ -968,7 +970,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const field = known ? weather3d.field : null
     if (wxProfileDue) {
       wxProfileDue = false
-      wxKept = keepProfile(wxKept, path, field, hazards)
+      const was = wxKept
+      wxKept = keepProfile(wxKept, path, field, hazards, wxSky)
+      if (was !== null && wxKept.profile.topM - wxKept.profile.baseM !== was.profile.topM - was.profile.baseM) wxLookMs = -Infinity // other heights were asked for (Path, Sky): shown at the next frame, not a quarter second on
       return
     }
     wxLookMs = now
@@ -996,7 +1000,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     wxAids.track = p.track
     wxAids.slice = p.slice
     wxAids.strip = p.strip
+    wxSky = p.view === 'sky'
     wxHud.setStrip(p.strip)
+    wxHud.setView(p.view)
     wxLookMs = -Infinity
   }
   applyWxPrefs(wxPrefs)

@@ -39,9 +39,12 @@
   fence or a box, each with a faint roof at the area's top height; nothing is drawn on the ground under an area.
   **Looking ahead:** three switches, the track line (the next six minutes on this heading, a label at each minute, coloured where it
   enters weather), the level slice (the weather at the aircraft's own altitude within 60 km, with rings at 10, 20 and 40 km) and the
-  ahead strip (a side view of the next 80 km: the weather's cells, the hazard areas, the aircraft's way; not in a window under 480 px
-  high). A choice applies at once and is kept in this browser; `?wxlook=natural|severity|sculpted`, `?wxopacity=0…100`, `?wxhaz=curtain|fence|box` and
-  `?wxtrack`, `?wxslice`, `?wxstrip` (`=0` or `=1`) set them for one load, and are not kept.
+  ahead strip (a side view of the next six minutes: the weather's cells, the hazard areas, the aircraft's way, and a mark where the
+  way goes into weather; not in a window under 480 px high). The strip has two buttons of its own: **Path** shows 3,000 m (about
+  10,000 ft) of heights round the aircraft's way, so the cloud it is about to meet is not a few pixels, and **Sky** the whole sky
+  from sea level to 41,000 ft. A choice applies at once and is kept in this browser; `?wxlook=natural|severity|sculpted`,
+  `?wxopacity=0…100`, `?wxhaz=curtain|fence|box`, `?wxview=path|sky` and `?wxtrack`, `?wxslice`, `?wxstrip` (`=0` or `=1`) set them
+  for one load, and are not kept.
 - The clouds are see-through, in every look: at the opacity they start with a cloud hides a little over half of what is behind it
   and no more, so the ground, the roads and the names stay readable under it, and the aircraft in thick cloud is veiled, not gone.
   A cloud's edge and its lit and shadowed sides still show; the shadows on the ground are light. The opacity slider makes them

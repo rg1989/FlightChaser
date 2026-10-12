@@ -1,13 +1,17 @@
 // client/ui/wxPrefs.ts
 /**
- * The Weather menu's choices (ui/wxMenu.ts): the clouds' look and opacity, the hazard areas' style and the three looking-ahead aids. The URL aids (?wxlook=natural|severity|sculpted,
- * ?wxopacity=0…100, ?wxhaz=curtain|fence|box, ?wxtrack, ?wxslice, ?wxstrip = 0|1) win over localStorage['fh.wx3d.v1'], which wins over the defaults (severity colours at the
- * opacity they were made with, curtains, the track line and the ahead strip on, the level slice off). A look stored that is no more (blocks) is the default's. A URL aid is for the load it comes with: what is saved is kept apart from what is in force, and a choice
+ * The Weather menu's choices (ui/wxMenu.ts): the clouds' look and opacity, the hazard areas' style and the three looking-ahead aids; and the ahead strip's own (ui/wxHud.ts: the
+ * heights it shows). The URL aids (?wxlook=natural|severity|sculpted, ?wxopacity=0…100, ?wxhaz=curtain|fence|box, ?wxtrack, ?wxslice, ?wxstrip = 0|1, ?wxview=path|sky) win over
+ * localStorage['fh.wx3d.v1'], which wins over the defaults (severity colours at the opacity they were made with, curtains, the track line and the ahead strip on, the strip
+ * showing the heights round the aircraft's way, the level slice off). A look stored that is no more (blocks) is the default's. A URL aid is for the load it comes with: what is saved is kept apart from what is in force, and a choice
  * made in the menu saves that choice alone (savedAfter). Pure: the app passes location.search, the stored string and the storage, so Node tests need no DOM.
  * Reading localStorage itself can throw (storage blocked), so the app guards that read.
  */
 import { VEIL } from '../scene/cloudShaders.ts'
 import type { CloudLook, HazardStyle } from '../scene/cloudVolume.ts'
+
+/** The heights the ahead strip shows: those round the aircraft's way, or the whole sky (wxAhead.ts aheadWindow). */
+export type StripView = 'path' | 'sky'
 
 export interface WxPrefs {
   look: CloudLook
@@ -15,16 +19,18 @@ export interface WxPrefs {
   hazard: HazardStyle
   track: boolean // the track line: the next six minutes on this heading
   slice: boolean // the level slice: the weather at the aircraft's own altitude
-  strip: boolean // the ahead strip: a side view of the next 80 km
+  strip: boolean // the ahead strip: a side view of the next 6 minutes
+  view: StripView // the heights the strip shows: chosen on the strip itself
 }
 
 export const WX_PREFS_KEY = 'fh.wx3d.v1'
-export const DEFAULT_WX_PREFS: WxPrefs = Object.freeze({ look: 'severity', opacity: VEIL, hazard: 'curtain', track: true, slice: false, strip: true })
+export const DEFAULT_WX_PREFS: WxPrefs = Object.freeze({ look: 'severity', opacity: VEIL, hazard: 'curtain', track: true, slice: false, strip: true, view: 'path' })
 export const WX_KEYS = Object.keys(DEFAULT_WX_PREFS) as (keyof WxPrefs)[]
 /** The URL aid of each choice. */
-export const WX_URL_KEYS: Readonly<Record<keyof WxPrefs, string>> = Object.freeze({ look: 'wxlook', opacity: 'wxopacity', hazard: 'wxhaz', track: 'wxtrack', slice: 'wxslice', strip: 'wxstrip' })
+export const WX_URL_KEYS: Readonly<Record<keyof WxPrefs, string>> = Object.freeze({ look: 'wxlook', opacity: 'wxopacity', hazard: 'wxhaz', track: 'wxtrack', slice: 'wxslice', strip: 'wxstrip', view: 'wxview' })
 export const WX_LOOKS: readonly CloudLook[] = ['natural', 'severity', 'sculpted']
 export const WX_HAZARDS: readonly HazardStyle[] = ['curtain', 'fence', 'box']
+export const WX_VIEWS: readonly StripView[] = ['path', 'sky']
 
 /** Only one of the choices counts; anything else (missing, another type, another word) keeps the fallback. */
 const choice = <T extends string>(v: unknown, choices: readonly T[], fallback: T): T => (choices.includes(v as T) ? (v as T) : fallback)
@@ -57,6 +63,7 @@ export function readWxPrefs(search: string, stored: string | null): WxPrefs {
     track: flag(q.get(WX_URL_KEYS.track), bool(saved.track, d.track)),
     slice: flag(q.get(WX_URL_KEYS.slice), bool(saved.slice, d.slice)),
     strip: flag(q.get(WX_URL_KEYS.strip), bool(saved.strip, d.strip)),
+    view: choice(q.get(WX_URL_KEYS.view), WX_VIEWS, choice(saved.view, WX_VIEWS, d.view)),
   }
 }
 

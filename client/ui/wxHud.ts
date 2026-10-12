@@ -5,13 +5,18 @@
 //   a chip under it edged in the area's own colour ("Inside hazard area · …", "Hazard area in 2 min · …"); each chip is one line;
 // - while the aircraft is inside a hazard area and under its top, a red frame inset round the whole view: the answer to "am I in it?"
 //   (red whatever the area's colour, and whatever style its edges are drawn in);
-// - the ahead strip under them: a side view of the next 80 km on this heading (the weather's cells in the severity's colours, the hazard
-//   areas dashed, each in its colour, the aircraft's way as a dashed line with a tick each minute, the heights in the frame's units).
-//   A window under 480 px high has no room for it (wxHud.css): it is not drawn there.
-// The app gives it what to say a few times a second (set) and whether the strip shows (setStrip: the Weather menu's choice). Nothing
+// - the ahead strip under them: a side view of the next six minutes on this heading, of 3,000 m of heights round the aircraft's way
+//   (wxAhead.ts aheadWindow: at 2,000 ft the whole sky would leave the aircraft and the cloud it is about to meet a few pixels), or
+//   of the whole sky: the viewer's choice, on the two buttons in the strip's head (Path, Sky; the only part of the HUD that takes
+//   the pointer). The weather's cells in the severity's colours, the hazard areas dashed, each in its colour, the aircraft's way as
+//   a dashed line, a tick each minute, the heights in the frame's units; and what the strip is for: where the way goes into
+//   weather, a mark on it in that weather's colour with a line down to the minutes, and the way drawn solid for as long as it is in
+//   it. A window under 480 px high has no room for it (wxHud.css): it is not drawn there.
+// The app gives it what to say a few times a second (set), whether the strip shows (setStrip: the Weather menu's choice) and which
+// heights it is asked for (setView: a press of Path or Sky asks the app, which makes the profile, and changes nothing itself). Nothing
 // here is computed: set(null …) hides it all, and so does the app while the weather is hidden. The strip is painted again only when
 // it would show something else (another profile, other units, another size, a way ahead that has moved a pixel): a profile lasts a
-// second or more (wxAhead.ts keepProfile), and its up to 8,000 cells are not drawn four times a second. The cells go to the canvas
+// second or so (wxAhead.ts keepProfile), and its up to 8,000 cells are not drawn four times a second. The cells go to the canvas
 // as one picture, a pixel a cell (stripCells), stretched over the plot: as rectangles, one a cell, 600 to 1,500 of them took 2.5 to
 // 7 ms of a frame on the check machine.
 // At a look it first reads what is laid out (its height, the strip's width), then paints the strip, and then writes: a read after a
@@ -27,12 +32,16 @@
 // the search box (app.ts FRAME_COVERS). Upgrade: a block of the flight-data frame.
 import { AHEAD_MIN, SEV_COLOR, STRIP_COVER, pathPointAt, sevOf, statusWords, type AheadPath, type AheadProfile, type AheadStatus } from '../scene/wxAhead.ts'
 import { M_PER_FT, type Units } from './units.ts'
+import type { StripView } from './wxPrefs.ts'
+import './sceneToggles.css' // the strip's two buttons are the panels' segment (.fh-seg)
 import './wxHud.css'
 
 export interface WxHudHandle {
   /** What to show now: no status hides the whole HUD; no profile or path, just the strip. The strip is drawn only while it is on (setStrip). */
   set(status: AheadStatus | null, profile: AheadProfile | null, path: AheadPath | null, units: Units): void
   setStrip(on: boolean): void
+  /** Which of the strip's two buttons is the one on. */
+  setView(view: StripView): void
   /** Whether its parts may stand elsewhere, or be of another size, than when this was last asked (the app then measures where they are, before the next set). */
   moved(): boolean
   destroy(): void
@@ -45,20 +54,23 @@ export type StripContext = Pick<CanvasRenderingContext2D,
 
 const UNKNOWN_COLOR = 'var(--fh-muted)' // the status dot while the sky is not known
 const PATH_COLOR = '#ffd23f' // the traffic's yellow (theme.css --fh-traffic): the aircraft and its way
+const CASE_COLOR = 'rgba(8, 12, 18, 0.8)' // under the way where it is in weather, and round the mark where it goes in: both lie on cells of any colour
 const AXIS_COLOR = '#8e9aab' // theme.css --fh-muted
 const GRID_COLOR = 'rgba(142, 154, 171, 0.25)'
 const PLOT_COLOR = 'rgba(255, 255, 255, 0.045)'
 const FONT_PX = 11
 const FALLBACK_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif'
 const STRIP_W = 400 // the strip's drawn size when the page has not laid it out (a test)
-const STRIP_RATIO = 0.28 // its height of its width; the canvas's CSS keeps the same shape
+// The strip's two buttons: the heights it shows (wxPrefs.ts StripView), and what each says when pointed at.
+const VIEWS: [StripView, string, string][] = [['path', 'Path', "The heights on the aircraft's path"], ['sky', 'Sky', 'The whole sky, sea level to 41,000 ft']]
+const STRIP_RATIO = 0.34 // its height of its width; the canvas's CSS keeps the same shape
 const PAD = { left: 58, right: 8, rightBoth: 58, top: 6, bottom: 18 } // CSS px round the plot: the height labels at its left (and right, in both units), the minutes under it
 const TICK_PX = 6
 const MIN_LABEL_GAP_PX = 44 // the least room between two minute labels: a slow aircraft's minutes are close, and every other is named
 const MIN_LABEL_PX = 34 // a minute label's width, about ("6 min" at 11 px)
-const GRID_FT = [10_000, 20_000, 30_000, 40_000] // the gridlines, in the unit the strip's heights are in
-const GRID_M = [3000, 6000, 9000, 12_000]
-const TRACE_STEP_KM = 5
+const MARK_PX = 4.5 // the mark where the way goes into weather: a diamond this far from its middle to a corner
+/** The gridlines of a strip that shows spanM of heights, [feet, metres] apart: three to five lines (the whole sky's are the ten thousands of feet). */
+const gridStep = (spanM: number): [number, number] => (spanM <= 3000 ? [2000, 1000] : [10_000, 3000])
 
 /** The plot's rectangle inside a strip of w × h CSS px, its heights in these units. */
 export function stripPlot(w: number, h: number, units: Units): { x0: number; y0: number; x1: number; y1: number } {
@@ -94,19 +106,24 @@ export function stripCells(profile: AheadProfile, out: Uint8ClampedArray = new U
 
 /**
  * The ahead strip on a canvas of w × h CSS px (its context scaled to them): the cells' picture (stripCells, on a canvas of its own:
- * `cells`; none: no cell is drawn) over the plot, the hazard areas the path crosses (a dashed box in the area's colour, base to top),
- * the gridlines with their heights in the frame's units (feet, metres, or feet at the left and metres at the right), the minutes
- * under the plot, and the way ahead as a dashed line from a marker for the aircraft.
+ * `cells`; none: no cell is drawn) over the plot, the hazard areas the path crosses (dashed, in the area's colour: its sides, and
+ * its base and top where the strip's heights reach them), the gridlines with their heights in the frame's units (feet, metres, or
+ * feet at the left and metres at the right), the minutes under the plot, and the way ahead as a dashed line from a marker for the
+ * aircraft, to where it comes down to the sea's height or leaves the heights shown, if it does. Where the way is in weather (the
+ * profile's contacts) it is solid, on a dark casing; where it goes in, a diamond in that weather's colour stands on it, with a line
+ * down to the minutes (past where the way has left the heights shown, the diamond stands on the edge it left by, at its minute).
  */
 export function drawStrip(ctx: StripContext, w: number, h: number, profile: AheadProfile, path: AheadPath, units: Units, family = FALLBACK_FONT, cells: CanvasImageSource | null = null): void {
   const { x0, y0, x1, y1 } = stripPlot(w, h, units)
   const [pw, ph] = [x1 - x0, y1 - y0]
-  const X = (km: number): number => x0 + (km / profile.kmAhead) * pw
-  const Y = (m: number): number => y1 - (Math.min(m, profile.topM) / profile.topM) * ph
+  const { baseM, topM, kmAhead } = profile
+  const X = (km: number): number => x0 + (km / kmAhead) * pw
+  const Y = (m: number): number => y1 - ((Math.min(Math.max(m, baseM), topM) - baseM) / (topM - baseM)) * ph
+  const shown = profile.hazards.filter((z) => z.topM > baseM && z.baseM < topM) // (an area wholly over or under these heights is not in the picture)
   ctx.clearRect(0, 0, w, h)
   ctx.fillStyle = PLOT_COLOR
   ctx.fillRect(x0, y0, pw, ph)
-  for (const z of profile.hazards) { // the hazard areas: from the base to the top, over the stretch of the path inside, each in its own colour
+  for (const z of shown) { // the hazard areas: from the base to the top, over the stretch of the path inside, each in its own colour
     const [ax, ay, bx, by] = [X(z.fromKm), Y(z.topM), X(z.toKm), Y(z.baseM)]
     ctx.globalAlpha = 0.14
     ctx.fillStyle = z.color
@@ -119,20 +136,30 @@ export function drawStrip(ctx: StripContext, w: number, h: number, profile: Ahea
   }
   ctx.lineWidth = 1.5
   ctx.setLineDash([5, 3])
-  for (const z of profile.hazards) {
+  for (const z of shown) { // an edge is drawn where the area ends, not where the strip does
+    const [ax, ay, bx, by] = [X(z.fromKm), Y(z.topM), X(z.toKm), Y(z.baseM)]
+    const edges = [z.fromKm > 0 && [ax, by, ax, ay], z.toKm < kmAhead && [bx, ay, bx, by], z.topM <= topM && [ax, ay, bx, ay], z.baseM >= baseM && [ax, by, bx, by]]
     ctx.strokeStyle = z.color
-    ctx.strokeRect(X(z.fromKm), Y(z.topM), X(z.toKm) - X(z.fromKm), Y(z.baseM) - Y(z.topM))
+    ctx.beginPath()
+    for (const e of edges) {
+      if (e === false) continue
+      ctx.moveTo(e[0], e[1])
+      ctx.lineTo(e[2], e[3])
+    }
+    ctx.stroke()
   }
   ctx.setLineDash([])
-  // The heights.
+  // The heights: the round ones the strip's heights hold.
   ctx.font = `500 ${FONT_PX}px ${family}`
   ctx.fillStyle = AXIS_COLOR
   ctx.strokeStyle = GRID_COLOR
   ctx.lineWidth = 1
   ctx.textBaseline = 'middle'
   const metres = units.alt === 'm'
-  for (const n of metres ? GRID_M : GRID_FT) {
-    const y = Y(metres ? n : n * M_PER_FT)
+  const unitM = metres ? 1 : M_PER_FT
+  const step = gridStep(topM - baseM)[metres ? 1 : 0]
+  for (let n = (Math.floor(baseM / unitM / step) + 1) * step; n * unitM < topM; n += step) {
+    const y = Y(n * unitM)
     ctx.beginPath()
     ctx.moveTo(x0, y)
     ctx.lineTo(x1, y)
@@ -144,34 +171,75 @@ export function drawStrip(ctx: StripContext, w: number, h: number, profile: Ahea
       ctx.fillText(`${thousands(Math.round((n * M_PER_FT) / 50) * 50)} m`, x1 + 5, y)
     }
   }
-  // The minutes: a tick each, and the number under it where there is room.
+  // The minutes: the strip is AHEAD_MIN of them wide. A tick each, and the number under it where there is room.
   ctx.textAlign = 'center'
   ctx.textBaseline = 'top'
   let named = -Infinity
   for (let m = 1; m <= AHEAD_MIN; m++) {
-    const km = m * path.kmPerMin
-    if (km > profile.kmAhead) break
-    const x = X(km)
+    const x = x0 + (m / AHEAD_MIN) * pw
     ctx.beginPath()
     ctx.moveTo(x, y1)
     ctx.lineTo(x, y1 - TICK_PX)
     ctx.stroke()
     if (x - named < MIN_LABEL_GAP_PX) continue
     named = x
-    const inside = x + MIN_LABEL_PX / 2 <= w // a minute at the plot's far edge: its label ends at the strip's edge, not past it
+    const inside = x + MIN_LABEL_PX / 2 <= w // the last minute, at the plot's far edge: its label ends at the strip's edge, not past it
     ctx.textAlign = inside ? 'center' : 'right'
     ctx.fillText(`${m} min`, inside ? x : w - 1, y1 + 4)
   }
-  // The way ahead, from the aircraft.
+  // The way ahead, from the aircraft: to the strip's far edge, or to where a descent held on comes down to the sea's height (what
+  // is past a landing is not the way), or to where a steep one leaves the heights shown (it goes on over or under them).
+  const alt = (km: number): number => pathPointAt(path, km).altM
+  const { points, kmPerMin } = path
+  const down = points[0].altM > 0 ? points.findIndex((p) => p.altM <= 0) : -1
+  const groundKm = down > 0 ? Math.min(kmAhead, down * kmPerMin) : kmAhead
+  const out = points[0].altM < baseM || points[0].altM > topM ? -1 : points.findIndex((p) => p.altM < baseM || p.altM > topM) // (an aircraft over the whole sky's top has its way held to it)
+  const edge = out > 0 ? (points[out].altM > topM ? topM : baseM) : 0
+  const seenKm = out > 0 ? Math.min(groundKm, (out - 1 + (edge - points[out - 1].altM) / (points[out].altM - points[out - 1].altM)) * kmPerMin) : groundKm
+  /** The way from fromKm to toKm, stroked: straight from each minute to the next. */
+  const trace = (fromKm: number, toKm: number): void => {
+    ctx.beginPath()
+    ctx.moveTo(X(fromKm), Y(alt(fromKm)))
+    for (let km = (Math.floor(fromKm / kmPerMin) + 1) * kmPerMin; km < toKm; km += kmPerMin) ctx.lineTo(X(km), Y(alt(km)))
+    ctx.lineTo(X(toKm), Y(alt(toKm)))
+    ctx.stroke()
+  }
   ctx.strokeStyle = PATH_COLOR
   ctx.lineWidth = 2
   ctx.setLineDash([6, 3.5])
-  ctx.beginPath()
-  ctx.moveTo(x0, Y(path.points[0].altM))
-  for (let km = TRACE_STEP_KM; km < profile.kmAhead; km += TRACE_STEP_KM) ctx.lineTo(X(km), Y(pathPointAt(path, km).altM))
-  ctx.lineTo(x1, Y(pathPointAt(path, profile.kmAhead).altM))
-  ctx.stroke()
+  trace(0, seenKm)
   ctx.setLineDash([])
+  // Where the way is in weather: solid, on a casing; and where it goes in, the mark, with its line down to the minutes.
+  const met = profile.contacts.filter((c) => c.fromKm < groundKm)
+  for (const [color, width] of [[CASE_COLOR, 6], [PATH_COLOR, 3]] as const) {
+    ctx.strokeStyle = color
+    ctx.lineWidth = width
+    for (const c of met) if (c.fromKm < seenKm) trace(c.fromKm, Math.min(c.toKm, seenKm))
+  }
+  for (const c of met) {
+    if (!(c.fromKm > 0)) continue // (the aircraft is in it now: its own marker stands there)
+    const [x, y] = [X(c.fromKm), Y(alt(c.fromKm))]
+    for (const [color, width] of [[CASE_COLOR, 3], [SEV_COLOR[sevOf(c.sev)], 1]] as const) {
+      if (!(y < y1)) break // (on the plot's foot: nothing to draw down)
+      ctx.strokeStyle = color
+      ctx.lineWidth = width
+      ctx.beginPath()
+      ctx.moveTo(x, y)
+      ctx.lineTo(x, y1)
+      ctx.stroke()
+    }
+    ctx.fillStyle = SEV_COLOR[sevOf(c.sev)]
+    ctx.strokeStyle = CASE_COLOR
+    ctx.lineWidth = 1.5
+    ctx.beginPath()
+    ctx.moveTo(x, y - MARK_PX)
+    ctx.lineTo(x + MARK_PX, y)
+    ctx.lineTo(x, y + MARK_PX)
+    ctx.lineTo(x - MARK_PX, y)
+    ctx.lineTo(x, y - MARK_PX)
+    ctx.fill()
+    ctx.stroke()
+  }
   const y = Y(path.points[0].altM)
   ctx.fillStyle = PATH_COLOR
   ctx.beginPath()
@@ -188,7 +256,7 @@ function h<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, tex
   return el
 }
 
-export function mountWxHud(root: HTMLElement): WxHudHandle {
+export function mountWxHud(root: HTMLElement, onView: (view: StripView) => void = () => {}): WxHudHandle {
   const veil = h('div', 'fh-wxhud-veil')
   veil.setAttribute('aria-hidden', 'true')
   const box = h('div', 'fh-wxhud')
@@ -205,8 +273,22 @@ export function mountWxHud(root: HTMLElement): WxHudHandle {
   const strip = h('div', 'fh-glass fh-wxhud-strip')
   const canvas = h('canvas', 'fh-wxhud-cv')
   canvas.setAttribute('role', 'img')
-  canvas.setAttribute('aria-label', 'Side view of the weather on this heading, 80 km ahead')
-  strip.append(h('div', 'fh-wxhud-strip-h', 'Ahead on this heading'), canvas)
+  canvas.setAttribute('aria-label', 'Side view of the weather on this heading, the next 6 minutes')
+  const head = h('div', 'fh-wxhud-strip-top')
+  const seg = h('div', 'fh-seg fh-wxhud-seg')
+  seg.setAttribute('role', 'group')
+  seg.setAttribute('aria-label', 'Heights shown')
+  const views = VIEWS.map(([view, text, hint]) => {
+    const b = h('button', 'fh-seg-b', text)
+    b.type = 'button'
+    b.title = hint
+    b.setAttribute('aria-pressed', String(view === 'path'))
+    b.addEventListener('click', () => b.getAttribute('aria-pressed') !== 'true' && onView(view))
+    seg.append(b)
+    return { view, b }
+  })
+  head.append(h('div', 'fh-wxhud-strip-h', 'Ahead on this heading'), seg)
+  strip.append(head, canvas)
   box.append(lines, strip)
   for (const el of [veil, box, hazardChip, strip]) el.hidden = true
   root.append(veil, box)
@@ -245,11 +327,11 @@ export function mountWxHud(root: HTMLElement): WxHudHandle {
     const w = Math.max(220, Math.round(stripW || STRIP_W)) // as the look before found it laid out; a strip just shown: its usual width
     const hh = Math.round(w * STRIP_RATIO)
     const r = Math.min(2, (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1) || 1)
-    // What the picture depends on: the profile, the units, the size, and the way ahead to the pixel (its height now, half-way and at
-    // the far end, which give its line, and a minute's length, which gives the ticks). The same again: the picture stands.
+    // What the picture depends on: the profile, the units, the size, and the way ahead to the pixel (its height at each minute, and
+    // where the minutes stand along the plot, which give its line). The same again: the picture stands.
     const { x0, y0, x1, y1 } = stripPlot(w, hh, units)
-    const row = (km: number): number => Math.round(((y1 - y0) * Math.min(pathPointAt(path, km).altM, profile.topM)) / profile.topM)
-    const now = [profile, units.alt, w, hh, r, row(0), row(profile.kmAhead / 2), row(profile.kmAhead), Math.round(((x1 - x0) * path.kmPerMin) / profile.kmAhead)]
+    const row = (m: number): number => Math.round(((y1 - y0) * (Math.min(Math.max(m, profile.baseM), profile.topM) - profile.baseM)) / (profile.topM - profile.baseM))
+    const now = [profile, units.alt, w, hh, r, Math.round(((x1 - x0) * AHEAD_MIN * path.kmPerMin) / profile.kmAhead), ...path.points.map((p) => row(p.altM))]
     if (now.length === painted.length && now.every((v, k) => v === painted[k])) return
     painted = now
     if (canvas.width !== Math.round(w * r) || canvas.height !== Math.round(hh * r)) {
@@ -318,6 +400,9 @@ export function mountWxHud(root: HTMLElement): WxHudHandle {
       if (on === stripOn) return
       stripOn = on
       apply()
+    },
+    setView(view) {
+      for (const v of views) if ((v.b.getAttribute('aria-pressed') === 'true') !== (v.view === view)) v.b.setAttribute('aria-pressed', String(v.view === view))
     },
     moved() {
       const was = astir || watch === null

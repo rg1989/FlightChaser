@@ -7,7 +7,8 @@
    so these rules are the toasts' (alerts.css), and the toasts stand under the HUD (the last rules here). A phone has no search box: the
    HUD runs across the top, under the notch (and under the live-data pill, as the toasts do). Over the traffic brackets and the flight-data
    frame (the frame keeps off its chips and its strip: app.ts FRAME_COVERS), under the outage card (17), the flight card (18), the panels
-   (19) and the rail (20). It is as wide as a chip's one line may need (520 px); the strip, in its middle, is 400 px at most. */
+   (19) and the rail (20). It is as wide as a chip's one line may need (520 px); the strip, in its middle, is 400 px at most.
+   One part of it does take the pointer: the two buttons in the strip's head (Path, Sky). */
 .fh-wxhud {
   --w: 520px;
   --l: 0px;
@@ -156,7 +157,7 @@
   color: color-mix(in srgb, var(--hz) 20%, #fff);
 }
 
-/* The ahead strip: its title, and the canvas (wxHud.ts draws it at the width it is laid out at: its height keeps the 25 : 7 shape). */
+/* The ahead strip: its title, and the canvas (wxHud.ts draws it at the width it is laid out at: its height keeps the 50 : 17 shape). */
 .fh-wxhud-strip {
   box-sizing: border-box;
   align-self: center;
@@ -171,12 +172,48 @@
   }
 }
 
+.fh-wxhud-strip-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 0 5px 2px;
+}
+
 .fh-wxhud-strip-h {
-  padding: 0 0 4px 2px;
+  min-width: 0;
+  overflow: hidden;
   color: var(--fh-faint);
   font: 700 10px/1 var(--fh-font);
   letter-spacing: 0.08em;
+  text-overflow: ellipsis;
   text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* The heights the strip shows: the panels' segment (sceneToggles.css), sized for the strip's head. */
+.fh-seg.fh-wxhud-seg {
+  flex: none;
+  margin: 0;
+  padding: 2px;
+  border-radius: 8px;
+  pointer-events: auto;
+}
+
+.fh-wxhud-seg .fh-seg-b {
+  flex: none;
+  height: 20px;
+  padding: 0 9px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+@media (pointer: coarse) {
+  .fh-wxhud-seg .fh-seg-b {
+    height: 30px;
+    padding: 0 13px;
+    font-size: 12px;
+  }
 }
 
 .fh-wxhud-cv {

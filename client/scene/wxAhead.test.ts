@@ -5,8 +5,8 @@ import type { Sigmet } from '../../shared/wx.ts'
 import { DEFAULT_UNITS } from '../ui/units.ts'
 import { PUFF_FILL, type CloudSpec } from './cloudField.ts'
 import {
-  AHEAD_KM, AHEAD_MIN, IN_COVER, PROFILE_COLS, PROFILE_ROWS, PROFILE_TOP_M, SEV_COLOR, SEV_NAME, aheadPath, aheadProfile, aheadStatus, hazardWords,
-  keepProfile, pathPointAt, sevOf, statusWords, type AheadPath, type AheadPoint, type AheadStatus,
+  AHEAD_KM, AHEAD_MIN, IN_COVER, PROFILE_COLS, PROFILE_ROWS, PROFILE_SPAN_M, PROFILE_TOP_M, SEV_COLOR, SEV_NAME, aheadPath, aheadProfile, aheadStatus,
+  aheadWindow, hazardWords, keepProfile, pathPointAt, sevOf, statusWords, type AheadPath, type AheadPoint, type AheadStatus,
 } from './wxAhead.ts'
 import type { Hazard } from './wxGeo.ts'
 import { buildField, sampleField } from './wxField.ts'
@@ -252,31 +252,100 @@ test('aheadStatus: a hazard area of several rings is in where any ring is; one a
 
 // ---- the profile -------------------------------------------------------------------------------------------------------
 
-test('aheadProfile: 160 × 50 cells over 80 km and 0 … 12,500 m; each cell is the field\'s value at its middle, on the path, as sampleField gives it', () => {
-  assert.deepEqual([PROFILE_COLS, PROFILE_ROWS, AHEAD_KM, PROFILE_TOP_M], [160, 50, 80, 12_500])
+test('aheadWindow: the strip shows 3,000 m of heights round the way, not the whole sky: round its middle when it holds the way, else with the aircraft a sixth from its top (a steep descent) or its foot (a steep climb); never under the sea', () => {
+  assert.deepEqual([PROFILE_SPAN_M, PROFILE_TOP_M], [3000, 12_500])
+  assert.deepEqual(aheadWindow(path({ alt: 10_668 })), { baseM: 9180, topM: 12_180 }, 'level at 35,000 ft: the aircraft in the middle, to the row (60 m)')
+  assert.deepEqual(aheadWindow(path({ alt: 600, vs: -940 })), { baseM: 0, topM: 3000 }, '2,000 ft on the way down: never under the sea')
+  assert.deepEqual(aheadWindow(path({ alt: 3000, vs: 1000 })), { baseM: 2400, topM: 5400 }, '1,000 ft/min is 1,829 m in six minutes: round its middle')
+  assert.deepEqual(aheadWindow(path({ alt: 3000, vs: 1800 })), { baseM: 2520, topM: 5520 }, '1,800 ft/min is 3,292 m, more than there is room for: the aircraft a sixth of the span over the foot')
+  assert.deepEqual(aheadWindow(path({ alt: 9000, vs: -3000 })), { baseM: 6480, topM: 9480 }, 'a steep descent: the aircraft a sixth under the top, and the way runs out of the foot')
+  for (const vs of [-3000, -1500, -700, 0, 700, 1500, 3000]) {
+    const p = path({ alt: 5000, vs })
+    const w = aheadWindow(p)
+    assert.equal(w.topM - w.baseM, 3000, `${vs} ft/min: the span is the same whatever the way (nothing changes scale of itself)`)
+    assert.ok(p.points[0].altM >= w.baseM + 450 && p.points[0].altM <= w.topM - 450, `${vs} ft/min: the aircraft is inside, with room over and under it`)
+    if (Math.abs(vs) <= 1000) assert.ok(p.points.every((q) => q.altM >= w.baseM + 450 && q.altM <= w.topM - 450), `${vs} ft/min: and so is all its way`)
+  }
+})
+
+test('aheadWindow: the whole sky when the viewer asks for it: from the sea up to 12,500 m, whatever the way', () => {
+  const sky = aheadWindow(path({ alt: 10_668 }), null, true)
+  assert.deepEqual(sky, { baseM: 0, topM: 12_500 })
+  assert.equal(aheadWindow(path({ alt: 3000, vs: -1500 }), sky, true), sky, 'it stands')
+  const round = aheadWindow(path({ alt: 3000 }), sky)
+  assert.deepEqual(round, { baseM: 1500, topM: 4500 }, 'asked back: round the way again')
+  assert.deepEqual(aheadWindow(path({ alt: 3000 }), round, true), { baseM: 0, topM: 12_500 })
+})
+
+test('aheadWindow: given the window before, it gives that one back while it holds; it follows only what it is over a twelfth of the span off, so a level flight\'s stands still and a wavering vertical speed moves nothing', () => {
+  const level = aheadWindow(path({ alt: 5000 }))
+  assert.deepEqual(level, { baseM: 3480, topM: 6480 })
+  assert.equal(aheadWindow(path({ alt: 5000 }), level), level, 'the same again: the same object')
+  assert.equal(aheadWindow(path({ alt: 5200 }), level), level, '200 m higher: within the slack (250 m)')
+  assert.equal(aheadWindow(path({ alt: 5000, vs: 128 }), level), level, 'a vertical speed of ±128 ft/min moves the way\'s middle 117 m: nothing')
+  assert.equal(aheadWindow(path({ alt: 5000, vs: -128 }), level), level)
+  const up = aheadWindow(path({ alt: 5400 }), level)
+  assert.deepEqual(up, { baseM: 3660, topM: 6660 }, '400 m higher: it follows by the 150 m over the slack, to the row')
+  assert.equal(aheadWindow(path({ alt: 5400 }), up), up)
+  const climb = aheadWindow(path({ alt: 5400, vs: 2500 }), up)
+  assert.deepEqual(climb, { baseM: 4680, topM: 7680 }, 'a steep climb: up to within the slack of the aircraft a sixth over the foot')
+  for (const vs of [2300, 2700, 3200]) assert.equal(aheadWindow(path({ alt: 5400, vs }), climb), climb, `${vs} ft/min: how steep moves nothing, the aircraft's own height does`)
+  let w = climb
+  const bases = [climb.baseM]
+  for (let alt = 5400; alt <= 6400; alt += 20) bases.push((w = aheadWindow(path({ alt, vs: 2500 }), w)).baseM)
+  assert.ok(bases.every((b, k) => k === 0 || (b >= bases[k - 1] && b - bases[k - 1] <= 60)), 'as the aircraft climbs the window goes up with it, a row at a time, never back')
+  assert.equal(bases.at(-1), 5640, 'at 6,400 m: the aircraft 760 m over the foot')
+})
+
+test('aheadProfile: 160 × 50 cells over the next six minutes and the heights the way goes through; each cell is the field\'s value at its middle, on the path, as sampleField gives it', () => {
+  assert.deepEqual([PROFILE_COLS, PROFILE_ROWS, AHEAD_MIN], [160, 50, 6])
   const f = buildField([puff(2000, 4000, { northKm: 30, sev: 2 }), puff(5000, 9000, { northKm: 55, wide: 9000, sev: 3, tower: 0 })], LAT, LON)
-  const p = path({ alt: 3000, vs: 500 })
+  const p = path({ alt: 3000, vs: 300 })
   const pr = aheadProfile(p, f, [])
-  assert.deepEqual([pr.cols, pr.rows, pr.kmAhead, pr.topM], [160, 50, 80, 12_500])
+  assert.deepEqual([pr.cols, pr.rows, pr.baseM, pr.topM], [160, 50, 1800, 4800], 'aheadWindow\'s heights for this way')
+  assert.ok(near(pr.kmAhead, 6 * KPM, 1e-9), 'six minutes at 360 kt: 66.7 km')
   assert.equal(pr.cover.length, 160 * 50)
   assert.equal(pr.sev.length, 160 * 50)
   assert.deepEqual(pr.hazards, [])
   let covered = 0
   for (let i = 0; i < 160; i += 1) {
-    const d = (i + 0.5) * 0.5
-    const q = pathPointAt(p, d)
+    const q = pathPointAt(p, ((i + 0.5) * 6 * KPM) / 160)
     for (let j = 0; j < 50; j += 1) {
-      const want = sampleField(f, q.lat, q.lon, (j + 0.5) * 250)
+      const want = sampleField(f, q.lat, q.lon, 1800 + (j + 0.5) * 60)
       assert.ok(near(pr.cover[j * 160 + i], want.cover, 1e-6) && near(pr.sev[j * 160 + i], want.sev, 1e-6), `cell ${i}, ${j}`)
       if (want.cover > 0.5) covered++
     }
   }
   assert.ok(covered > 40, `the sweep meets cloud: ${covered} cells`)
-  const mid = 60 // column 60 is d = 30.25 km, the cumulus
-  assert.ok(pr.cover[11 * 160 + mid] > 0.9, 'z = 2,875 m in the cumulus')
-  assert.ok(near(pr.sev[11 * 160 + mid], 2, 1e-5))
-  assert.equal(pr.cover[30 * 160 + mid], 0, '7,625 m over it: clear')
-  assert.equal(pr.cover[2 * 160 + mid], 0, '625 m under its base')
+  const mid = 72 // column 72 is d = 30.2 km, the cumulus
+  assert.ok(pr.cover[16 * 160 + mid] > 0.9, 'z = 2,790 m in the cumulus')
+  assert.ok(near(pr.sev[16 * 160 + mid], 2, 1e-5))
+  assert.equal(pr.cover[40 * 160 + mid], 0, '4,230 m over it: clear')
+  assert.equal(pr.cover[2 * 160 + mid], 0, '1,950 m, under its base')
+  const whole = aheadProfile(p, f, [], undefined, { baseM: 0, topM: 12_500 })
+  assert.deepEqual([whole.baseM, whole.topM], [0, 12_500], 'the heights it is given')
+  assert.ok(whole.cover[11 * 160 + mid] > 0.9, 'z = 2,875 m of the whole sky')
+})
+
+test('aheadProfile: where the way itself is in weather (the field\'s cover at the way\'s own height above 0.3, the status line\'s measure): each stretch, nearest first, with the worst severity in it', () => {
+  const f = buildField([puff(2000, 4000, { northKm: 30, sev: 2 }), puff(5000, 9000, { northKm: 55, wide: 9000, sev: 3, tower: 0 })], LAT, LON)
+  const through = aheadProfile(path({ alt: 3000 }), f, []).contacts
+  assert.equal(through.length, 1, 'level at 3,000 m: through the cumulus, under the tower')
+  assert.ok(through[0].fromKm > 27.5 && through[0].fromKm < 29.5 && through[0].toKm > 30.5 && through[0].toKm < 32.5, JSON.stringify(through))
+  assert.equal(through[0].sev, 2)
+  const first = aheadStatus(path({ alt: 3000 }), f, [], words).cloud.inMin! * KPM
+  assert.ok(near(through[0].fromKm, first, 0.75), `the status line's first edge is the same place, to a cell and the status's own step: ${first} km against ${through[0].fromKm}`)
+  assert.deepEqual(aheadProfile(path({ alt: 4500 }), f, []).contacts, [], 'over the cumulus and under the tower: none')
+  const two = buildField([puff(2000, 4000, { northKm: 20, sev: 2 }), puff(1000, 9000, { northKm: 50, wide: 9000, sev: 3, tower: 0 })], LAT, LON)
+  const both = aheadProfile(path({ alt: 3000 }), two, []).contacts
+  assert.deepEqual(both.map((c) => c.sev), [2, 3], 'through a cumulus and on into a tower: two stretches, each its own severity')
+  assert.ok(both[1].fromKm > both[0].toKm)
+  const inside = aheadProfile(aheadPath({ ...at(0, 30), altM: 3000 }, 0, GS, 0)!, f, []).contacts
+  assert.equal(inside[0].fromKm, 0, 'the aircraft in it now: from 0')
+  const g = buildField([puff(2000, 4000, { northKm: 60, wide: 30_000, sev: 1 })], LAT, LON)
+  const end = aheadProfile(path({ alt: 3000 }), g, [])
+  assert.ok(near(end.contacts.at(-1)!.toKm, end.kmAhead, 1e-9), 'still in it at the strip\'s end: to there')
+  assert.deepEqual(aheadProfile(path({ alt: 3000 }), null, []).contacts, [], 'no field: none')
 })
 
 test('aheadProfile: no field, or an empty one, is an empty profile; the hazard areas still come', () => {
@@ -296,9 +365,9 @@ test('aheadProfile: a hazard area is a run along the path, from its first column
   const runs = aheadProfile(path(), null, [two]).hazards
   assert.equal(runs.length, 2)
   assert.ok(near(runs[0].fromKm, 10, 0.5) && near(runs[0].toKm, 20, 0.5) && near(runs[1].fromKm, 50, 0.5) && near(runs[1].toKm, 55, 0.5))
-  const ends = aheadProfile(path(), null, [hazard(band(70, 120), 0, 8000), hazard(band(-20, 5), 0, 8000)]).hazards
+  const ends = aheadProfile(path(), null, [hazard(band(60, 120), 0, 8000), hazard(band(-20, 5), 0, 8000)]).hazards
   assert.ok(ends[0].fromKm === 0 && near(ends[0].toKm, 5, 0.5), 'one the aircraft is in starts at 0 (the runs come nearest first)')
-  assert.ok(near(ends[1].fromKm, 70, 0.5) && ends[1].toKm === 80, 'a run still on at 80 km ends there')
+  assert.ok(near(ends[1].fromKm, 60, 0.5) && near(ends[1].toKm, 6 * KPM, 1e-9), 'a run still on at the strip\'s end ends there')
   assert.deepEqual(aheadProfile(path(), null, [hazard(band(-60, -30), 0, 8000)]).hazards, [], 'behind: none')
 })
 
@@ -322,27 +391,36 @@ test('aheadProfile: given a profile made before, it fills that one\'s arrays (8,
   assert.ok(cleared.cover === before.cover && cleared.cover.every((v) => v === 0) && cleared.sev.every((v) => v === 0), 'no field: the arrays are emptied')
 })
 
-test('keepProfile: the strip\'s profile is made again only when it would show something else: another field, other hazard areas, or a path whose first place or whose place 80 km on has moved half a cell (0.25 km); else the one kept is given back', () => {
+test('keepProfile: the strip\'s profile is made again only when it would show something else: another field, other hazard areas, other heights, minutes of another length, or a path whose first place or whose place at the strip\'s far end has moved half a cell (0.21 km at 360 kt); else the one kept is given back', () => {
   const f = buildField([puff(2000, 4000, { northKm: 30, sev: 2 })], LAT, LON)
   const hz = [hazard(band(40, 60), 1000, 9000)]
   const from = (northKm: number, o: { track?: number; alt?: number; gs?: number } = {}): AheadPath => aheadPath({ ...at(0, northKm), altM: o.alt ?? 3000 }, o.track ?? 0, o.gs ?? GS, 0)!
   const first = keepProfile(null, from(0), f, hz)
   assert.deepEqual(first.profile, aheadProfile(from(0), f, hz))
-  assert.equal(keepProfile(first, from(0.2), f, hz), first, '200 m on: kept')
-  assert.equal(keepProfile(first, from(0.2, { alt: 5000, gs: 200 }), f, hz), first, 'another height or speed moves no cell (the strip draws the way and its minutes from the path itself)')
-  const moved = keepProfile(first, from(0.3), f, hz)
+  assert.equal(keepProfile(first, from(0.15), f, hz), first, '150 m on: kept')
+  assert.equal(keepProfile(first, from(0.15, { alt: 3200, gs: 363 }), f, hz), first, '200 m higher (the heights shown stand: aheadWindow) and 3 kt faster (under two cells at the far end): kept')
+  const sky = keepProfile(first, from(0.15), f, hz, true)
+  assert.notEqual(sky, first, 'the whole sky asked for: made again')
+  assert.deepEqual([sky.profile.baseM, sky.profile.topM], [0, 12_500])
+  assert.equal(keepProfile(sky, from(0.3, { alt: 5000 }), f, hz, true), sky, 'and kept, whatever the height')
+  const higher = keepProfile(first, from(0.15, { alt: 3600 }), f, hz)
+  assert.notEqual(higher, first, '600 m higher: the heights shown follow')
+  assert.deepEqual([higher.profile.baseM, higher.profile.topM], [1860, 4860])
+  assert.equal(keepProfile(higher, from(0.15, { alt: 3600 }), f, hz), higher, 'and are kept from there')
+  assert.notEqual(keepProfile(first, from(0.15, { gs: 366 }), f, hz), first, '6 kt faster: the minutes are 1.7 % longer')
+  const moved = keepProfile(first, from(0.25), f, hz)
   assert.notEqual(moved, first)
   assert.notEqual(moved.profile, first.profile)
   assert.equal(moved.profile.cover, first.profile.cover, 'made again in the same arrays')
-  assert.deepEqual(moved.profile, aheadProfile(from(0.3), f, hz))
-  assert.equal(keepProfile(moved, from(0.5), f, hz), moved, 'and counted from where it was made last')
-  const turned = keepProfile(moved, from(0.3, { track: 0.3 }), f, hz)
-  assert.notEqual(turned, moved, 'a turn of 0.3° moves the far end 0.4 km')
-  assert.equal(keepProfile(turned, from(0.3, { track: 0.35 }), f, hz), turned, '0.05° more: 70 m')
+  assert.deepEqual(moved.profile, aheadProfile(from(0.25), f, hz))
+  assert.equal(keepProfile(moved, from(0.4), f, hz), moved, 'and counted from where it was made last')
+  const turned = keepProfile(moved, from(0.25, { track: 0.3 }), f, hz)
+  assert.notEqual(turned, moved, 'a turn of 0.3° moves the far end 0.35 km')
+  assert.equal(keepProfile(turned, from(0.25, { track: 0.35 }), f, hz), turned, '0.05° more: 60 m')
   const g = buildField([puff(2000, 4000, { northKm: 30, sev: 2 })], LAT, LON)
-  assert.notEqual(keepProfile(turned, from(0.3, { track: 0.3 }), g, hz), turned, 'another field')
-  assert.notEqual(keepProfile(turned, from(0.3, { track: 0.3 }), f, [...hz]), turned, 'another list of hazard areas')
-  assert.notEqual(keepProfile(turned, from(0.3, { track: 0.3 }), null, hz), turned)
+  assert.notEqual(keepProfile(turned, from(0.25, { track: 0.3 }), g, hz), turned, 'another field')
+  assert.notEqual(keepProfile(turned, from(0.25, { track: 0.3 }), f, [...hz]), turned, 'another list of hazard areas')
+  assert.notEqual(keepProfile(turned, from(0.25, { track: 0.3 }), null, hz), turned)
 })
 
 test('the severity scale: cloud, light rain, heavy rain, a thunderstorm, with the colours of the plan; a number rounds and stays within it', () => {

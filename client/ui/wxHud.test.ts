@@ -3,8 +3,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
-import { PROFILE_COLS, PROFILE_ROWS, PROFILE_TOP_M, aheadPath, type AheadProfile, type AheadStatus } from '../scene/wxAhead.ts'
+import { AHEAD_MIN, PROFILE_COLS, PROFILE_ROWS, PROFILE_TOP_M, aheadPath, type AheadProfile, type AheadStatus } from '../scene/wxAhead.ts'
 import { DEFAULT_UNITS, type Units } from './units.ts'
+import type { StripView } from './wxPrefs.ts'
 
 // wxHud.ts imports its CSS for Vite. Node cannot load CSS, so this test process loads every .css as an empty module.
 registerHooks({
@@ -90,6 +91,10 @@ class El {
     this.parent = null
   }
   setAttribute(k: string, v: string): void { this.attrs[k] = v }
+  getAttribute(k: string): string | null { return this.attrs[k] ?? null }
+  listeners: Record<string, (() => void)[]> = {}
+  addEventListener(type: string, fn: () => void): void { (this.listeners[type] ??= []).push(fn) }
+  click(): void { for (const fn of this.listeners.click ?? []) fn() }
   getContext(): Ctx { return this.ctx }
 }
 Object.assign(globalThis, { document: { createElement: (tag: string) => new El(tag) } })
@@ -97,9 +102,9 @@ Object.assign(globalThis, { document: { createElement: (tag: string) => new El(t
 const all = (el: El): El[] => [el, ...el.children.flatMap(all)]
 const byClass = (root: El, cls: string): El => all(root).find((e) => e.className.split(' ').includes(cls))!
 
-function mount() {
+function mount(onView?: (view: StripView) => void) {
   const root = new El('div')
-  const hud = mountWxHud(root as unknown as HTMLElement)
+  const hud = mountWxHud(root as unknown as HTMLElement, onView)
   const [veil, box] = root.children
   const cloud = byClass(box, 'fh-wxhud-chip')
   const hazard = byClass(box, 'fh-wxhud-hazard')
@@ -114,11 +119,12 @@ const RED = '#ff5a5a' // a thunderstorm area's colour (wxText.ts sigmetColor)
 const status = (cloud: Partial<AheadStatus['cloud']> = {}, hazard: (Omit<NonNullable<AheadStatus['hazard']>, 'color'> & { color?: string }) | null = null, known = true): AheadStatus =>
   ({ known, cloud: { inside: false, sev: 0, inMin: null, ...cloud }, hazard: hazard === null ? null : { color: RED, ...hazard } })
 const PATH = aheadPath({ lat: 32, lon: 34.9, altM: 3000 }, 0, 360, 0)!
-/** A profile with weather in the cells given: [column, row, cover, severity]. */
-function profile(cells: [number, number, number, number][] = [], hazards: AheadProfile['hazards'] = []): AheadProfile {
+const KM = AHEAD_MIN * PATH.kmPerMin // the strip's six minutes at 360 kt: 66.7 km
+/** A profile with weather in the cells given: [column, row, cover, severity]; of the whole sky unless other heights are given. */
+function profile(cells: [number, number, number, number][] = [], hazards: AheadProfile['hazards'] = [], more: Partial<AheadProfile> = {}): AheadProfile {
   const [cover, sev] = [new Float32Array(PROFILE_COLS * PROFILE_ROWS), new Float32Array(PROFILE_COLS * PROFILE_ROWS)]
   for (const [i, j, c, s] of cells) { cover[j * PROFILE_COLS + i] = c; sev[j * PROFILE_COLS + i] = s }
-  return { cols: PROFILE_COLS, rows: PROFILE_ROWS, kmAhead: 80, topM: PROFILE_TOP_M, cover, sev, hazards }
+  return { cols: PROFILE_COLS, rows: PROFILE_ROWS, kmAhead: KM, baseM: 0, topM: PROFILE_TOP_M, cover, sev, hazards, contacts: [], ...more }
 }
 /** What is on screen: a part inside the hidden HUD is not. */
 const visible = (m: Mounted): { box: boolean; veil: boolean; hazard: boolean; strip: boolean } =>
@@ -209,25 +215,48 @@ test('the ahead strip: shown with a profile and a path while it is on; Ahead str
   assert.equal(m.box.hidden, false, 'the status line is still up')
 })
 
+test('the strip\'s own two buttons, in its head: Path (the heights round the aircraft\'s way) and Sky (the whole sky); a press asks the app for the other and changes nothing itself; the one on asks nothing', () => {
+  const asked: StripView[] = []
+  const m = mount((view) => asked.push(view))
+  const seg = byClass(m.strip, 'fh-wxhud-seg')
+  assert.deepEqual([seg.className, seg.attrs.role, seg.attrs['aria-label']], ['fh-seg fh-wxhud-seg', 'group', 'Heights shown'], 'the panels\' segment')
+  const [path, sky] = seg.children
+  assert.deepEqual(seg.children.map((b) => [b.tag, b.className, b.textContent, b.attrs['aria-pressed']]), [['button', 'fh-seg-b', 'Path', 'true'], ['button', 'fh-seg-b', 'Sky', 'false']])
+  assert.equal(m.strip.children[0].children[0].textContent, 'Ahead on this heading', 'beside the strip\'s title')
+  path.click()
+  assert.deepEqual(asked, [], 'the one on: nothing asked')
+  sky.click()
+  assert.deepEqual(asked, ['sky'])
+  assert.deepEqual([path.attrs['aria-pressed'], sky.attrs['aria-pressed']], ['true', 'false'], 'nothing changes until the app says')
+  m.hud.setView('sky')
+  assert.deepEqual([path.attrs['aria-pressed'], sky.attrs['aria-pressed']], ['false', 'true'])
+  sky.click()
+  path.click()
+  assert.deepEqual(asked, ['sky', 'path'])
+  m.hud.setView('path')
+  assert.deepEqual([path.attrs['aria-pressed'], sky.attrs['aria-pressed']], ['true', 'false'])
+  mount().strip.children[0].children[1].children[1].click() // (mounted with no one to ask: a press does nothing)
+})
+
 test('the strip is drawn at the width it is laid out at, as sharp as the screen (up to 2×), its height the same shape', () => {
   const m = mount()
   m.canvas.clientWidth = 360
   m.hud.set(status(), profile(), PATH, DEFAULT_UNITS)
-  assert.deepEqual([m.canvas.width, m.canvas.height], [400, 112], 'shown at this look: drawn at the usual width until the page has laid it out')
+  assert.deepEqual([m.canvas.width, m.canvas.height], [400, 136], 'shown at this look: drawn at the usual width until the page has laid it out')
   m.hud.set(status(), profile(), PATH, DEFAULT_UNITS)
-  assert.deepEqual([m.canvas.width, m.canvas.height], [360, Math.round(360 * 0.28)], 'at the next look, at its own')
+  assert.deepEqual([m.canvas.width, m.canvas.height], [360, Math.round(360 * 0.34)], 'at the next look, at its own')
   assert.deepEqual(m.canvas.ctx.transform, [1, 0, 0, 1, 0, 0])
   ;(globalThis as { devicePixelRatio?: number }).devicePixelRatio = 3
   try {
     m.hud.set(status(), profile(), PATH, DEFAULT_UNITS)
-    assert.deepEqual([m.canvas.width, m.canvas.height], [720, Math.round(360 * 0.28) * 2], 'at most 2×')
+    assert.deepEqual([m.canvas.width, m.canvas.height], [720, Math.round(360 * 0.34) * 2], 'at most 2×')
     assert.deepEqual(m.canvas.ctx.transform, [2, 0, 0, 2, 0, 0])
   } finally {
     delete (globalThis as { devicePixelRatio?: number }).devicePixelRatio
   }
   const n = mount()
   n.hud.set(status(), profile(), PATH, DEFAULT_UNITS) // not laid out (no width): 400
-  assert.deepEqual([n.canvas.width, n.canvas.height], [400, 112])
+  assert.deepEqual([n.canvas.width, n.canvas.height], [400, 136])
 })
 
 test('the strip\'s cells go to its canvas as one picture, a pixel a cell, stretched over the plot (as rectangles, one a cell, they took 2.5 to 7 ms of a frame)', () => {
@@ -265,7 +294,7 @@ test('the strip is painted again only when it would show something else: another
   m.hud.set(status(), p, aheadPath({ lat: 32, lon: 34.9, altM: 3400 }, 0, 360, -1500)!, DEFAULT_UNITS)
   assert.equal(painted(), 3, 'descending: the line\'s far end is lower')
   m.hud.set(status(), p, aheadPath({ lat: 32, lon: 34.9, altM: 3400 }, 0, 300, -1500 * (300 / 360))!, DEFAULT_UNITS)
-  assert.equal(painted(), 4, 'slower: the minutes stand closer')
+  assert.equal(painted(), 4, 'slower: its minutes stand closer along the strip')
   m.hud.set(status(), { ...p }, aheadPath({ lat: 32, lon: 34.9, altM: 3400 }, 0, 300, -1500 * (300 / 360))!, DEFAULT_UNITS)
   assert.equal(painted(), 5, 'another profile (wxAhead.ts keepProfile gives a new object when it has made it again)')
   const last = { ...p }
@@ -419,22 +448,32 @@ test('the stylesheet: a hidden part really goes (its chips and veil are flex and
   assert.match(css, /\.fh-wxhud-text \{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/, 'a chip is one line, cut with an ellipsis when it must be')
   assert.match(css, /\.fh-wxhud-hazard \{[^}]*border-color: color-mix\(in srgb, var\(--hz[^}]*\}/, 'the hazard chip\'s edge is the area\'s colour')
   assert.match(css, /@media \(max-height: 480px\) \{\s*\.fh-wxhud-strip \{\s*display: none !important;/, 'a short window has no room for the strip')
+  assert.match(css, /\.fh-seg\.fh-wxhud-seg \{[^}]*pointer-events: auto;/, 'the strip\'s two buttons take the pointer, alone of the HUD')
 })
 
 // ---- the strip's drawing ---------------------------------------------------------------------------------------------------
 
-const [W, H] = [400, 112]
+const [W, H] = [400, 136]
 const draw = (p: AheadProfile, units: Units = DEFAULT_UNITS, path = PATH): Ctx => {
   const ctx = new Ctx()
   drawStrip(ctx as unknown as CanvasRenderingContext2D, W, H, p, path, units)
   return ctx
 }
 
-test('drawStrip: the heights in the frame\'s units, at the same gridlines: feet, metres, or feet with metres to the right', () => {
-  assert.deepEqual(draw(profile()).texts().filter((t) => /ft|m$/.test(t) && !/min/.test(t)), ['10,000 ft', '20,000 ft', '30,000 ft', '40,000 ft'])
-  assert.deepEqual(draw(profile(), { ...DEFAULT_UNITS, alt: 'm' }).texts().filter((t) => !/min/.test(t)), ['3,000 m', '6,000 m', '9,000 m', '12,000 m'])
+const LEVEL = { baseM: 9180, topM: 12_180 } // the heights round a level flight at 35,000 ft (wxAhead.ts aheadWindow)
+const CLIMB = { baseM: 2520, topM: 5520 } // and those of a climb from 3,000 m
+
+test('drawStrip: the heights in the frame\'s units, at the round ones the strip\'s heights hold: feet, metres, or feet with metres to the right', () => {
+  const heights = (ctx: Ctx): string[] => ctx.texts().filter((t) => !/min/.test(t))
+  assert.deepEqual(heights(draw(profile())), ['10,000 ft', '20,000 ft', '30,000 ft', '40,000 ft'], 'the whole sky')
+  assert.deepEqual(heights(draw(profile(), { ...DEFAULT_UNITS, alt: 'm' })), ['3,000 m', '6,000 m', '9,000 m', '12,000 m'])
+  assert.deepEqual(heights(draw(profile([], [], LEVEL))), ['32,000 ft', '34,000 ft', '36,000 ft', '38,000 ft'], '3,000 m of it: every 2,000 ft')
+  assert.deepEqual(heights(draw(profile([], [], LEVEL), { ...DEFAULT_UNITS, alt: 'm' })), ['10,000 m', '11,000 m', '12,000 m'])
+  assert.deepEqual(heights(draw(profile([], [], CLIMB))), ['10,000 ft', '12,000 ft', '14,000 ft', '16,000 ft', '18,000 ft'])
+  assert.deepEqual(heights(draw(profile([], [], CLIMB), { ...DEFAULT_UNITS, alt: 'm' })), ['3,000 m', '4,000 m', '5,000 m'])
+  assert.deepEqual(heights(draw(profile([], [], { baseM: 0, topM: 3000 }))), ['2,000 ft', '4,000 ft', '6,000 ft', '8,000 ft'], 'from the sea up: no line at the plot\'s own edge')
   const both = draw(profile(), { ...DEFAULT_UNITS, alt: 'ft+m' })
-  assert.deepEqual(both.texts().filter((t) => !/min/.test(t)), ['10,000 ft', '3,050 m', '20,000 ft', '6,100 m', '30,000 ft', '9,150 m', '40,000 ft', '12,200 m'])
+  assert.deepEqual(heights(both), ['10,000 ft', '3,050 m', '20,000 ft', '6,100 m', '30,000 ft', '9,150 m', '40,000 ft', '12,200 m'])
   const left = both.calls.filter((c) => c.op === 'fillText' && /ft$/.test(String(c.a[0]))).map((c) => c.a[1] as number)
   const right = both.calls.filter((c) => c.op === 'fillText' && /m$/.test(String(c.a[0])) && !/min/.test(String(c.a[0]))).map((c) => c.a[1] as number)
   const p = stripPlot(W, H, { ...DEFAULT_UNITS, alt: 'ft+m' })
@@ -442,37 +481,26 @@ test('drawStrip: the heights in the frame\'s units, at the same gridlines: feet,
   assert.ok(p.x1 < stripPlot(W, H, DEFAULT_UNITS).x1, 'the plot gives the metres their room')
 })
 
-test('drawStrip: a gridline stands at its height: 30,000 ft at 9,144 of 12,500 m up the plot', () => {
-  const ctx = draw(profile())
+test('drawStrip: a gridline stands at its height: 30,000 ft at 9,144 of 12,500 m up the plot; of 3,000 m round a level flight, 36,000 ft is 1,793 m up them', () => {
   const p = stripPlot(W, H, DEFAULT_UNITS)
-  const text = ctx.calls.find((c) => c.op === 'fillText' && c.a[0] === '30,000 ft')!
-  assert.ok(Math.abs((text.a[2] as number) - (p.y1 - (9144 / PROFILE_TOP_M) * (p.y1 - p.y0))) < 1e-9)
+  const at = (ctx: Ctx, t: string): number => ctx.calls.find((c) => c.op === 'fillText' && c.a[0] === t)!.a[2] as number
+  assert.ok(Math.abs(at(draw(profile()), '30,000 ft') - (p.y1 - (9144 / PROFILE_TOP_M) * (p.y1 - p.y0))) < 1e-9)
+  assert.ok(Math.abs(at(draw(profile([], [], LEVEL)), '36,000 ft') - (p.y1 - ((36_000 * 0.3048 - 9180) / 3000) * (p.y1 - p.y0))) < 1e-9)
 })
 
-test('drawStrip: a minute at the plot\'s far edge has its label inside the strip (ending at its edge), not cut off by it', () => {
+test('drawStrip: the minutes under the plot, a sixth of it each whatever the speed (the strip is six minutes wide); the last, at the plot\'s far edge, has its label inside the strip, ending at its edge', () => {
   const p = stripPlot(W, H, DEFAULT_UNITS)
-  const ctx = draw(profile(), DEFAULT_UNITS, aheadPath({ lat: 32, lon: 34.9, altM: 3000 }, 0, 427, 0)!) // 13.18 km a minute: the sixth at 79 km
-  const labels = ctx.calls.filter((c) => c.op === 'fillText' && /min/.test(String(c.a[0])))
-  assert.deepEqual(labels.map((c) => c.a[0]), ['1 min', '2 min', '3 min', '4 min', '5 min', '6 min'])
-  const sixth = labels[5]
-  assert.ok((sixth.a[1] as number) > p.x1 - 6, 'its tick is at the plot\'s edge')
-  assert.deepEqual([sixth.align, sixth.a[1]], ['right', W - 1], 'so the label ends at the strip\'s edge')
-  assert.ok(labels.slice(0, 5).every((c) => c.align === 'center'), 'the others are centred on their ticks')
-})
-
-test('drawStrip: the minutes under the plot, each at its distance along 80 km; a slow aircraft\'s minutes are close, so only those with room are named; none past 80 km', () => {
-  const p = stripPlot(W, H, DEFAULT_UNITS)
-  const at = (ctx: Ctx, t: string): number => ctx.calls.find((c) => c.op === 'fillText' && c.a[0] === t)!.a[1] as number
-  const fast = draw(profile())
-  assert.deepEqual(fast.texts().filter((t) => /min/.test(t)), ['1 min', '2 min', '3 min', '4 min', '5 min', '6 min'], '360 kt: 11.1 km a minute')
-  assert.ok(Math.abs(at(fast, '3 min') - (p.x0 + ((3 * PATH.kmPerMin) / 80) * (p.x1 - p.x0))) < 1e-9)
-  const quick = draw(profile(), DEFAULT_UNITS, aheadPath({ lat: 32, lon: 34.9, altM: 3000 }, 0, 480, 0)!)
-  assert.deepEqual(quick.texts().filter((t) => /min/.test(t)), ['1 min', '2 min', '3 min', '4 min', '5 min'], '480 kt: the sixth is at 89 km')
-  const slow = draw(profile(), DEFAULT_UNITS, aheadPath({ lat: 32, lon: 34.9, altM: 3000 }, 0, 100, 0)!)
-  const named = slow.texts().filter((t) => /min/.test(t))
-  assert.ok(named.length >= 2 && named.length < 6, `100 kt: ${named.join(', ')}`)
-  const xs = named.map((t) => at(slow, t))
-  for (let i = 1; i < xs.length; i++) assert.ok(xs[i] - xs[i - 1] >= 44, 'room between the labels')
+  for (const gs of [100, 360, 480]) {
+    const ctx = draw(profile(), DEFAULT_UNITS, aheadPath({ lat: 32, lon: 34.9, altM: 3000 }, 0, gs, 0)!)
+    const labels = ctx.calls.filter((c) => c.op === 'fillText' && /min/.test(String(c.a[0])))
+    assert.deepEqual(labels.map((c) => c.a[0]), ['1 min', '2 min', '3 min', '4 min', '5 min', '6 min'], `${gs} kt`)
+    assert.ok(labels.slice(0, 5).every((c, k) => c.align === 'center' && Math.abs((c.a[1] as number) - (p.x0 + ((k + 1) / 6) * (p.x1 - p.x0))) < 1e-9), 'each centred on its tick')
+    assert.deepEqual([labels[5].align, labels[5].a[1]], ['right', W - 1], 'the sixth ends at the strip\'s edge')
+  }
+  const narrow = new Ctx()
+  drawStrip(narrow as unknown as CanvasRenderingContext2D, 264, 90, profile(), PATH, DEFAULT_UNITS) // the strip at its narrowest: 33 px a minute
+  assert.deepEqual(narrow.texts().filter((t) => /min/.test(t)), ['1 min', '3 min', '5 min'], 'only those with room are named')
+  assert.equal(narrow.calls.filter((c) => c.op === 'lineTo' && c.a[1] === 90 - 18 - 6).length, 6, 'every minute has its tick')
 })
 
 test('stripCells: the cells as a picture, a pixel a cell, the top row first: a cell where the cover is over 0.25, in its severity\'s colour, the more solid the cover the stronger; clear for less', () => {
@@ -495,7 +523,22 @@ test('stripCells: the cells as a picture, a pixel a cell, the top row first: a c
   assert.equal(px.filter((v, k) => k % 4 === 3 && v > 0).length, 1)
 })
 
-test('drawStrip: the cells\' picture is laid over the plot, not smoothed (a cell is a block), over the hazard areas\' tints and under their dashed boxes; without one no cell is drawn', () => {
+/** The lines a context stroked in a colour: [x, y, x, y] each, and whether dashed. */
+function lines(ctx: Ctx, color: string): { at: number[]; dashed: boolean }[] {
+  const out: { at: number[]; dashed: boolean }[] = []
+  let from: number[] = []
+  for (const c of ctx.calls) {
+    if (c.op === 'moveTo') from = c.a as number[]
+    else if (c.op === 'lineTo') {
+      if (c.stroke === color) out.push({ at: [...from, ...(c.a as number[])], dashed: c.dash.length > 0 })
+      from = c.a as number[]
+    }
+  }
+  return out
+}
+const same = (a: number[], b: number[]): boolean => a.length === b.length && a.every((v, k) => Math.abs(v - b[k]) < 1e-9)
+
+test('drawStrip: the cells\' picture is laid over the plot, not smoothed (a cell is a block), over the hazard areas\' tints and under their dashed edges; without one no cell is drawn', () => {
   const p = stripPlot(W, H, DEFAULT_UNITS)
   const cells = { the: 'picture' }
   const ctx = new Ctx()
@@ -504,37 +547,52 @@ test('drawStrip: the cells\' picture is laid over the plot, not smoothed (a cell
   assert.equal(laid.length, 1)
   assert.deepEqual(laid[0].a, [cells, p.x0, p.y0, p.x1 - p.x0, p.y1 - p.y0])
   assert.deepEqual([laid[0].smooth, laid[0].alpha], [false, 1])
-  const order = ctx.calls.map((c) => c.op)
-  assert.ok(order.lastIndexOf('fillRect') < order.indexOf('drawImage') && order.indexOf('drawImage') < order.indexOf('strokeRect'))
+  const edge = ctx.calls.findIndex((c) => c.op === 'stroke' && c.stroke === RED)
+  const tint = ctx.calls.findIndex((c) => c.op === 'fillRect' && c.fill === RED)
+  const image = ctx.calls.indexOf(laid[0])
+  assert.ok(tint >= 0 && tint < image && image < edge, `${tint} < ${image} < ${edge}`)
   assert.equal(ctx.calls.filter((c) => c.op === 'fillRect').length, 2, 'the plot\'s ground and the area\'s tint: no rectangle for a cell')
   assert.equal(draw(profile([[10, 5, 1, 3]])).calls.filter((c) => c.op === 'drawImage' || c.op === 'fillRect').length, 1)
 })
 
-test('drawStrip: a hazard area is a dashed box in its own colour over the stretch it is crossed, from its base to its top, tinted inside', () => {
+test('drawStrip: a hazard area is dashed in its own colour over the stretch it is crossed, from its base to its top, tinted inside', () => {
   const p = stripPlot(W, H, DEFAULT_UNITS)
+  const [pw, ph] = [p.x1 - p.x0, p.y1 - p.y0]
   const two = draw(profile([], [{ fromKm: 5, toKm: 15, baseM: 0, topM: 6000, color: '#5ac8fa' }, { fromKm: 40, toKm: 60, baseM: 3000, topM: 10_000, color: RED }]))
-  assert.deepEqual(two.calls.filter((c) => c.op === 'strokeRect').map((c) => c.stroke), ['#5ac8fa', RED], 'each box its area\'s colour')
+  assert.deepEqual(two.calls.filter((c) => c.op === 'stroke' && c.dash.length > 0 && c.stroke !== '#ffd23f').map((c) => c.stroke), ['#5ac8fa', RED], 'each area its own colour')
   assert.deepEqual(two.calls.filter((c) => c.op === 'fillRect' && c.alpha < 0.3 && c.alpha > 0.1).map((c) => c.fill), ['#5ac8fa', RED], 'and its tint')
   const ctx = draw(profile([], [{ fromKm: 40, toKm: 60, baseM: 3000, topM: 10_000, color: RED }]))
-  const boxes = ctx.calls.filter((c) => c.op === 'strokeRect')
-  assert.equal(boxes.length, 1)
-  assert.equal(boxes[0].stroke, '#ff5a5a')
-  assert.ok(boxes[0].dash.length > 0, 'dashed')
-  const [x, y, w, h] = boxes[0].a as number[]
-  const pw = p.x1 - p.x0
-  const ph = p.y1 - p.y0
-  assert.ok(Math.abs(x - (p.x0 + 0.5 * pw)) < 1e-9 && Math.abs(w - 0.25 * pw) < 1e-9)
-  assert.ok(Math.abs(y - (p.y1 - (10_000 / PROFILE_TOP_M) * ph)) < 1e-9 && Math.abs(h - ((7000 / PROFILE_TOP_M) * ph)) < 1e-9, 'from 3,000 m to 10,000 m')
+  const edges = lines(ctx, RED)
+  assert.equal(edges.length, 4)
+  assert.ok(edges.every((e) => e.dashed), 'dashed')
+  const [ax, bx, ay, by] = [p.x0 + (40 / KM) * pw, p.x0 + (60 / KM) * pw, p.y1 - (10_000 / PROFILE_TOP_M) * ph, p.y1 - (3000 / PROFILE_TOP_M) * ph]
+  for (const want of [[ax, by, ax, ay], [bx, ay, bx, by], [ax, ay, bx, ay], [ax, by, bx, by]]) assert.ok(edges.some((e) => same(e.at, want)), `an edge ${want}: from 40 to 60 km, 3,000 m to 10,000 m`)
   const tint = ctx.calls.filter((c) => c.op === 'fillRect' && c.fill === '#ff5a5a')
   assert.equal(tint.length, 1)
   assert.ok(tint[0].alpha < 0.3)
-  const high = draw(profile([], [{ fromKm: 0, toKm: 20, baseM: 0, topM: 30_000, color: RED }])).calls.find((c) => c.op === 'strokeRect')!
-  assert.ok(Math.abs((high.a[1] as number) - p.y0) < 1e-9, 'a top above the strip is held to its top edge')
+  assert.ok(same(tint[0].a as number[], [ax, ay, bx - ax, by - ay]))
+})
+
+test('drawStrip: a hazard area\'s edge is drawn where the area ends, not where the strip does: none for a top or a base beyond the heights shown, for an area the aircraft is in, or one still on at the far edge; an area wholly over or under the heights shown is not drawn', () => {
+  const p = stripPlot(W, H, DEFAULT_UNITS)
+  const [pw, ph] = [p.x1 - p.x0, p.y1 - p.y0]
+  const through = draw(profile([], [{ fromKm: 20, toKm: 40, baseM: 0, topM: 12_000, color: RED }], CLIMB)) // the heights 2,520 … 5,520 m are all inside it
+  const [ax, bx] = [p.x0 + (20 / KM) * pw, p.x0 + (40 / KM) * pw]
+  assert.deepEqual(lines(through, RED).map((e) => e.at), [[ax, p.y1, ax, p.y0], [bx, p.y0, bx, p.y1]], 'its two sides, the plot\'s height: where the way goes in and where it comes out')
+  const tint = through.calls.find((c) => c.op === 'fillRect' && c.fill === RED)!
+  assert.ok(same(tint.a as number[], [ax, p.y0, bx - ax, ph]), 'tinted over the whole height')
+  const inside = lines(draw(profile([], [{ fromKm: 0, toKm: KM, baseM: 3000, topM: 5000, color: RED }], CLIMB)), RED)
+  const [ty, by] = [p.y1 - ((5000 - 2520) / 3000) * ph, p.y1 - ((3000 - 2520) / 3000) * ph]
+  assert.ok(inside.length === 2 && same(inside[0].at, [p.x0, ty, p.x1, ty]) && same(inside[1].at, [p.x0, by, p.x1, by]), 'in it from here to the far edge: its top and its base only')
+  for (const z of [{ baseM: 0, topM: 2500 }, { baseM: 5520, topM: 12_000 }]) {
+    const ctx = draw(profile([], [{ fromKm: 20, toKm: 40, ...z, color: RED }], CLIMB))
+    assert.ok(lines(ctx, RED).length === 0 && !ctx.calls.some((c) => c.fill === RED && c.op === 'fillRect'), `${z.baseM} … ${z.topM} m: not in the picture`)
+  }
 })
 
 test('drawStrip: the aircraft\'s way is a dashed yellow line from its height now, a marker on it, to the plot\'s far edge at the height it reaches; a climb rises, and the strip\'s top holds it', () => {
   const p = stripPlot(W, H, DEFAULT_UNITS)
-  const Y = (m: number): number => p.y1 - (Math.min(m, PROFILE_TOP_M) / PROFILE_TOP_M) * (p.y1 - p.y0)
+  const Y = (m: number, w = { baseM: 0, topM: PROFILE_TOP_M }): number => p.y1 - ((Math.min(Math.max(m, w.baseM), w.topM) - w.baseM) / (w.topM - w.baseM)) * (p.y1 - p.y0)
   const level = draw(profile())
   const start = level.calls.find((c) => c.op === 'moveTo' && c.stroke === '#ffd23f')!
   assert.deepEqual(start.a, [p.x0, Y(3000)])
@@ -545,8 +603,68 @@ test('drawStrip: the aircraft\'s way is a dashed yellow line from its height now
   assert.ok(level.calls.some((c) => c.op === 'fill' && c.fill === '#ffd23f'), 'the marker')
   const up = draw(profile(), DEFAULT_UNITS, aheadPath({ lat: 32, lon: 34.9, altM: 3000 }, 0, 360, 2000)!)
   const upEnd = way(up).at(-1)!
-  const wantM = 3000 + 2000 * 0.3048 * (80 / PATH.kmPerMin)
+  const wantM = 3000 + 2000 * 0.3048 * 6
   assert.ok(Math.abs((upEnd.a[1] as number) - Y(wantM)) < 1e-6, `${upEnd.a[1]} against ${Y(wantM)}`)
   const steep = draw(profile(), DEFAULT_UNITS, aheadPath({ lat: 32, lon: 34.9, altM: 9000 }, 0, 360, 6000)!)
   assert.ok(Math.abs((way(steep).at(-1)!.a[1] as number) - p.y0) < 1e-9, 'held to the top')
+  const zoomed = draw(profile([], [], { baseM: 1500, topM: 4500 }))
+  assert.deepEqual(zoomed.calls.find((c) => c.op === 'moveTo' && c.stroke === '#ffd23f')!.a, [p.x0, (p.y0 + p.y1) / 2], 'of 3,000 m round it, the aircraft is half-way up')
+})
+
+test('drawStrip: a descent held on ends where it comes down to the sea\'s height: what is past a landing is not the way', () => {
+  const p = stripPlot(W, H, DEFAULT_UNITS)
+  const down = aheadPath({ lat: 32, lon: 34.9, altM: 600 }, 0, 360, -940)! // 2,000 ft at −940 ft/min: 313 m, 27 m, then the sea from the third minute
+  const ctx = draw(profile([], [], { baseM: 0, topM: 3000 }), DEFAULT_UNITS, down)
+  const way = ctx.calls.filter((c) => c.op === 'lineTo' && c.stroke === '#ffd23f' && c.dash.length > 0)
+  assert.equal(way.length, 3)
+  assert.ok(same(way.at(-1)!.a as number[], [p.x0 + 0.5 * (p.x1 - p.x0), p.y1]), 'its last point: the third minute, at the plot\'s foot')
+  const sea = draw(profile([], [], { baseM: 0, topM: 3000 }), DEFAULT_UNITS, aheadPath({ lat: 32, lon: 34.9, altM: 0 }, 0, 360, 0)!)
+  assert.ok(Math.abs((sea.calls.filter((c) => c.op === 'lineTo' && c.stroke === '#ffd23f' && c.dash.length > 0).at(-1)!.a[0] as number) - p.x1) < 1e-9, 'an aircraft at the sea\'s height has its way to the far edge')
+})
+
+test('drawStrip: where the way is in weather it is solid, on a dark casing; where it goes in, a diamond in that weather\'s colour stands on it, with a line down to the minutes (the points of entry are what the strip is for)', () => {
+  const p = stripPlot(W, H, DEFAULT_UNITS)
+  const pw = p.x1 - p.x0
+  const yNow = (p.y0 + p.y1) / 2
+  const ctx = draw(profile([], [], { baseM: 1500, topM: 4500, contacts: [{ fromKm: 20, toKm: 30, sev: 2 }] }))
+  const [ax, bx] = [p.x0 + (20 / KM) * pw, p.x0 + (30 / KM) * pw]
+  const solid = lines(ctx, '#ffd23f').filter((e) => !e.dashed && e.at[0] !== e.at[2] && e.at[1] === e.at[3])
+  assert.ok(solid.some((e) => same(e.at, [ax, yNow, p.x0 + (2 / 6) * pw, yNow])) && solid.some((e) => same(e.at, [p.x0 + (2 / 6) * pw, yNow, bx, yNow])), 'solid from 20 km to 30 km, through the second minute\'s point')
+  const order = ctx.calls.map((c, k) => (c.op === 'stroke' && c.dash.length === 0 ? [c.stroke, k] as const : null)).filter((c) => c !== null)
+  const casing = order.find(([color]) => /^rgba\(8, 12, 18/.test(color))!
+  assert.ok(casing[1] < order.find(([color]) => color === '#ffd23f')![1], 'the casing under it')
+  const drop = lines(ctx, '#ffbe3d')
+  assert.ok(drop.length === 1 && same(drop[0].at, [ax, yNow, ax, p.y1]), 'a line down to the minutes, heavy rain\'s colour')
+  const mark = ctx.calls.filter((c) => c.op === 'fill' && c.fill === '#ffbe3d')
+  assert.equal(mark.length, 1, 'the diamond')
+  const corners = ctx.calls.slice(0, ctx.calls.indexOf(mark[0])).filter((c) => c.op === 'moveTo' || c.op === 'lineTo').slice(-5).map((c) => c.a as number[])
+  assert.ok(same(corners.flat(), [ax, yNow - 4.5, ax + 4.5, yNow, ax, yNow + 4.5, ax - 4.5, yNow, ax, yNow - 4.5]))
+  const inNow = draw(profile([], [], { baseM: 1500, topM: 4500, contacts: [{ fromKm: 0, toKm: 12, sev: 0 }, { fromKm: 40, toKm: KM, sev: 3 }] }))
+  assert.equal(inNow.calls.filter((c) => c.op === 'fill' && c.fill === '#f2f5f8').length, 0, 'the aircraft in cloud now: no mark (its own marker stands there)')
+  assert.ok(lines(inNow, '#ffd23f').some((e) => !e.dashed && same(e.at, [p.x0, yNow, p.x0 + (1 / 6) * pw, yNow])), 'but the way is solid from it')
+  assert.equal(inNow.calls.filter((c) => c.op === 'fill' && c.fill === '#ff4d3d').length, 1, 'the thunderstorm further on has its mark')
+  assert.equal(draw(profile()).calls.filter((c) => c.op === 'stroke' && /^rgba\(8, 12, 18/.test(c.stroke)).length, 0, 'no weather on the way: none of it')
+})
+
+test('drawStrip: a steep way ends where it leaves the heights shown (it goes on over or under them); weather it meets past there has its mark on that edge, at its minute, and no solid line', () => {
+  const p = stripPlot(W, H, DEFAULT_UNITS)
+  const pw = p.x1 - p.x0
+  const steep = aheadPath({ lat: 32, lon: 34.9, altM: 9000 }, 0, 360, -3000)! // 914 m a minute down
+  const win = { baseM: 6480, topM: 9480 } // wxAhead.ts aheadWindow's for it: the way reaches its foot after 2.756 min
+  const ctx = draw(profile([], [], { ...win, contacts: [{ fromKm: 1.5 * steep.kmPerMin, toKm: 2 * steep.kmPerMin, sev: 1 }, { fromKm: 4 * steep.kmPerMin, toKm: 5 * steep.kmPerMin, sev: 3 }] }), DEFAULT_UNITS, steep)
+  const way = ctx.calls.filter((c) => c.op === 'lineTo' && c.stroke === '#ffd23f' && c.dash.length > 0)
+  const exitMin = (9000 - 6480) / 914.4
+  assert.ok(same(way.at(-1)!.a as number[], [p.x0 + (exitMin / 6) * pw, p.y1]), `the dashed way ends at the plot's foot after ${exitMin.toFixed(2)} min`)
+  assert.equal(way.length, 3, 'through the first and second minute, then the foot')
+  const solid = lines(ctx, '#ffd23f').filter((e) => !e.dashed && e.at[0] !== e.at[2])
+  assert.ok(solid.length === 1 && same([solid[0].at[0], solid[0].at[2]], [p.x0 + (1.5 / 6) * pw, p.x0 + (2 / 6) * pw]), 'solid through the light rain it meets inside')
+  assert.equal(ctx.calls.filter((c) => c.op === 'fill' && c.fill === '#58a6ff').length, 1, 'whose mark stands on the way')
+  const far = ctx.calls.filter((c) => c.op === 'fill' && c.fill === '#ff4d3d')
+  assert.equal(far.length, 1, 'the thunderstorm at 4 min, under the heights shown, has its mark')
+  const top = ctx.calls.slice(0, ctx.calls.indexOf(far[0])).filter((c) => c.op === 'moveTo').at(-1)!.a as number[]
+  assert.ok(same(top, [p.x0 + (4 / 6) * pw, p.y1 - 4.5]), 'on the plot\'s foot, at its minute')
+  assert.equal(lines(ctx, '#ff4d3d').length, 0, 'with no line down: it is at the foot')
+  const up = draw(profile([], [], { baseM: 2520, topM: 5520 }), DEFAULT_UNITS, aheadPath({ lat: 32, lon: 34.9, altM: 3000 }, 0, 360, 1800)!)
+  const upEnd = up.calls.filter((c) => c.op === 'lineTo' && c.stroke === '#ffd23f' && c.dash.length > 0).at(-1)!.a as number[]
+  assert.ok(same(upEnd, [p.x0 + (((5520 - 3000) / 548.64) / 6) * pw, p.y0]), 'a steep climb ends at the plot\'s top')
 })
