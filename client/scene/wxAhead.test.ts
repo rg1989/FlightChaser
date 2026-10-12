@@ -6,7 +6,7 @@ import { DEFAULT_UNITS } from '../ui/units.ts'
 import { PUFF_FILL, type CloudSpec } from './cloudField.ts'
 import {
   AHEAD_KM, AHEAD_MIN, IN_COVER, PROFILE_COLS, PROFILE_ROWS, PROFILE_SPAN_M, PROFILE_TOP_M, SEV_COLOR, SEV_NAME, aheadPath, aheadProfile, aheadStatus,
-  aheadWindow, hazardWords, keepProfile, pathPointAt, sevOf, statusWords, type AheadPath, type AheadPoint, type AheadStatus,
+  aheadMark, aheadWindow, hazardWords, keepProfile, pathPointAt, sevOf, statusWords, type AheadPath, type AheadPoint, type AheadStatus,
 } from './wxAhead.ts'
 import type { Hazard } from './wxGeo.ts'
 import { buildField, sampleField } from './wxField.ts'
@@ -442,6 +442,16 @@ test('statusWords: clear air with weather ahead — the worst of it and the minu
   assert.equal(statusWords(status({ sev: 0, inMin: 1.4 })).cloud, 'Clear air · cloud in 1 min')
   assert.equal(statusWords(status({ sev: 2, inMin: 17.6 })).cloud, 'Clear air · heavy rain in 18 min')
   assert.deepEqual(statusWords(status({})), { cloud: 'Clear air ahead', sev: null, hazard: null })
+})
+
+test('aheadMark: one label where the way first meets weather, its words, its severity and its place on the path; none in weather, with none ahead, or while the sky is not known', () => {
+  const way = aheadPath({ lat: 32, lon: 34.8, altM: 9000 }, 90, 420, 0)!
+  const mark = aheadMark(way, status({ sev: 2, inMin: 4.6 }))!
+  assert.deepEqual([mark.text, mark.sev], ['Heavy rain in 5 min', 2])
+  assert.deepEqual(mark.at, pathPointAt(way, 4.6 * way.kmPerMin))
+  assert.equal(aheadMark(way, status({ sev: 3, inMin: 0.4 }))!.text, 'Thunderstorm in under a minute')
+  assert.equal(aheadMark(way, status({ sev: 0, inMin: 2 }))!.text, 'Cloud in 2 min')
+  for (const s of [status({ inside: true, sev: 2, inMin: 0 }), status({}), status({ sev: 2, inMin: 3 }, null, false)]) assert.equal(aheadMark(way, s), null)
 })
 
 test('statusWords: the sky not known (no weather source has answered) — "No weather data", not "Clear air ahead"; a hazard area is still said', () => {

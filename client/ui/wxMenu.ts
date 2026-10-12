@@ -51,7 +51,7 @@ const CATEGORIES: [string, string][] = [['Good', CATEGORY_COLOR.VFR], ['Marginal
 const MASTER_HINT = { top: 'Rain radar, airport weather, hazard areas', chase: 'Clouds, rain and hazard areas around the aircraft' } // per view
 interface Aid { key: 'track' | 'slice' | 'strip'; icon: IconName; label: string; hint: string }
 const AIDS: Aid[] = [
-  { key: 'track', icon: 'plane', label: 'Track line', hint: 'The next six minutes on this heading' },
+  { key: 'track', icon: 'plane', label: 'Weather on path', hint: 'Marks where this heading meets weather' },
   { key: 'slice', icon: 'layers', label: 'Level slice', hint: "The weather at the aircraft's own altitude" },
   { key: 'strip', icon: 'altitude', label: 'Ahead strip', hint: 'Side view of the next 6 minutes' },
 ]

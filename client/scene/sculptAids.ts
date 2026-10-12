@@ -8,11 +8,11 @@
 // - box: the volume, faintly filled, with its edges.
 // A curtain and a fence have the area's top face too, as faint as the box's fill: a roof over the walls. Nothing is laid on the
 // ground under an area, as in the other looks.
-// The track line is the way ahead (wxAhead.ts aheadPath) as a line of short pieces, each pale in clear air and in the severity's
-// colour where it is inside a body as drawn (sculptInside.ts trackSeverities): it shows where on this heading the aircraft enters
-// cloud, and of what kind. Its places follow the aircraft every frame.
+// The track line is the way ahead (wxAhead.ts aheadPath) as a line of short pieces, each drawn in the severity's colour where it is
+// inside a body as drawn (sculptInside.ts trackSeverities) and not at all in clear air: it shows where on this heading the aircraft
+// is in cloud, and of what kind. Its places follow the aircraft every frame.
 import {
-  Cartesian3, Color, CustomDataSource, ImageMaterialProperty, Material, PolylineCollection, type Polyline, type Viewer,
+  Cartesian3, Color, CustomDataSource, ImageMaterialProperty, PolylineCollection, type Polyline, type Viewer,
 } from 'cesium'
 import type { HazardStyle } from './cloudVolume.ts'
 import type { SculptAids } from './sculptedClouds.ts'
@@ -25,7 +25,6 @@ const CURTAIN_FADE = 0.6 // and it has faded to nothing this share of the way do
 const BOX_ALPHA = 0.1 // a box's fill, and a curtain's or a fence's roof
 const LINE_PX = 2
 const TRACK_PX = 3
-const TRACK_CLEAR = Color.fromCssColorString('#d8ecff').withAlpha(0.9) // the track line in clear air
 const KM_PER_DEG = 111.195
 
 /** A wall's picture: a column of the colour, strongest at the top, nothing from CURTAIN_FADE of the way down. */
@@ -48,16 +47,9 @@ export function sceneAids(viewer: Viewer): SculptAids {
   void viewer.dataSources.add(source)
   const lines = viewer.scene.primitives.add(new PolylineCollection()) as PolylineCollection
   const pieces: Polyline[] = []
-  const tints = new Map<number, Material>() // a piece's material by its severity in tenths (−1: clear air): made once each
-  const tintOf = (sev: number): Material => {
-    const key = sev < 0 ? -1 : Math.round(sev * 10)
-    let m = tints.get(key)
-    if (m === undefined) {
-      const [r, g, b] = severityRgb(key / 10)
-      tints.set(key, (m = Material.fromType('Color', { color: key < 0 ? TRACK_CLEAR : new Color(r, g, b, 1) })))
-    }
-    return m
-  }
+  // Each piece keeps the material Cesium gave it: a polyline destroys its material with itself, so one shared by several pieces is
+  // destroyed twice, which throws (the look was then left half changed). A piece's colour is written when its severity changes.
+  const tenths: number[] = [] // each piece's severity in tenths, as its colour was last written
   let gone = false
   return {
     hazards(hazards: readonly Hazard[], style: HazardStyle, color: (h: Hazard) => string): void {
@@ -103,11 +95,14 @@ export function sceneAids(viewer: Viewer): SculptAids {
       while (pieces.length < n) pieces.push(lines.add({ width: TRACK_PX, positions: [new Cartesian3(), new Cartesian3()] }))
       for (let k = 0; k < pieces.length; k++) {
         const piece = pieces[k]
-        piece.show = k < n
-        if (k >= n) continue
+        piece.show = k < n && severities[k] >= 0 // (−1: clear air, not drawn)
+        if (!piece.show) continue
         piece.positions = [positions[k], positions[k + 1]]
-        const tint = tintOf(severities[k])
-        if (piece.material !== tint) piece.material = tint
+        const sev = Math.round(severities[k] * 10)
+        if (tenths[k] === sev) continue
+        tenths[k] = sev
+        const [r, g, b] = severityRgb(sev / 10)
+        piece.material.uniforms.color = new Color(r, g, b, 1)
       }
     },
     destroy(): void {

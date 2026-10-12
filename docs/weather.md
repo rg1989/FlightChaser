@@ -34,11 +34,12 @@
   The rail button shows the state: a cloud in the accent colour when the weather is on, a crossed-out grey cloud when it is off (and in
   History and scenarios, where none is drawn; the switch is then disabled and the line says "Live only"). With the switch off every
   control below keeps your choice but is disabled; they are the chase's, so top-down they are disabled too ("In the chase view").
-  **Clouds:** natural, severity colours (cloud white, light rain blue, heavy rain amber, thunderstorm red) or sculpted, and their
+  **Clouds:** natural, severity colours (cloud white, light rain blue, heavy rain amber, thunderstorm red; rain and storms keep
+  their colour at night) or sculpted, and their
   opacity (a slider: at "Off" no cloud is drawn and the hazard areas show alone). **Hazard areas:** their edges as a curtain, a
   fence or a box, each with a faint roof at the area's top height; nothing is drawn on the ground under an area.
-  **Looking ahead:** three switches, the track line (the next six minutes on this heading, a label at each minute, coloured where it
-  enters weather), the level slice (the weather at the aircraft's own altitude within 60 km, with rings at 10, 20 and 40 km) and the
+  **Looking ahead:** three switches, weather on path (the part of the next six minutes on this heading that is in weather, drawn in
+  the weather's colour, with one label where it begins, "Heavy rain in 5 min"; nothing in clear air), the level slice (the weather at the aircraft's own altitude within 60 km, with rings at 10, 20 and 40 km) and the
   ahead strip (a side view of the next six minutes: the weather's cells, the hazard areas, the aircraft's way, and a mark where the
   way goes into weather; not in a window under 480 px high). The strip has two buttons of its own: **Path** shows 3,000 m (about
   10,000 ft) of heights round the aircraft's way, so the cloud it is about to meet is not a few pixels, and **Sky** the whole sky

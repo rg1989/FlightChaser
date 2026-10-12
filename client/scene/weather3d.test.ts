@@ -2227,7 +2227,7 @@ test('Weather3D: the hazard areas\' style (the box until set) is kept as given; 
   assert.deepEqual(r.sky.clouds.aheads.slice(3), [{ path: null, show: { track: true, slice: true } }], 'hidden: no way ahead is left with the pass')
   r.w.setAhead(path, { track: true, slice: true })
   assert.equal(r.sky.clouds.aheads.length, 4)
-  assert.equal(r.labelCalls.some((c) => c.key === 'ahead'), false, 'the minute labels are the app\'s, not Weather3D\'s')
+  assert.equal(r.labelCalls.some((c) => c.key === 'ahead'), false, 'the label where the way meets weather is the app\'s, not Weather3D\'s')
 })
 
 test('Weather3D: when the cloud pass has failed (a render error took it out for good) the line says so, after a note of a source that is down, and the app is told once, with the words; the hazard areas, whose edges the pass drew, are then marked on the ground in every style, the box too; the rest of the weather goes on', async () => {

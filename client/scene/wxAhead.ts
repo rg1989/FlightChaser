@@ -285,6 +285,20 @@ export function keepProfile(kept: KeptProfile | null, path: AheadPath, field: Wx
   return { profile, field, hazards, from: { lat: from.lat, lon: from.lon }, to: { lat: to.lat, lon: to.lon } }
 }
 
+const minutesTo = (inMin: number): string => (inMin < 1 ? 'under a minute' : `${Math.round(inMin)} min`)
+
+/**
+ * The mark the 3-D view sets where the way first meets weather: its words ("Heavy rain in 5 min", "Thunderstorm in under a minute"), its
+ * severity's step and its place on the path. Null in weather, with none within reach, and while the sky is not known.
+ */
+export function aheadMark(path: AheadPath, s: AheadStatus): { text: string; sev: number; at: AheadPoint } | null {
+  const { inside, inMin } = s.cloud
+  if (!s.known || inside || inMin === null) return null
+  const sev = sevOf(s.cloud.sev)
+  const name = SEV_NAME[sev].replace(/^a /, '')
+  return { text: `${name[0].toUpperCase()}${name.slice(1)} in ${minutesTo(inMin)}`, sev, at: pathPointAt(path, inMin * path.kmPerMin) }
+}
+
 /**
  * The status line in words: the weather ("In light rain", "Clear air · a thunderstorm in 3 min", "Clear air ahead"; "No weather data" while the sky is not known)
  * with its severity's step (null: none ahead), and the hazard area ("Inside hazard area · …", "Hazard area in 2 min · …"), or null.
@@ -295,7 +309,7 @@ export function statusWords(s: AheadStatus): { cloud: string; sev: number | null
   let cloud = s.known ? 'Clear air ahead' : 'No weather data'
   let step: number | null = null
   if (s.known && inside) [cloud, step] = [`In ${SEV_NAME[sev]}`, sev]
-  else if (s.known && inMin !== null) [cloud, step] = [`Clear air · ${SEV_NAME[sev]} in ${inMin < 1 ? 'under a minute' : `${Math.round(inMin)} min`}`, sev]
+  else if (s.known && inMin !== null) [cloud, step] = [`Clear air · ${SEV_NAME[sev]} in ${minutesTo(inMin)}`, sev]
   const h = s.hazard
   const hazard = h === null ? null : h.inside ? `Inside hazard area · ${h.text}` : `Hazard area ${h.inMin === null ? 'ahead' : `in ${Math.max(1, Math.round(h.inMin))} min`} · ${h.text}`
   return { cloud, sev: step, hazard }

@@ -53,7 +53,7 @@ import { NO_DISCS, outlineDiscs, type Discs } from './scene/modelOutline.ts'
 import { PlaceLabels, type LayerLabel } from './scene/placeLabels.ts'
 import { Weather } from './scene/weather.ts'
 import { Weather3D, parseWxAt, parseWxBreak, parseWxDemo, parseWxSat, parseWxTier, satelliteFor, type Aircraft as WxAircraft } from './scene/weather3d.ts'
-import { aheadPath, aheadStatus, hazardWords, keepProfile, type KeptProfile } from './scene/wxAhead.ts'
+import { aheadMark, aheadPath, aheadStatus, hazardWords, keepProfile, SEV_COLOR, type KeptProfile } from './scene/wxAhead.ts'
 import { makePendingLayer } from './scene/pendingLayer.ts'
 import { RouteLine, type PathPoint } from './scene/routeLine.ts'
 import { dayState, legSpans, type DayState } from './history/aircraftDay.ts'
@@ -181,9 +181,8 @@ const FLIGHT_SAME_PX = 12 // …the same: its sides moved less than this in all 
 const FLIGHT_INSET = 0.11 // …that clear part less this much of it on each side: a little more than History's own "in view" (VIEW_INSET)
 const WEATHER_LABEL = 'clouds, hazard areas, looking ahead' // after the state, in the Weather button's words
 const WX_LOOK_MS = 250 // the chase weather's status line, ahead strip and minute labels follow the aircraft this often
-const WX_MINUTES_KEY = 'ahead' // the track line's minute labels: this layer in the names overlay (placeLabels.ts setLayer) …
-const WX_MINUTES_RANK = 1.6 // … after the seas (1) and the hazard areas' labels (1.5), before every city (2)
-const WX_MINUTES_COLOR = '#d8ecff'
+const WX_MARK_KEY = 'ahead' // the label where the way ahead meets weather: this layer in the names overlay (placeLabels.ts setLayer) …
+const WX_MARK_RANK = 1.6 // … after the seas (1) and the hazard areas' labels (1.5), before every city (2)
 const TRAFFIC_CLEAR_PX = 48 // round a clicked traffic aircraft, its card keeps clear of: its square and labels, mostly
 const NO_ROOM: Room = { safe: { x: 0, y: 0, w: 0, h: 0 }, covers: [] }
 const NO_RECTS: readonly Rect[] = []
@@ -934,16 +933,19 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   })
   // What is ahead on this heading (scene/wxAhead.ts): the way the chased aircraft goes if it keeps its track, speed and climb is worked out
   // every frame, for the 3-D view's track line and level slice (Weather3D.setAhead); a few times a second (WX_LOOK_MS) the status line,
-  // the ahead strip (ui/wxHud.ts) and the track line's minute labels follow from it; the strip's profile (8,000 cells of the field) is
+  // the ahead strip (ui/wxHud.ts) and the label where the way meets weather follow from it; the strip's profile (8,000 cells of the field) is
   // made again only when it would show something else, in the frame after a look, and the next look paints it: over a storm the
   // profile takes up to 6 ms and the look's own work up to 5, which in one frame was a hold of 11 ms. So the strip shows the sky as
   // it was a quarter second ago, and comes a quarter second after it is switched on. Hidden with the weather: nothing is worked out.
   // Until a source of clouds has answered (weather3d.known) the status line says "No weather data" and the strip has no cells.
   // wxAids are the Looking ahead choices of the Weather menu (wxPrefs: the track line, the level slice, the ahead strip); the heights
   // the strip shows (round the way, or the whole sky) are chosen on the strip itself, and kept with them.
-  // ponytail: the minute labels are placed with the names (placeLabels.ts), a few times a second, so they trail the track line by up to
-  // WX_LOOK_MS. (They are a layer of the names overlay, like the hazard areas' labels: they show whether or not Borders & places is on, and
-  // while they do the overlay places its names every frame.) Upgrade: PlaceLabels moves a layer's labels in place, every frame.
+  // The track line is drawn only where the way is in weather, and one label names the first of it ("Heavy rain in 5 min": aheadMark).
+  // (A line the whole way with a label at each minute was tried: from behind the aircraft the way points at one place on the screen,
+  // so the line said nothing and its six labels hid one another in turn.)
+  // ponytail: the label is placed with the names (placeLabels.ts), a few times a second, so it trails the weather's edge by up to
+  // WX_LOOK_MS. (It is a layer of the names overlay, like the hazard areas' labels: it shows whether or not Borders & places is on, and
+  // while it does the overlay places its names every frame.) Upgrade: PlaceLabels moves a layer's labels in place, every frame.
   const wxHud = mountWxHud(ui, (view) => setWxPrefs({ ...wxPrefs, view }))
   const wxAids = { track: wxPrefs.track, slice: wxPrefs.slice, strip: wxPrefs.strip }
   let wxSky = wxPrefs.view === 'sky' // the strip shows the whole sky, not the heights round the way (its own two buttons)
@@ -951,15 +953,15 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   let wxHudUp = false // the HUD shows something
   let wxKept: KeptProfile | null = null // the ahead strip's profile, kept while it would show the same (scene/wxAhead.ts keepProfile)
   let wxProfileDue = false // this frame is the one after a look: the strip's profile is made in it
-  let wxMinutesUp = false // the names overlay holds the minute labels
+  let wxMarkUp = false // the names overlay holds the label where the way meets weather
   let wxHudRects: readonly Rect[] = NO_RECTS // the HUD's chips and strip on the canvas: no name of the 3-D view (a hazard area's label is one) goes under them
   const lookAhead = (s: RenderState | null, now: number): void => {
     const path = s === null || !weather3d.show ? null : aheadPath({ lat: s.lat, lon: s.lon, altM: s.hM - geoidN(s.lat, s.lon) }, s.trackDeg ?? s.headingDeg, s.gsKt ?? 0, s.vsFpm ?? 0)
     weather3d.setAhead(path, wxAids)
     if (path === null) {
       if (wxHudUp) wxHud.set(null, null, null, frameUnits)
-      if (wxMinutesUp) placeLabels.setLayer(WX_MINUTES_KEY, WX_MINUTES_RANK, [])
-      wxHudUp = wxMinutesUp = wxProfileDue = false
+      if (wxMarkUp) placeLabels.setLayer(WX_MARK_KEY, WX_MARK_RANK, [])
+      wxHudUp = wxMarkUp = wxProfileDue = false
       wxHudRects = NO_RECTS
       wxKept = null
       return
@@ -981,18 +983,19 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     // browser lay the page out on the spot; the names overlay keeps off the chips as they stood a quarter second ago)
     if (wxHudUp && wxHud.moved()) wxHudRects = measureRoom('.fh-wxhud-chip, .fh-wxhud-strip').covers.filter((r) => r.w > 0 && r.h > 0)
     if (!wxAids.strip) wxKept = null
-    wxHud.set(aheadStatus(path, field, hazards, (h) => hazardWords(h.sigmet, units), known), wxKept?.profile ?? null, path, units)
+    const status = aheadStatus(path, field, hazards, (h) => hazardWords(h.sigmet, units), known)
+    wxHud.set(status, wxKept?.profile ?? null, path, units)
     wxProfileDue = wxAids.strip
     wxHudUp = true
-    if (weather3d.aheadShow.track || wxMinutesUp) {
-      const minutes: LayerLabel[] = !weather3d.aheadShow.track ? [] : path.points.slice(1).map((p, i) => ({
-        text: `${i + 1} min`, position: Cartesian3.fromDegrees(p.lon, p.lat, p.altM + geoidN(p.lat, p.lon)), color: WX_MINUTES_COLOR,
-      }))
-      placeLabels.setLayer(WX_MINUTES_KEY, WX_MINUTES_RANK, minutes)
-      wxMinutesUp = minutes.length > 0
+    if (weather3d.aheadShow.track || wxMarkUp) {
+      const mark = weather3d.aheadShow.track ? aheadMark(path, status) : null
+      const at = mark?.at
+      const labels: LayerLabel[] = mark === null || at === undefined ? [] : [{ text: mark.text, position: Cartesian3.fromDegrees(at.lon, at.lat, at.altM + geoidN(at.lat, at.lon)), color: SEV_COLOR[mark.sev] }]
+      placeLabels.setLayer(WX_MARK_KEY, WX_MARK_RANK, labels)
+      wxMarkUp = mark !== null
     }
   }
-  /** The Weather menu's choices put to work (and, at the next frame, the status, the strip and the minute labels follow the aids). */
+  /** The Weather menu's choices put to work (and, at the next frame, the status, the strip and the weather's label follow the aids). */
   const applyWxPrefs = (p: WxPrefs): void => {
     weather3d.look = p.look
     weather3d.opacity = p.opacity

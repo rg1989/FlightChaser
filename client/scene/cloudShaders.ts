@@ -51,9 +51,9 @@
 //   rim, with rings at 10, 20 and 40 km.
 // - These are drawn at the march's half size: a line's widths are the mock's in the march's pixels, each two of the screen's.
 // The track line (setAhead) is the mix's, at full size: the way ahead (wxAhead.ts aheadPath, seven places, given every frame as
-// numbers) as a line two pixels wide: white-blue in clear air and, thicker, the severity's colour where the field's cover is over
-// 0.3. Its minutes are the app's labels: a wider bead at each could not be made out under its label, and is not drawn. It is hidden
-// by what is solid in front of it, and laid over the cloud. (In
+// numbers) as a line four pixels wide in the severity's colour where the field's cover is over 0.3, and nothing in clear air (a
+// line the whole way was one from the aircraft to the middle of the view, whatever the weather). The app's label names the first
+// of it. It is hidden by what is solid in front of it, and laid over the cloud. (In
 // the march it was a soft band of six to eight pixels, and the cloud it marks hid its coloured stretch from outside; the march at
 // full size draws it as thin, and on the check machine one frame in twenty then took 40 ms, not 19.) It and the slice read the
 // field's cover as it is (not times GAIN), as the status line does (wxAhead.ts).
@@ -113,6 +113,7 @@ const RAIN_MOST = 0.5 // … and however much rain the ray passes, it hides no m
  * (cloudVolume.ts SHADOW).
  */
 export const VEIL = 0.58
+const SEV_NIGHT = 0.6 // in the severity look, rain and storms are drawn at least this bright by night (see lit)
 const ROOF = 0.1 // a hazard area's top face hides this much: a roof felt overhead, the sky still read through it
 
 /** The shader's veiled(): what a part that would hide `a` of what is behind it adds when the ray has hidden `hidden` already: `a`, or what is left under the cap. */
@@ -386,6 +387,13 @@ vec2 atHeight(vec3 ro, vec3 rd, float H) {
   float q = -0.5 * (b + (b >= 0.0 ? 1.0 : -1.0) * sqrt(disc));
   float r0 = q / a, r1 = q != 0.0 ? c / q : r0;
   return vec2(min(r0, r1), max(r0, r1));
+}
+
+// How bright the weather at a place is drawn: by the Sun (u_light: a cloud is dark at night). In the severity look rain and storms
+// keep SEV_NIGHT of their colour whatever the hour: the look is there to be read, and at night it was the natural look's black.
+// Plain cloud goes dark with the sky in both.
+float lit(float sev) {
+  return u_look < 0.5 ? u_light : mix(u_light, max(u_light, ${glsl(SEV_NIGHT)}), smoothstep(0.3, 0.7, sev));
 }
 
 // The rain's colour for the look: grey-blue, or its severity's.
@@ -662,7 +670,7 @@ void main() {
         vec3 c = mix(vec3(0.36, 0.42, 0.52), vec3(1.0, 0.98, 0.95), sh);
         c *= sev < 1.5 ? mix(1.0, 0.86, sev) : mix(0.8, 0.6, clamp(sev - 2.0, 0.0, 1.0));
         if (u_look > 0.5) c = mix(c, sevCol(sev) * (0.7 + 0.3 * sh), 0.62 * smoothstep(0.3, 0.7, sev));
-        c = mix(c, HAZE, hazed(t)) * u_light;
+        c = mix(c, HAZE, hazed(t)) * lit(sev);
         float a = 1.0 - exp(-d * sigma(sev) * min(ds, tEnd - t));
         lay(t, col, A);
         a = veiled(a, A);
@@ -688,7 +696,7 @@ void main() {
         tauR = tau;
         lay(t, col, A);
         a = veiled(a, A);
-        col += (1.0 - A) * a * mix(rainCol(rain.y), HAZE, hazed(t)) * u_light;
+        col += (1.0 - A) * a * mix(rainCol(rain.y), HAZE, hazed(t)) * lit(rain.y);
         A += (1.0 - A) * a;
       }
     }
@@ -718,9 +726,8 @@ uniform float u_path[${PATH_N * 3}]; // the way ahead in the frame, km: the airc
 uniform vec2 u_aids; // 1 where it shows: x the track line, y the level slice (the march draws that)
 in vec2 v_textureCoordinates;
 ${SHARED}
-// The track line (the mock's): the way ahead as a line two pixels wide at any distance; white-blue in clear air and, thicker, the
-// severity's colour where the field's cover is over 0.3. (The minutes on it are the app's labels, "1 min" to "6 min"; a bead under
-// each could not be made out, and is not drawn.) Of the stretches between the path's places, the one this ray passes nearest, by
+// The track line: the way ahead where it is in weather (the field's cover over 0.3), as a line four pixels wide at any distance in
+// the severity's colour; in clear air nothing. Of the stretches between the path's places, the one this ray passes nearest, by
 // the angle between them; the field is read only by a ray near it. Its colour, and how much of the pixel it covers. Hidden by what
 // is solid in front of it (tO: km to what the pixel shows), not by cloud: see the header.
 vec4 track(vec3 ro, vec3 rd, float tO, float pix) {
@@ -751,12 +758,11 @@ vec4 track(vec3 ro, vec3 rd, float tO, float pix) {
   if (off >= 1.0e9) return vec4(0.0);
   float wide = max(0.0004, 1.4 * pix * at);
   float dist = off * at;
-  if (dist >= wide * 2.5) return vec4(0.0); // the widest the line gets: in cloud (1.9 times), out to its soft edge (1.3 times)
+  float lw = wide * 1.9;
+  if (dist >= lw * 1.3) return vec4(0.0); // past the line's soft edge
   float sev;
   float inC = smoothstep(0.2, 0.35, fieldCover(toMap(q), sev));
-  float lw = wide * (1.0 + 0.9 * inC);
-  float al = 1.0 - smoothstep(lw * 0.5, lw * 1.3, dist);
-  return vec4(mix(vec3(0.78, 0.92, 1.0), sevCol(sev), inC), al * mix(0.8, 1.0, inC));
+  return vec4(sevCol(sev), inC * (1.0 - smoothstep(lw * 0.5, lw * 1.3, dist)));
 }
 
 void main() {

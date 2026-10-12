@@ -17,7 +17,7 @@ export interface WxPrefs {
   look: CloudLook
   opacity: number // the most a cloud hides of what is behind it, 0 … 1; 0: no clouds, the hazard areas alone
   hazard: HazardStyle
-  track: boolean // the track line: the next six minutes on this heading
+  track: boolean // the track line: the way ahead where it is in weather, and a label at the first of it
   slice: boolean // the level slice: the weather at the aircraft's own altitude
   strip: boolean // the ahead strip: a side view of the next 6 minutes
   view: StripView // the heights the strip shows: chosen on the strip itself
