@@ -564,8 +564,13 @@ if (import.meta.main) {
   const png = process.argv.indexOf('--png')
   const dir = png >= 0 ? process.argv[png + 1] : null
   if (dir !== null) mkdirSync(dir, { recursive: true })
-  for (const e of asked(readManifest(), process.argv.slice(2).filter((a, i, all) => all[i - 1] !== '--png'))) {
+  const write = process.argv.includes('--write')
+  for (const e of asked(readManifest())) { // asked leaves out --png's folder itself (taking it out here too made `--png <dir> <id>` draw every model)
     if (e.paint === undefined) continue
+    if (write && recipeOf(e.id).base !== undefined) { // its doors follow its base's through the recipe: variants.ts knows how
+      console.log(`${e.id}: a derived model: node tools/models/variants.ts ${e.id} measures it`)
+      continue
+    }
     let r: Measured
     try {
       r = profileOf(e)
@@ -576,7 +581,7 @@ if (import.meta.main) {
     }
     console.log(`${e.id}: ${profileLine(r.profile).slice(0, 400)}…`)
     if (dir !== null) console.log(`  ${profilePng(e, r, dir)}`)
-    if (!process.argv.includes('--write')) continue
+    if (!write) continue
     e.profile = r.profile
     writeModel(e)
   }

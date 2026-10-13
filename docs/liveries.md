@@ -74,8 +74,7 @@ the folder. There is no list to edit.
 - `"B73*"` matches each designator that starts with `B73`. An exact designator has priority over a prefix.
 - Two models can list the same designator. Then the model that lists it in `types` has priority over a stand-in, and
   after that the model that lists it earlier in its list. Thus a new package takes its types from the models that drew
-  them, and you do not edit the other packages. `variants.ts` removes the designator from the other lists when it
-  builds a derived model. For a model from a source file, remove it yourself when the work is merged.
+  them, and you do not edit the other packages.
 - `name` is the name of the aircraft that the model shows ("Boeing 787-9"). The flight card uses it.
 
 An aircraft that is not on its own model is drawn as a placeholder (`client/scene/placeholder.ts`): a flat pale ghost

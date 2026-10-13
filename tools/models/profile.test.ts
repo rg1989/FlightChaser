@@ -7,7 +7,8 @@ import { readManifest, recipeOf } from './packages.ts'
 
 const manifest = readManifest()
 const painted = manifest.models.filter((e) => e.paint !== undefined)
-const measured = new Map(painted.map((e) => [e.id, profileOf(e).profile]))
+// A derived model's doors follow its base's through its recipe: variants.ts measures it (and its test checks it); here its stored profile is read.
+const measured = new Map(painted.map((e) => [e.id, recipeOf(e.id).base === undefined ? profileOf(e).profile : e.profile!]))
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${msg} got ${a}, expected ${b} ± ${tol}`)
 
 /** y along the body outline at z (column 1 bottom, 2 top), linear between its stations. */

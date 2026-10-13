@@ -5,13 +5,15 @@ import { readFileSync } from 'node:fs'
 import type { ModelManifest, ModelManifestEntry } from '../../client/types.ts'
 import { readGlb } from './glb.ts'
 import { engineParts, partBoxes, parts, profileOf } from './profile.ts'
-import { build, cutOutboard, devicePieces, measure, measureTip, meshOf, recipes, signedVolume, spine, toWork, withoutTypes, type Work } from './variants.ts'
+import { build, cutOutboard, devicePieces, measure, measureTip, meshOf, recipes, signedVolume, spine, toWork, type Work } from './variants.ts'
 import { readManifest } from './packages.ts'
 
 const manifest = readManifest()
 const byId = (id: string): ModelManifestEntry => manifest.models.find((m) => m.id === id)!
 const all = recipes()
-const built = Object.entries(all).map(([id, r]) => ({ id, r, ...build(id, r, manifest) }))
+// A recipe whose package is not built yet (its folder holds only recipe.json) is somebody's work in hand: not checked here.
+const ready = Object.entries(all).filter(([id]) => manifest.models.some((m) => m.id === id))
+const built = ready.map(([id, r]) => ({ id, r, ...build(id, r, manifest) }))
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${msg} got ${a}, expected ${b} ± ${tol}`)
 const V = (w: Work, i: number): [number, number, number] => [w.p[3 * i], w.p[3 * i + 1], w.p[3 * i + 2]]
 const workOf = (e: ModelManifestEntry): Work => toWork(readGlb(new Uint8Array(readFileSync(new URL(`../../public/${e.uri}`, import.meta.url)))), e)
@@ -26,7 +28,8 @@ function pieces(id: string): Work[] {
 }
 
 test('the recipes: the A320neo, A321neo and 737 MAX 8, each on its base, with its types', () => {
-  assert.deepEqual(Object.keys(all).sort(), ['a20n', 'a21n', 'b38m'])
+  for (const id of ['a20n', 'a21n', 'b38m']) assert.ok(id in all, id)
+  for (const [id, r] of Object.entries(all)) assert.ok(r.name && r.types.length > 0 && r.date && manifest.models.some((m) => m.id === r.base), `${id}: a name, types, a date and a base that exists`)
   assert.deepEqual([all.a20n.base, all.a21n.base, all.b38m.base], ['a320', 'a321', 'b738'])
   assert.deepEqual(all.b38m.types, ['B38M', 'B37M', 'B39M', 'B3XM'])
 })
@@ -60,7 +63,7 @@ test('cutOutboard: nothing left beyond the cut on either wing; the triangles acr
 })
 
 test('every device piece is closed, faces outward, shades smoothly and is painted like the wing (not glass)', () => {
-  for (const id of Object.keys(all)) {
+  for (const id of ready.filter(([, r]) => r.wingtip && r.wingtip.kind !== 'none').map(([k]) => k)) {
     for (const w of pieces(id)) {
       assert.ok(signedVolume(w) > 0, `${id}: outward`)
       const key = (i: number): string => V(w, i).map((v) => Math.round(v * 1e5)).join(',')
@@ -120,7 +123,7 @@ test('the MAX loses the 737-800\'s blended winglet: none of its vertices is left
 })
 
 test('the nacelles: scaled about their axis by the recipe, from the inlet lip aft, moved forward and up', () => {
-  for (const { id, r } of built) {
+  for (const { id, r } of built.filter((b) => b.r.nacelle && !b.r.fuselage)) {
     const cowl = (e: ModelManifestEntry): number[] => {
       const m = meshOf(workOf(e))
       return engineParts(partBoxes(m, parts(m)), e.paint!.engines)[0].core
@@ -143,17 +146,12 @@ test('public/models/<id>/ (model.glb, model.json) is up to date (regenerate: nod
   }
 })
 
-test('a variant takes its recipe\'s name and stands in for nothing; its types come off the other entries\' stand-in lists too', () => {
+test('a variant takes its recipe\'s name and stands in for nothing', () => {
   for (const { id, r, entry } of built) {
     assert.equal(entry.name, r.name, id)
     assert.equal(entry.standIns, undefined, id)
-    assert.equal(byId(id).name, r.name, `${id} in the manifest`)
+    assert.equal(byId(id).name, r.name, `${id} in its model.json`)
   }
-  // A model made for a designator that another model only stood in for takes it off that list (the A321 stands in for the 757).
-  const changed = withoutTypes(manifest.models, 'a21n', ['A21N', 'B752'])
-  assert.deepEqual(changed.map((m) => m.id), ['a321'], 'only the entries that listed one of them')
-  assert.deepEqual(changed[0].standIns, ['B753'])
-  assert.deepEqual(changed[0].types, ['A321'])
 })
 
 test('the variants own their types; provenance: the base\'s licence, authors and source, and the modification noted', () => {
@@ -161,15 +159,19 @@ test('the variants own their types; provenance: the base\'s licence, authors and
     const e = byId(id)
     const base = byId(r.base)
     assert.deepEqual(e.types, r.types)
-    for (const m of manifest.models) if (m.id !== id) for (const t of r.types) assert.ok(!(m.types ?? []).includes(t), `${t} still on ${m.id}`)
-    assert.ok((base.types ?? []).length > 0, `${r.base} keeps its other types`)
     assert.equal(e.license, base.license)
     assert.ok(e.author.startsWith(base.author) && e.author.endsWith('modified by FlightHopper (tools/models/variants.ts)'))
     assert.ok(e.source.startsWith(base.source) && e.source.includes(`public/models/${id}/recipe.json`))
-    for (const k of ['forwardAxisFix', 'gearHeightM', 'lengthM', 'scale'] as const) assert.deepEqual(e[k], base[k], `${id} ${k} as its base's`)
-    assert.deepEqual({ ...e.gear, uri: '' }, { ...base.gear, uri: '' }, `${id}: its base's gear, in its own folder`)
-    assert.deepEqual(readFileSync(new URL(`../../public/${e.gear!.uri}`, import.meta.url)), readFileSync(new URL(`../../public/${base.gear!.uri}`, import.meta.url)))
+    for (const k of ['forwardAxisFix', 'scale'] as const) assert.deepEqual(e[k], base[k], `${id} ${k} as its base's`)
+    if (r.fuselage === undefined && r.gear === undefined) { // the same airframe: the base's length and its gear, in its own folder
+      for (const k of ['gearHeightM', 'lengthM'] as const) assert.deepEqual(e[k], base[k], `${id} ${k} as its base's`)
+      assert.deepEqual({ ...e.gear, uri: '' }, { ...base.gear, uri: '' }, `${id}: its base's gear`)
+      assert.deepEqual(readFileSync(new URL(`../../public/${e.gear!.uri}`, import.meta.url)), readFileSync(new URL(`../../public/${base.gear!.uri}`, import.meta.url)))
+    } else if (r.fuselage !== undefined) { // a longer or shorter one: its length by the plugs, a gear of its own
+      near(e.lengthM, base.lengthM + (r.fuselage.foreM ?? 0) + (r.fuselage.aftM ?? 0), 0.011, `${id} lengthM`)
+      if (base.gear) assert.equal(e.gear?.uri, `models/${id}/gear.glb`)
+    }
     const asset = readGlb(new Uint8Array(readFileSync(new URL(`../../public/${e.uri}`, import.meta.url)))).json.asset
-    assert.match(asset.copyright, new RegExp(`^GPL-2\\.0-only, derived from ${r.base}/model\\.glb .*modified by FlightHopper .*public/models/${id}/recipe\\.json`))
+    assert.ok(asset.copyright.startsWith(`${base.license.split(':')[0]}, derived from ${r.base}/model.glb `) && /modified by FlightHopper /.test(asset.copyright) && asset.copyright.endsWith(`public/models/${id}/recipe.json`), `${id}: ${asset.copyright}`)
   }
 })

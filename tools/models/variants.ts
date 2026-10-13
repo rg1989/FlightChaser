@@ -3,7 +3,8 @@
 // device and bigger engine nacelles on the same airframe (A320neo and A321neo sharklets and neo nacelles, the 737 MAX's
 // AT winglets and LEAP-1B nacelles), a longer or shorter fuselage (fuselage.ts). Writes the package public/models/<id>/:
 // model.glb, gear.glb and model.json (the base's, with the new id, name, uri, types, box, lights, outline, engine region
-// and profile). The recipe's types come off the other packages' lists.
+// and profile). No other package is touched: where two models list a designator, the picker takes the one that lists
+// it earlier (client/scene/modelFor.ts), and a derived model lists its own types first.
 //
 //   node tools/models/variants.ts [id…]          build these recipes, or every one (a base before what is derived from it)
 //   node tools/models/variants.ts --png <dir>    also render each result (render.py): whole views and close-ups
@@ -26,6 +27,7 @@ import { execFileSync } from 'node:child_process'
 import { measureGlb } from '../../client/scene/model.ts'
 import type { ModelManifest, ModelManifestEntry, ModelProfile } from '../../client/types.ts'
 import { readGlb, writeGlb, type Glb } from './glb.ts'
+import { applyFuselage } from './fuselage.ts'
 import { gearEntry, gearFor, glb as gearGlb, rootMatrix, type GearSpec } from './gear-glb.ts'
 import { lightsFor, loadBody, type Mesh } from './light-anchors.ts'
 import { outlineFor } from './outline.ts'
@@ -558,11 +560,16 @@ export function build(id: string, r: Recipe, manifest: ModelManifest): Built {
   const glb = readGlb(readFileSync(join(PUBLIC, base.uri)))
   let work = toWork(glb, base)
   const baseProfile = profileOf(base)
-  const paint = structuredClone(base.paint)
-  if (r.fuselage) throw new Error(`${id}: recipe.fuselage is not built in yet (tools/models/fuselage.ts is being finished): try again in a few minutes`)
+  let paint = structuredClone(base.paint)
+  // The fuselage first, on the base's mesh and profile: the wing stays, so the other two ops find it where the base has it.
+  const plug = r.fuselage ? applyFuselage(work, r.fuselage, base, baseProfile.profile) : null
+  if (plug !== null) {
+    work = plug.work
+    paint = plug.movePaint(paint)
+  }
   if (r.wingtip) work = applyWingtip(work, r.wingtip, baseProfile.profile, baseProfile.wingPlane)
   if (r.nacelle) {
-    const { work: moved, moveBox } = applyNacelle(work, r.nacelle, base)
+    const { work: moved, moveBox } = applyNacelle(work, r.nacelle, { ...base, paint })
     work = moved
     paint.engines = moveBox(paint.engines).map(cm) as typeof paint.engines
   }
@@ -583,13 +590,20 @@ export function build(id: string, r: Recipe, manifest: ModelManifest): Built {
     name: r.name, types: [...r.types], paint,
   }
   if (entry.gear) entry.gear.uri = `models/${id}/gear.glb`
+  if (plug !== null) entry.lengthM = cm(base.lengthM + plug.lengthM)
   delete entry.standIns // a model made for its types stands in for nothing
   delete entry.profile
   delete entry.lights
   delete entry.outline
   const axes = measureGlb(bytes)
   entry.box = { centre: [cm(axes.centre.x), cm(axes.centre.y), cm(axes.centre.z)], half: Math.ceil(108 * Math.max(axes.spanM, axes.lengthM) / 2) / 100 }
-  return { bytes, entry, stations: r.stations ?? nearest(r.base, 'stations'), gear: r.gear }
+  // The doors and the gear follow the fuselage, unless the recipe gives its own (a door more or less, another bogie).
+  const [stations, gear] = [nearest(r.base, 'stations'), nearest(r.base, 'gear')]
+  return {
+    bytes, entry,
+    stations: r.stations ?? (plug !== null && stations !== undefined ? plug.stations(stations) : stations),
+    gear: r.gear ?? (plug !== null && gear !== undefined && base.gear !== undefined ? plug.gear(gear) : undefined),
+  }
 }
 
 /** What is measured on a built variant's mesh (its model.glb is on disk): the lights, the outline, the profile; and its own gear. */
@@ -618,19 +632,6 @@ export function writePackage(id: string, r: Recipe, manifest: ModelManifest): Mo
   else if (entry.gear) copyFileSync(fileOf(r.base, 'gear.glb'), fileOf(id, 'gear.glb'))
   writeModel(entry)
   return entry
-}
-
-/**
- * A model made for a designator ends another model's claim to it: the entries that listed one of `types` (as their own
- * family's, or as a stand-in), without it. The picker would choose the new model anyway (modelFor.ts); this keeps the lists true.
- */
-export function withoutTypes(models: ModelManifestEntry[], id: string, types: string[]): ModelManifestEntry[] {
-  return models.flatMap((m) => {
-    if (m.id === id) return []
-    const keep = (list: string[] | undefined): string[] | undefined => list?.filter((t) => !types.includes(t))
-    const [own, standIns] = [keep(m.types), keep(m.standIns)]
-    return own?.length === m.types?.length && standIns?.length === m.standIns?.length ? [] : [{ ...m, types: own, standIns }]
-  })
 }
 
 const RENDER = fileURLToPath(new URL('./render.py', import.meta.url))
@@ -676,7 +677,6 @@ if (import.meta.main) {
     if (id === undefined) throw new Error(`recipes that are each other's base: ${[...todo].join(', ')}`)
     todo.delete(id)
     const entry = writePackage(id, all[id], readManifest())
-    for (const m of withoutTypes(readManifest().models, id, entry.types ?? [])) writeModel(m)
     console.log(`${id}: ${entry.uri}, types ${(entry.types ?? []).join(' ')}; box ${JSON.stringify(entry.box)}`)
     if (dir !== null) console.log(`  ${variantPng(entry, dir)}`)
   }
