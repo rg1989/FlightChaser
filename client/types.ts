@@ -183,7 +183,8 @@ export interface FleetEntry {
 export interface ScenePrefs {
   topo: boolean                                 // 3-D terrain: exaggeration TOPO_ON, else flat (0) around relH
   light: boolean                                // sun lighting in chase (browse stays unlit)
-  glass: boolean                                // 3-D buildings see-through (translucent) instead of solid
+  buildings: boolean                            // 3-D buildings round the chased aircraft (off: none drawn, none loaded)
+  glass: boolean                                // 3-D buildings see-through (translucent) instead of solid; applies while buildings is on
   mapTop: boolean                               // the top-down view shows the street map (else the satellite imagery)
   mapChase: boolean                             // the chase view shows the street map (else the satellite imagery)
   dark: boolean                                 // the street map in its dark theme (its own tiles recoloured), both views

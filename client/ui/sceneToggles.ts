@@ -2,7 +2,8 @@
 // The Layers panel (the square under the rail): only what applies to the view on screen. Map: the base for that view,
 // Map or Satellite (M; the top-down view and the chase each keep their own); under Map its theme, Light or Dark (both
 // views; Settings › Display too); under Satellite, Roads (R) and Borders & places (P) over it. In the chase, the 3-D scene
-// (design D11): a switch row each for 3-D terrain (T), Sun (L) and See-through buildings (X). Each row has its icon and key.
+// (design D11): a switch row each for 3-D terrain (T), Sun (L), 3-D buildings (B) and See-through buildings (X). Each row has its icon and key.
+// See-through is a choice for buildings that are drawn: with 3-D buildings off its row keeps the choice but is out of use (dimmed).
 // A click asks the app for the toggled prefs through onChange and changes nothing itself; update() only re-renders. A view or
 // base change hides and shows rows (none is rebuilt, so the focus stays put). setBusy(true) shows a spinner on the terrain row
 // while the relief grows or sinks. The weather's switch (W), rain scale, airports legend and status line are the Weather panel's
@@ -32,7 +33,8 @@ const LAYER_ROWS: Row[] = [
 const SCENE_ROWS: Row[] = [
   { key: 'topo', icon: 'mountain', label: '3-D terrain', hint: 'Mountains and valleys in relief', shortcut: 'T' },
   { key: 'light', icon: 'sun', label: 'Sun', hint: 'Real sun and moon light, day and night', shortcut: 'L' },
-  { key: 'glass', icon: 'building', label: 'See-through buildings', hint: 'Buildings glassy, so they never hide the aircraft', shortcut: 'X' },
+  { key: 'buildings', icon: 'building', label: '3-D buildings', hint: 'Buildings in relief round the aircraft', shortcut: 'B' },
+  { key: 'glass', icon: 'eye', label: 'See-through buildings', hint: 'Buildings glassy, so they never hide the aircraft', shortcut: 'X' },
 ]
 const ROWS = [...LAYER_ROWS, ...SCENE_ROWS]
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ''): HTMLElementTagNameMap[K] {
@@ -54,6 +56,7 @@ export function mountSceneToggles(root: HTMLElement, opts: SceneTogglesOpts): Sc
   let chasing = false
   const switches = new Map<Key, HTMLButtonElement>()
   const hints = new Map<Key, HTMLElement>()
+  let glassRow: HTMLElement | null = null
   let spinner: HTMLElement | null = null
 
   const row = (r: Row): HTMLElement => {
@@ -79,6 +82,7 @@ export function mountSceneToggles(root: HTMLElement, opts: SceneTogglesOpts): Sc
       el.append(ic, text, spinner, sw)
     } else el.append(ic, text, sw)
     switches.set(r.key, sw)
+    if (r.key === 'glass') glassRow = el
     return el
   }
 
@@ -138,6 +142,12 @@ export function mountSceneToggles(root: HTMLElement, opts: SceneTogglesOpts): Sc
     show(roadsRow, !map)
     show(placesRow, !map)
     show(scene, chasing)
+    // See-through or solid: only with buildings to draw. The row dims (wxMenu.css) and its switch takes no click or key.
+    const glass = switches.get('glass')!
+    if (glass.disabled === prefs.buildings) {
+      glass.disabled = !prefs.buildings
+      glassRow!.setAttribute('aria-disabled', String(!prefs.buildings))
+    }
   }
   fit()
 

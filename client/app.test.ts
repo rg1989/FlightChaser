@@ -122,6 +122,7 @@ test('scene keys: T topography and L sun, either case; not with a modifier, on a
   assert.equal(sceneKey(press('T')), 'topo') // Shift or Caps Lock
   assert.equal(sceneKey(press('l')), 'light')
   assert.equal(sceneKey(press('L')), 'light')
+  assert.equal(sceneKey(press('b')), 'buildings')
   assert.equal(sceneKey(press('x')), 'glass')
   assert.equal(sceneKey(press('X')), 'glass')
   assert.equal(sceneKey(press('m')), 'base') // map or satellite, for the view on screen
@@ -129,7 +130,7 @@ test('scene keys: T topography and L sun, either case; not with a modifier, on a
   assert.equal(sceneKey(press('p')), 'places') // borders and places: a switch apart from the roads
   assert.equal(sceneKey(press('P')), 'places')
   assert.equal(sceneKey(press('w')), 'wx')
-  assert.equal(sceneKey(press('b')), null)
+  assert.equal(sceneKey(press('q')), null)
   assert.equal(sceneKey(press('Escape')), null)
   for (const m of ['metaKey', 'ctrlKey', 'altKey', 'repeat']) assert.equal(sceneKey(press('l', { [m]: true })), null, m) // Cmd+L, Ctrl+T: the browser's
   for (const tagName of ['INPUT', 'TEXTAREA', 'SELECT']) assert.equal(sceneKey(press('t', { target: { tagName } })), null, tagName) // the table's search box

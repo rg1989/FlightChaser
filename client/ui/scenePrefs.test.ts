@@ -93,7 +93,7 @@ test('glass (see-through buildings): off by default, ?glass=1 or the stored fiel
 })
 
 test('map layers: street map top-down, satellite in the chase, borders and places but no roads over it, no weather; the URL and storage set each', () => {
-  assert.deepEqual(readScenePrefs('', null), { topo: true, light: true, glass: false, mapTop: true, mapChase: false, dark: false, roads: false, places: true, wx: false })
+  assert.deepEqual(readScenePrefs('', null), { topo: true, light: true, buildings: true, glass: false, mapTop: true, mapChase: false, dark: false, roads: false, places: true, wx: false })
   const p = readScenePrefs('?mapTop=0&mapChase=1&wx=1', '{"roads":true}')
   assert.deepEqual([p.mapTop, p.mapChase, p.roads, p.wx], [false, true, true, true])
 })
@@ -120,4 +120,11 @@ test('stored before places had a switch of its own (roads was both overlays): pl
   assert.deepEqual(overlays('{"topo":false}'), [false, true]) // nothing stored for either: the defaults
   assert.deepEqual(overlays('{"roads":1}'), [false, true])
   assert.deepEqual(overlays('{"roads":true}', '?places=0'), [true, false]) // the URL still wins
+})
+
+test('buildings (3-D buildings): on by default, ?buildings=0 or the stored field turns them off, and glass keeps its choice', () => {
+  assert.equal(readScenePrefs('', null).buildings, true)
+  assert.equal(readScenePrefs('?buildings=0', null).buildings, false)
+  assert.deepEqual(readScenePrefs('', '{"buildings":false,"glass":true}'), { ...DEFAULT_PREFS, buildings: false, glass: true })
+  assert.equal(readScenePrefs('', '{"glass":true}').buildings, true) // stored before the switch existed: on, as it was
 })

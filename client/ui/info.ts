@@ -20,7 +20,8 @@ const KEYS: Section[] = [
   { title: '3-D chase', rows: [
     ['T', '3-D terrain'],
     ['L', 'Sun and moon light'],
-    ['X', 'See-through buildings'],
+    ['B', '3-D buildings'],
+    ['X', 'See-through buildings, while they are on'],
   ] },
   { title: 'In a scenario', rows: [
     ['Space', 'Play or pause'],

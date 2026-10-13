@@ -305,7 +305,7 @@ export function relHFor(at: { lat: number; lon: number } | null, groundM: number
 const TYPING = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
 /**
- * The scene toggle a keydown asks for (design D11): T topography, L sun, X see-through buildings; and the map layers: M
+ * The scene toggle a keydown asks for (design D11): T topography, L sun, B 3-D buildings, X see-through buildings; and the map layers: M
  * map or satellite, R roads, P borders and places, W weather. null with a modifier (Cmd/Ctrl+L and Ctrl+T are
  * the browser's), on auto-repeat and while typing in a field.
  */
@@ -314,7 +314,7 @@ export function sceneKey(e: { key: string; metaKey: boolean; ctrlKey: boolean; a
   const t = e.target as { tagName?: string; isContentEditable?: boolean } | null
   if (t?.isContentEditable || TYPING.has(t?.tagName ?? '')) return null
   const k = e.key.toLowerCase()
-  return ({ t: 'topo', l: 'light', x: 'glass', m: 'base', r: 'roads', p: 'places', w: 'wx' } as const)[k as 't'] ?? null
+  return ({ t: 'topo', l: 'light', b: 'buildings', x: 'glass', m: 'base', r: 'roads', p: 'places', w: 'wx' } as const)[k as 't'] ?? null
 }
 
 /** Which weather the prefs, the view and the time ask for: the top-down map's, the chase's, or none (the weather is today's: History and a scenario draw none). */
@@ -2254,7 +2254,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     lights.endFrame(chasing && prefs.light && st !== null ? st.night : 0, now) // the aircraft this frame gave it
     runways.update(tf)
     airfield?.update(tf)
-    buildings.update(chasing && sf === null ? chased : null, tf) // around the chased aircraft; hidden in browse and scenarios
+    buildings.update(chasing && sf === null && prefs.buildings ? chased : null, tf) // around the chased aircraft; hidden in browse and scenarios, and with 3-D buildings off
     // The weather round the chased aircraft, before the names that carry its labels. Shown in a live chase with the switch on
     // only (applyLayers): nothing of it runs otherwise. Its sky follows the relief drawn and the Sun's night (as the buildings').
     const tWx = bench === null ? 0 : performance.now()
@@ -2642,11 +2642,12 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     }
     else if ((e.key === 'b' || e.key === 'B') && bench) bench.download()
     else {
-      // T, L, X: they apply in the chase view (D9, D11), and can be set beforehand. M: map or satellite, for the view on
-      // screen. R: roads, P: borders and places, each over the satellite. W: weather.
+      // T, L, B, X: they apply in the chase view (D9, D11), and can be set beforehand (X: only with the buildings on).
+      // M: map or satellite, for the view on screen. R: roads, P: borders and places, each over the satellite. W: weather.
+      // With ?bench=1, B is the report's (above).
       const k = sceneKey(e)
       const key = k === 'base' ? (run === null ? baseKey(chasing) : null) : k // in a scenario M mutes (run.ts)
-      if (key !== null) setPrefs({ ...prefs, [key]: !prefs[key] })
+      if (key !== null && (key !== 'glass' || prefs.buildings)) setPrefs({ ...prefs, [key]: !prefs[key] })
     }
   }
   window.addEventListener('keydown', onKey)

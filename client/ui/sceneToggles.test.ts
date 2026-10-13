@@ -37,6 +37,7 @@ class El {
   }
   attrs: Record<string, string> = {}
   attrWrites = 0
+  disabled = false
   hiddenWrites = 0
   listeners = new Map<string, (() => void)[]>()
   constructor(tag: string) {
@@ -109,7 +110,7 @@ const screen = (root: El): string[] => visible(root).flatMap((e) => {
   return []
 })
 const MAP = ['Map', 'Base map']
-const SCENE = ['3-D scene', '3-D terrain', 'Sun', 'See-through buildings']
+const SCENE = ['3-D scene', '3-D terrain', 'Sun', '3-D buildings', 'See-through buildings']
 
 function mount(prefs: ScenePrefs) {
   const root = new El('div')
@@ -126,7 +127,7 @@ function mount(prefs: ScenePrefs) {
   return { root, topo, light, glass, roads, places, mapB, satB, lightB, darkB, theme, view, t, changes, checked, spinner }
 }
 
-test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), See-through buildings (X), real buttons with a label each; no Weather row (its switch is the Weather panel\'s)', () => {
+test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), 3-D buildings (B), See-through buildings (X), real buttons with a label each; no Weather row (its switch is the Weather panel\'s)', () => {
   const { root, topo, light, glass, roads, places } = mount({ ...DEFAULT_PREFS, topo: true, light: true, glass: false })
   const rows = all(root).filter((e) => e.className === 'fh-scene-row')
   assert.deepEqual(rows.map((r) => text(r.children[1])), [
@@ -134,6 +135,7 @@ test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), Se
     'Borders & placesPCountry lines and city names over the satellite',
     '3-D terrainTMountains and valleys in relief',
     'SunLReal sun and moon light, day and night',
+    '3-D buildingsBBuildings in relief round the aircraft',
     'See-through buildingsXBuildings glassy, so they never hide the aircraft',
   ])
   for (const b of [roads, places, topo, light, glass]) {
@@ -192,6 +194,23 @@ test('Roads and Borders & places: each switch shows and asks for its own pref', 
 test('a hidden part of the panel really goes: there, [hidden] wins over the display of its rows and button groups', () => {
   const css = readFileSync(new URL('./sceneToggles.css', import.meta.url), 'utf8')
   assert.match(css, /\.fh-scene\[hidden\],\s*\.fh-scene \[hidden\] \{\s*display: none !important;\s*\}/)
+})
+
+test('3-D buildings off: the See-through row keeps its choice but is out of use; on again, it is back', () => {
+  const { root, glass, t, changes } = mount({ ...DEFAULT_PREFS, glass: true })
+  const row = all(root).find((e) => e.className === 'fh-scene-row' && e.children.includes(glass))!
+  const off = (): [boolean, string | undefined] => [glass.disabled, row.attrs['aria-disabled']]
+  assert.deepEqual(off(), [false, undefined])
+  all(root).find((e) => e.attrs['aria-label'] === '3-D buildings')!.click()
+  assert.deepEqual(changes, [{ ...DEFAULT_PREFS, buildings: false, glass: true }])
+  t.update(changes[0])
+  assert.deepEqual([...off(), glass.attrs['aria-checked']], [true, 'true', 'true'])
+  const writes = row.attrWrites
+  t.update(changes[0])
+  assert.equal(row.attrWrites, writes) // every frame: nothing written without a change
+  t.update({ ...DEFAULT_PREFS, glass: true })
+  assert.deepEqual(off(), [false, 'false'])
+  assert.equal(mount({ ...DEFAULT_PREFS, buildings: false }).glass.disabled, true) // and from the start
 })
 
 test('See-through asks for glass toggled and keeps the others', () => {
