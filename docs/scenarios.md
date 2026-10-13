@@ -263,6 +263,7 @@ word. When the record gives only the minute, say so in the source note.
 | `transcript.csv` `q` | `D` | The official record, verbatim, including its official translation and its spelling. |
 | | `T` | Our translation of the official original. The caption shows a translation mark (today it reads JA→EN: another language needs a small code change). |
 | | `U` | The record marks it unintelligible. `text` is exactly `[unintelligible]`, `lang` and `original` are empty. |
+| | `H` | Our own hearing of a recording, where no official transcript exists (Air Astana 1388's radio). The caption says "as heard". Write `[unintelligible]` for every word that is not plain, and leave out a line whose speaker is not plain. |
 | `transcript.csv` `x_unclear` | `1` | The record marks the reading as uncertain (for example, underlined). The caption does not change. |
 
 - When part of a line is unintelligible, keep `q=D` and write `[unintelligible]` in its place in `text`. Keep the
@@ -342,7 +343,9 @@ These rules are fixed. They apply to every accident or serious-incident scenario
 1. **End before the impact.** The screen is fully dark (`darkAt`) before the first contact with anything. The app
    never draws or plays an impact, fire, wreckage, a crash sound or a camera view of the ground contact.
 2. **Captions from the official record only.** Use the investigating authority's transcript. Keep its words and its
-   spelling. Our own translation of the official original is `q=T`.
+   spelling. Our own translation of the official original is `q=T`. Where no official transcript exists and a genuine
+   recording does, its words as we hear them are `q=H`, marked "as heard" on screen; say in the source's `note` how
+   they were heard and that nobody official has confirmed them. Never where the record has the line.
 3. **Unintelligible stays unintelligible.** Where the record says the words cannot be read, the caption is
    `[unintelligible]`. Never fill it from leaked audio, media transcripts or "full transcripts" found online. Some of
    those are fabricated (for JAL 123, see `.planning/reports/scenarios/cvr.md` §1a).

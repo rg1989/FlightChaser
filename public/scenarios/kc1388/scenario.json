@@ -47,12 +47,28 @@
       ]
     }
   },
+  "speakers": {
+    "KZR": { "name": "Air Astana 1388", "kind": "crew" },
+    "APP": { "name": "Lisbon Approach", "kind": "atc" },
+    "F16": { "name": "Air Force F-16", "kind": "other" }
+  },
+  "audio": {
+    "file": "local/atc.m4a",
+    "source": "The Lisbon Approach radio frequency as a hobbyist's receiver sent it to LiveATC.net on the day, from 13:30 UTC to the hand-over to Beja; every aircraft on the frequency is heard, not this one alone. Copy: youtube.com/watch?v=vhpHnLLjqrA (uploader Marvin, 12 November 2018), with one repeated stretch of 118 s cut out (tools/scenarios/kc1388/radio.py). Its clock is set by the report's time of the Mayday call (13:32:48) and agrees with the track: the distances to Beja spoken on the radio (75, 40 and 23 miles) are the track's. It can be about 10 s out. No official transcript of the radio exists.",
+    "clips": [{ "from": 0, "to": 5562, "at": "13:30:03" }]
+  },
   "sources": [
     {
       "id": "GPIAAF",
       "title": "GPIAAF (Portugal), final report 08/ACCID/2018: Embraer 190-100LR P4-KCJ, loss of control in flight, 11 November 2018 (June 2020), Portuguese and English",
       "url": "https://asn.flightsafety.org/reports/2018/20181111_E190_P4-KCJ.pdf",
       "note": "A copy of the GPIAAF publication on the Aviation Safety Network (gpiaaf.gov.pt refuses automated downloads). Page numbers are the report's printed ones, the same as the PDF's. History of the flight pp. 17–23; injuries and damage pp. 23–25; crew pp. 26–27; weather p. 40; aerodromes p. 42; DVDR data (Figure 13) p. 44, digitised by tools/scenarios/kc1388/digitize_fig13.py for the airspeed and load columns; the Beja approaches (Figure 3) p. 23; causes pp. 103–105."
+    },
+    {
+      "id": "LATC",
+      "title": "Lisbon Approach radio, 11 November 2018, 13:30 to 15:02 UTC: a LiveATC.net feed recording",
+      "url": "https://www.youtube.com/watch?v=vhpHnLLjqrA",
+      "note": "No official transcript of the radio exists. The captions are our own, marked 'as heard': a machine's hearing of each transmission (Whisper), read against two further passes; a word the passes do not agree on is [unintelligible], a line whose speaker is not plain is left out. Nobody has checked them by ear."
     },
     {
       "id": "OSM",

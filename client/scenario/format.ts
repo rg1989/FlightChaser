@@ -513,7 +513,7 @@ function parseTranscript(file: string, text: string, speakerIds: ReadonlySet<str
     const text = cell(row, col('text'))
     const originalCell = cell(row, col('original'))
     const q = cell(row, col('q'))
-    if (q !== 'D' && q !== 'T' && q !== 'U') problems.push(`${file}:${r}: q: bad quality, want D, T or U: ${JSON.stringify(q)}`)
+    if (q !== 'D' && q !== 'T' && q !== 'U' && q !== 'H') problems.push(`${file}:${r}: q: bad quality, want D, T, U or H: ${JSON.stringify(q)}`)
     if (q === 'U' && text !== '[unintelligible]') problems.push(`${file}:${r}: text: q=U requires text '[unintelligible]'`)
     const srcCell = cell(row, col('src'))
     let src: string | null = null
@@ -542,7 +542,7 @@ function parseTranscript(file: string, text: string, speakerIds: ReadonlySet<str
       lang,
       text,
       original: originalCell === '' ? null : originalCell,
-      q: (q === 'D' || q === 'T' || q === 'U' ? q : 'D') as LineQuality,
+      q: (q === 'D' || q === 'T' || q === 'U' || q === 'H' ? q : 'D') as LineQuality,
       src,
     })
   })

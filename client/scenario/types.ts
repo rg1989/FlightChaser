@@ -6,7 +6,7 @@
 export type SpeakerKind = 'crew' | 'cabin' | 'atc' | 'company' | 'alert' | 'other'
 export type Channel = 'cockpit' | 'radio' | 'company' | 'cabin' | 'interphone' | 'alert'
 /** D: the official record verbatim (incl. its official translation) · T: our translation of the official original · U: unintelligible in the record. */
-export type LineQuality = 'D' | 'T' | 'U'
+export type LineQuality = 'D' | 'T' | 'U' | 'H'
 /** A: documented value · M: measured from an official chart or figure · R: reconstructed or modelled. */
 export type RowQuality = 'A' | 'M' | 'R'
 export type EventType = 'phase' | 'mark' | 'gear' | 'flaps' | 'damage' | 'story'

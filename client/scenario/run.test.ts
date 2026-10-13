@@ -210,7 +210,7 @@ test('captionView: speaker names from the scenario, the record quality as marks,
   const s = scenario()
   const [cleared, gear, unint] = s.lines
   assert.deepEqual(captionView(cleared, 0, s.speakers), {
-    key: 'l0', who: 'Tower', to: 'Captain', channel: 'radio', translated: false, unintelligible: false, text: 'Cleared.', original: null,
+    key: 'l0', who: 'Tower', to: 'Captain', channel: 'radio', translated: false, heard: false, unintelligible: false, text: 'Cleared.', original: null,
   })
   const g = captionView(gear, 1, s.speakers)
   assert.equal(g.to, null, 'to anyone listening')
