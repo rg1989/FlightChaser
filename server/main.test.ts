@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
-import type { ChaseResponse, HistoryStatus, RecordResponse, StatusReport, ViewResponse } from '../shared/api.ts'
+import type { ChaseResponse, HistoryStatus, RecordingInfo, RecordingTrack, RecordResponse, StatusReport, ViewResponse } from '../shared/api.ts'
 import { pushBody, pushTitle, type EventsReply } from '../shared/alerts.ts'
 import { distanceNm } from '../shared/geo.ts'
 import { SLOT_MS, newestSlotMs } from '../shared/history.ts'
@@ -451,6 +451,44 @@ test('POST /api/recordings/rename and /delete: name one, delete one; unknown fil
  * `heard` for the area, hex and full-snapshot requests, `onSquawk[code]` for that code's sweep. Kind adsbfi is an area source with
  * squawk() (a server on it sweeps); readsb is a full snapshot without it. Both are live: only a replay has no alerts.
  */
+test('POST /api/recordings/import: a flight file becomes a recording with what was said of it; it downloads as itself and as KML', async (t) => {
+  const cfg = { ...readServerConfig({ REPLAY_FILES: FILE, FLIGHTS_DIR: tmp() }), staticDir: join(tmp(), 'dist') }
+  const app = createServer(cfg, { source: makeReplay({ files: cfg.replayFiles, nowMs: () => T0 }), nowMs: () => T0 })
+  const base = await app.listen(0)
+  t.after(() => app.close())
+  const at = Date.UTC(2018, 10, 11, 13, 34, 7) / 1000
+  const csv = `Timestamp,UTC,Callsign,Position,Altitude,Speed,Direction\n${at},,KZR1388,"38.89,-8.96",3400,170,158\n${at + 8},,KZR1388,"38.88,-8.95",4175,182,131\n`
+  const post = (q: string, body: string) => fetch(`${base}/api/recordings/import${q}`, { method: 'POST', body })
+  const res = await post(`?reg=p4-kcj&type=E190&airline=KZR&name=${encodeURIComponent('Air Astana 1388')}`, csv)
+  assert.equal(res.status, 200)
+  const { file, recordings } = (await res.json()) as { file: string; recordings: RecordingInfo[] }
+  assert.equal(file, '2018-11-11/133407Z-KZR1388-000000.jsonl')
+  const { ended, ...info } = recordings[0]
+  assert.deepEqual(info, {
+    file, name: 'Air Astana 1388', hex: '000000', callsign: 'KZR1388', reg: 'P4-KCJ', typeCode: 'E190', category: null, military: false, route: null,
+    operator: 'KZR', source: 'Flightradar24 CSV file', startedMs: at * 1000, firstMs: at * 1000, lastMs: (at + 8) * 1000, samples: 2, active: false,
+  })
+  assert.deepEqual(ended, { why: 'imported', endedMs: (at + 8) * 1000 })
+  const track = (await get<RecordingTrack>(`${base}/api/recordings/track?file=${encodeURIComponent(file)}`)).body
+  assert.deepEqual(track.samples.map((s) => [s.altBaroFt, s.typeCode, s.reg]), [[3400, 'E190', 'P4-KCJ'], [4175, 'E190', 'P4-KCJ']])
+
+  assert.equal((await post('', csv)).status, 409, 'the same flight again')
+  const bad = await post('', 'hello')
+  assert.deepEqual([bad.status, /Not a flight file/.test(((await bad.json()) as { error: string }).error)], [400, true])
+  assert.equal((await post('?type=a%20boeing', csv)).status, 400)
+  assert.equal((await post('?flight=3', csv)).status, 400)
+  assert.equal((await fetch(`${base}/api/recordings/import`)).status, 404, 'GET imports nothing')
+
+  const own = await fetch(`${base}/api/recordings/file?file=${encodeURIComponent(file)}`)
+  assert.equal(own.headers.get('content-disposition'), 'attachment; filename="133407Z-KZR1388-000000.jsonl"')
+  const again = await post('?callsign=KZR1', await own.text()) // its own file reads back; another callsign: another file
+  assert.deepEqual([again.status, ((await again.json()) as { file: string }).file], [200, '2018-11-11/133407Z-KZR1-000000.jsonl'])
+  const kml = await fetch(`${base}/api/recordings/file?file=${encodeURIComponent(file)}&as=kml`)
+  assert.equal(kml.headers.get('content-disposition'), 'attachment; filename="133407Z-KZR1388-000000.kml"')
+  assert.match(await kml.text(), /<name>Air Astana 1388<\/name>[\s\S]*<gx:coord>-8.96 38.89 1036<\/gx:coord>/)
+  assert.equal((await fetch(`${base}/api/recordings/file?file=nope.jsonl`)).status, 404)
+})
+
 function liveStub(clock: { t: number }, kind: 'adsbfi' | 'readsb' = 'adsbfi') {
   const world = { heard: [] as ReadsbAircraft[], onSquawk: {} as Record<string, ReadsbAircraft[]>, asked: [] as string[] }
   const answer = (what: string, aircraft: ReadsbAircraft[]): Promise<FetchResult> => {

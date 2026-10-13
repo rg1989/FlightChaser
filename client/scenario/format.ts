@@ -607,7 +607,7 @@ export function parseCard(manifest: unknown): ScenarioCard {
   const problems: string[] = []
   const m = parseManifest(manifest, problems)
   if (problems.length > 0) throw new ScenarioError(problems)
-  return { id: m.id, title: m.title, subtitle: m.subtitle, date: m.date, clockLabel: m.clockLabel, note: m.note, summary: m.summary, crew: m.crew, aircraft: m.aircraft, start: m.start, end: m.end }
+  return { id: m.id, title: m.title, subtitle: m.subtitle, date: m.date, clockLabel: m.clockLabel, note: m.note, summary: m.summary, crew: m.crew, aircraft: m.aircraft, start: m.start, end: m.end, sound: null }
 }
 
 /** Vite's dev server answers any unknown path with index.html (200, text/html): no package file is HTML, so that is a miss. */
@@ -661,7 +661,7 @@ export async function loadScenario(base: string, id: string, fetcher: typeof fet
   return parseScenario({ base: folder, manifest, track, events, transcript, present })
 }
 
-/** Reads `index.json` and every scenario's manifest, for the Scenarios panel. */
+/** Reads `index.json` and every scenario's manifest, for the Scenarios panel; where one names a sound file, whether it is there. */
 export async function listScenarios(base: string, fetcher: typeof fetch = fetch): Promise<ScenarioCard[]> {
   const idxRes = await fetcher(`${base}scenarios/index.json`)
   if (!idxRes.ok) throw new ScenarioError([`index.json:-: -: fetch failed: ${idxRes.status}`])
@@ -673,7 +673,13 @@ export async function listScenarios(base: string, fetcher: typeof fetch = fetch)
     const res = await fetcher(`${base}scenarios/${id}/scenario.json`)
     if (!res.ok) throw new ScenarioError([`${id}/scenario.json:-: -: fetch failed: ${res.status}`])
     const manifest: unknown = await res.json()
-    cards.push(parseCard(manifest))
+    const card = parseCard(manifest)
+    const audio = isRecord(manifest) && isRecord(manifest.audio) ? manifest.audio : {}
+    if (nonEmptyString(audio.file)) {
+      const head = await fetcher(`${base}scenarios/${id}/${audio.file}`, { method: 'HEAD' }).catch(() => null)
+      if (head !== null && head.ok && !isHtml(head)) card.sound = audio.reenacted === true ? 'voice-over' : 'recording'
+    }
+    cards.push(card)
   }
   return cards
 }

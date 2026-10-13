@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { RecordingInfo } from '../../shared/api.ts'
 import type { Sample } from '../../shared/types.ts'
-import { destination } from '../../shared/geo.ts'
+import { destination, distanceNm } from '../../shared/geo.ts'
 import { recordingFile, recordingId, recordingScenario } from './fromRecording.ts'
 import { physicsReport } from './physics.ts'
 
@@ -63,3 +63,42 @@ test('recordingScenario: too little to play is null', () => {
   assert.equal(recordingScenario({ info: INFO, samples: [] }, 'b738'), null)
   assert.equal(recordingScenario({ info: INFO, samples: takeOff().slice(0, 1) }, 'b738'), null)
 })
+
+/**
+ * A cruise at 450 kt and 35,000 ft, a point every `gapS` seconds: as sparse as a file found elsewhere may be. East for
+ * 200 s, a right turn to the south at 0.75° a second (a 17° bank), then south.
+ */
+function sparse(withVelocity: boolean, gapS: number): Sample[] {
+  const out: Sample[] = []
+  let at = { lat: 32.0, lon: 30.0 }
+  let track = 90
+  for (let t = 0; t <= 11 * gapS; t++) {
+    if (t > 0) at = destination(at.lat, at.lon, track, 450 / 3600)
+    if (t >= 200 && t < 320) track += 0.75
+    if (t % gapS !== 0) continue
+    out.push({
+      hex: '738abc', tMs: T0 + t * 1000, rxMs: T0 + t * 1000, lat: at.lat, lon: at.lon, onGround: false,
+      altBaroFt: 35_000, altGeomFt: null, gsKt: withVelocity ? 450 : null, trackDeg: withVelocity ? track : null, trueHeadingDeg: null, rollDeg: null,
+      baroRateFpm: null, geomRateFpm: null, navQnhHpa: null, version: null, nic: null, quality: 'adsb2', nM: 18,
+      callsign: 'ELY315', typeCode: 'B738', reg: '4X-EKA',
+    })
+  }
+  return out
+}
+
+for (const [withVelocity, gapS] of [[true, 40], [false, 40], [false, 90]] as const) {
+  test(`recordingScenario: points ${gapS} s apart ${withVelocity ? 'with' : 'without'} speed and track are flown between, through a turn too`, () => {
+    const info: RecordingInfo = { ...INFO, source: 'KML file', ended: { why: 'imported', endedMs: T0 } }
+    const s = recordingScenario({ info, samples: sparse(withVelocity, gapS) }, 'b738')!
+    assert.equal(s.track.length, 11 * gapS + 1)
+    assert.equal(s.track[0].src, 'KML file')
+    // The first seconds have one point to go by: judged from the second point on.
+    const rows = s.track.slice(gapS)
+    const kt = rows.slice(1).map((r, i) => distanceNm(rows[i].lat, rows[i].lon, r.lat, r.lon) * 3600)
+    assert.ok(Math.min(...kt) > 380 && Math.max(...kt) < 520, `no stop and no jump: ${Math.min(...kt).toFixed(0)} to ${Math.max(...kt).toFixed(0)} kt`)
+    const roll = rows.map((r) => r.roll)
+    assert.ok(Math.max(...roll) > 10 && Math.max(...roll) < 30 && Math.min(...roll) > -8, `a banked right turn, no more: ${Math.min(...roll).toFixed(0)}° to ${Math.max(...roll).toFixed(0)}°`)
+    assert.ok(Math.abs(rows[0].hdg - 90) < 8 && Math.abs(rows.at(-1)!.hdg - 180) < 8, `east, then south: ${rows[0].hdg.toFixed(0)}° to ${rows.at(-1)!.hdg.toFixed(0)}°`)
+    assert.ok(rows.every((r) => Math.abs(r.altFt - 35_000) < 60), 'level')
+  })
+}

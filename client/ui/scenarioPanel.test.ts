@@ -129,6 +129,7 @@ const JAL: ScenarioCard = {
   aircraft: { registration: 'JA8119', type: 'Boeing 747SR-46', callsign: 'JAL123', operator: 'Japan Air Lines', model: 'b744' },
   start: 65475, // 18:11:15
   end: 68188, // 18:56:28
+  sound: null,
 }
 const OTHER: ScenarioCard = { ...JAL, id: 'other', title: 'Another flight', crew: [], summary: [] }
 
@@ -143,7 +144,7 @@ const STUB: RecordingInfo = { ...ITY, file: '2026-09-30/020000Z--738abc.jsonl', 
 
 function mount(
   list: () => Promise<ScenarioCard[]>, recordings?: () => Promise<RecordingInfo[] | null>,
-  edit?: { onRename?(file: string, name: string): Promise<RecordingInfo[]>; onDelete?(file: string): Promise<RecordingInfo[]> },
+  edit?: Pick<Parameters<typeof mountScenarioPanel>[1], 'onRename' | 'onDelete' | 'onImport' | 'downloadUrl' | 'modelOf' | 'hasLivery'>,
 ) {
   const body = new El('div')
   const plays: string[] = []
@@ -427,4 +428,127 @@ test('an edit\'s list is not undone by an older reload answering after it', asyn
   slow.resolve([ITY])
   await flush()
   assert.deepEqual(titles(body), ['Renamed'])
+})
+
+test('a scenario that plays sound carries a speaker by its title, named for what it plays; the others carry none', async () => {
+  const { body } = mount(async () => [{ ...JAL, sound: 'recording' }, { ...OTHER, sound: 'voice-over' }, { ...OTHER, id: 'silent' }])
+  await flush()
+  const rows = find(body, 'fh-scn-item')
+  assert.deepEqual(rows.map((r) => find(r, 'fh-scn-sound').map((m) => m.attrs['aria-label'])), [['Plays the recorded sound'], ['Plays a voice-over'], []])
+})
+
+const AT = Date.UTC(2018, 10, 11, 13, 34, 7) / 1000
+const CSV = `Timestamp,UTC,Callsign,Position,Altitude,Speed,Direction\n${AT},,KZR1388,"38.89,-8.96",3400,170,158\n${AT + 600},,KZR1388,"38.88,-8.95",4175,182,131\n`
+
+async function pickFile(body: El, name: string, content: string, size = content.length): Promise<void> {
+  const picker = all(body).find((e) => e.tag === 'input' && e.type === 'file')!
+  Object.assign(picker, { files: [{ name, size, text: async () => content }] })
+  picker.fire('change')
+  await flush()
+}
+const field = (body: El, label: string): El => find(body, 'fh-scn-field').find((f) => text(f.children[0]) === label)!.children[1]
+const button = (root: El, label: string): El => all(root).find((e) => e.tag === 'button' && text(e) === label)!
+
+test('Import a file: the form shows what the file holds and says; Import sends it with what was typed; the new one opens', async () => {
+  const sent: unknown[] = []
+  const KZR: RecordingInfo = { ...ITY, file: '2018-11-11/133407Z-KZR1388-000000.jsonl', hex: '000000', callsign: 'KZR1388', name: 'Air Astana 1388', reg: 'P4-KCJ', typeCode: 'E190', route: null, operator: 'KZR', source: 'Flightradar24 CSV file', ended: { why: 'imported', endedMs: 0 } }
+  const { body } = mount(async () => [], async () => [ITY], {
+    onImport: async (content, o) => {
+      sent.push(content === CSV, o)
+      return { file: KZR.file, recordings: [ITY, KZR] }
+    },
+    modelOf: (t) => (t === 'E190' ? 'Embraer 190' : null),
+    hasLivery: (op) => op === 'ELY',
+  })
+  await flush()
+  const box = one(body, 'fh-scn-import')
+  assert.equal(box.hidden, true)
+  assert.equal(button(body, 'Import a file').hidden, false)
+  await pickFile(body, 'KC1388_1e84fc24.csv', CSV)
+  assert.equal(box.hidden, false)
+  assert.equal(text(one(box, 'fh-scn-import-file')), 'KC1388_1e84fc24.csv')
+  assert.equal(text(one(box, 'fh-scn-line')), 'Flightradar24 CSV · 11 Nov 2018 · 13:34 UTC · 10 min · 2 points')
+  assert.deepEqual(['Name', 'Flight', 'Airline', 'Registration', 'Type'].map((l) => field(box, l).value), ['', 'KZR1388', '', '', ''])
+  assert.equal(field(box, 'Name').placeholder, 'KZR1388')
+  const hint = (label: string): string => visible(find(box, 'fh-scn-field').find((f) => text(f.children[0]) === label)!, 'fh-scn-hint').map(text).join('')
+  assert.equal(hint('Airline'), 'Air Astana (from the flight) · no livery of it yet: plain white')
+
+  const type = (label: string, v: string): void => {
+    field(box, label).value = v
+    field(box, label).fire('input')
+  }
+  type('Type', 'e190')
+  assert.equal(hint('Type'), 'Model: Embraer 190')
+  type('Type', 'B789')
+  assert.equal(hint('Type'), 'No model of this type yet: a stand-in is drawn.')
+  type('Airline', 'el al israel airlines')
+  assert.equal(hint('Airline'), 'El Al Israel Airlines')
+  type('Type', 'a boeing')
+  button(box, 'Import').click()
+  assert.match(text(one(box, 'fh-scn-actmsg')), /^Type: the ICAO code/)
+  assert.deepEqual(sent, [], 'nothing is sent while a field cannot be')
+  type('Type', 'e190')
+  type('Registration', 'p4-kcj')
+  type('Name', ' Air Astana 1388 ')
+  button(box, 'Import').click()
+  await flush()
+  assert.deepEqual(sent, [true, { flight: 0, name: 'Air Astana 1388', callsign: 'KZR1388', reg: 'P4-KCJ', type: 'E190', airline: 'ELY' }])
+  assert.equal(box.hidden, true)
+  assert.deepEqual(titles(body), ['ITY810', 'Air Astana 1388'])
+  const row = find(body, 'fh-scn-item')[1]
+  assert.equal(one(row, 'fh-scn-details').hidden, false, 'the imported one is open')
+  assert.equal(text(one(row, 'fh-scn-facts')), 'FlightKZR1388AirlineAir AstanaAircraftP4-KCJ · E190Started30 Sep 2026 · 00:29 UTCLength7 minPoints140SourceFlightradar24 CSV file')
+})
+
+test('Import a file: one that cannot be read says why; a failed import says the server\'s words; no Import where nothing is kept', async () => {
+  const { body } = mount(async () => [], async () => [], { onImport: () => Promise.reject(new Error('This flight is in the list already.')) })
+  await flush()
+  const box = one(body, 'fh-scn-import')
+  await pickFile(body, 'notes.txt', 'hello')
+  assert.match(text(one(box, 'fh-scn-actmsg')), /^Not a flight file this app reads/)
+  button(box, 'Close').click()
+  assert.equal(box.hidden, true)
+  await pickFile(body, 'big.kml', '', 33 * 1024 * 1024)
+  assert.equal(text(one(box, 'fh-scn-actmsg')), 'The file is over 32 MB.')
+  await pickFile(body, 'a.csv', CSV)
+  button(box, 'Import').click()
+  await flush()
+  assert.equal(text(one(box, 'fh-scn-actmsg')), 'This flight is in the list already.')
+  assert.equal(button(box, 'Import').disabled, false)
+  button(box, 'Cancel').click()
+  assert.equal(box.hidden, true)
+
+  const off = mount(async () => [], async () => null, { onImport: async () => ({ file: '', recordings: [] }) })
+  await flush()
+  assert.equal(button(off.body, 'Import a file').hidden, true)
+})
+
+test('a file of several flights: the one longest in the air is offered, another can be chosen', async () => {
+  const sent: unknown[] = []
+  const row = (dt: number, alt: number | string, flags = 0, flight?: string): unknown[] => [dt, 25.26 + dt / 1e5, 55.35, alt, 150, 31, flags, null, flight ? { flight } : null, 'adsb_icao', null, null, null, null]
+  const trace = JSON.stringify({ icao: '8965d1', r: 'A6-FKF', t: 'B38M', timestamp: AT, trace: [row(0, 'ground', 0, 'FDB7AQ'), row(60, 'ground'), row(4000, 900, 2, 'FDB1073'), row(4060, 2000), row(4120, 3000)] })
+  const { body } = mount(async () => [], async () => [], { onImport: async (_c, o) => (sent.push(o), { file: 'x', recordings: [] }) })
+  await flush()
+  await pickFile(body, 'trace_full_8965d1.json', trace)
+  const box = one(body, 'fh-scn-import')
+  const pick = all(box).find((e) => e.tag === 'select')!
+  assert.deepEqual(pick.children.map(text), ['FDB7AQ · 11 Nov 2018 · 13:34 UTC · 1 min', 'FDB1073 · 11 Nov 2018 · 14:40 UTC · 2 min'])
+  assert.equal(pick.value, '1')
+  assert.deepEqual(['Flight', 'Registration', 'Type'].map((l) => field(box, l).value), ['FDB1073', 'A6-FKF', 'B38M'])
+  pick.value = '0'
+  pick.fire('change')
+  assert.equal(field(box, 'Flight').value, 'FDB7AQ')
+  button(box, 'Import').click()
+  await flush()
+  assert.deepEqual(sent, [{ flight: 0, name: '', callsign: 'FDB7AQ', reg: 'A6-FKF', type: 'B38M', airline: '' }])
+})
+
+test('a recording\'s details hold links that download it: its own file, and KML', async () => {
+  const { body } = mount(async () => [], async () => [ITY], { downloadUrl: (file, as) => `/api/recordings/file?file=${file}${as ? `&as=${as}` : ''}` })
+  await flush()
+  const links = all(one(body, 'fh-scn-item')).filter((e) => e.tag === 'a') as (El & { href: string; download: string })[]
+  assert.deepEqual(links.map((a) => [text(a), a.href, a.download]), [
+    ['Download', '/api/recordings/file?file=2026-09-30/002932Z-ITY810-4cae1d.jsonl', ''],
+    ['Download as KML', '/api/recordings/file?file=2026-09-30/002932Z-ITY810-4cae1d.jsonl&as=kml', ''],
+  ])
 })

@@ -40,11 +40,11 @@ export const MILITARY = '_MIL'
 /**
  * The livery a callsign flies in: its operator, or the brand a subsidiary or single-partner regional flies as; not in
  * the table, MILITARY for a military aircraft (readsb dbFlags), else null (plain white). Where the design has schemes by
- * registration (Design.variants), "CODE~scheme".
+ * registration (Design.variants), "CODE~scheme". `op`: the operator where it is known apart from the callsign (an imported
+ * flight's airline, said by hand).
  */
-export function liveryCode(callsign: string | null, reg: string | null = null, military = false): string | null {
+export function liveryCode(callsign: string | null, reg: string | null = null, military = false, op: string | null = operatorOf(callsign)): string | null {
   const none = military ? MILITARY : null
-  const op = operatorOf(callsign)
   if (op === null) return none
   const code = TABLE.aliases[op] ?? op
   if (!known(code)) return none

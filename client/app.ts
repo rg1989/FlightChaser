@@ -30,7 +30,7 @@
 import { Cartesian2, Cartesian3, Cartographic, Ellipsoid, Math as CesiumMath, SceneTransforms, ScreenSpaceEventHandler, ScreenSpaceEventType } from 'cesium'
 import type { PerspectiveFrustum, Viewer } from 'cesium'
 import type { AlertEvent } from '../shared/alerts.ts'
-import { airlineOf } from '../shared/airlines.ts'
+import { airlineOf, operatorOf } from '../shared/airlines.ts'
 import type { Airport } from '../shared/airports.ts'
 import type { RunwayTable } from '../shared/landing.ts'
 import type { ChaseResponse, HistoryStatus, StatusBrief, TraceReply } from '../shared/api.ts'
@@ -720,6 +720,13 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         onPlay: (id) => void startScenario(id, { play: true }),
         onRename: (file, name) => api.renameRecording(file, name),
         onDelete: (file) => api.deleteRecording(file),
+        onImport: (text, o) => api.importRecording(text, o),
+        downloadUrl: (file, as) => api.recordingUrl(file, as),
+        modelOf: (type) => {
+          const p = pick?.pick(type, null) ?? null
+          return p !== null && p.fit === 'own' ? (p.entry.name ?? p.entry.id) : null
+        },
+        hasLivery: (op) => liveryCode(null, null, false, op) !== null,
       })),
     } },
     // The map in the past (history/): a time bar over the days adsb.lol keeps. Pressed again (or the bar's Live): back to now.
@@ -1973,7 +1980,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         if (built === null) throw new Error('too short to replay')
         scn = built
         recPlaceholder = picked !== null && asPlaceholder(picked.fit)
-        recLivery = liveryOf(liveryCode(rec.info.callsign, rec.info.reg, rec.info.military))
+        recLivery = liveryOf(liveryCode(rec.info.callsign, rec.info.reg, rec.info.military, rec.info.operator ?? operatorOf(rec.info.callsign)))
       } else scn = await loadScenario(scenarioBase, id)
     } catch (e) {
       console.error(`FlightHopper: scenario "${id}" not loaded:`, e)

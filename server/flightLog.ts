@@ -13,10 +13,13 @@
 //                                                                                   aircraft may drop its callsign on landing)
 //   {"end": {why: 'stopped'|'landed'|'lost', endedMs, samples}}                    last line, when it ended
 // A file without an end line was cut short by a server stop that did not resume it.
+// A flight read from a file found elsewhere (shared/flightFile.ts) is kept the same way, by importFlight: its header says
+// by 'import' and the kind of file as its source, its start is its first point's time, and its end line says 'imported'.
 // <dir>/active.json lists the recordings under way, so a restarted server carries on appending to the same files.
-import { appendFileSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { RecordingInfo, RecordingState, RecordingTrack } from '../shared/api.ts'
+import type { FileFlight } from '../shared/flightFile.ts'
 import type { AircraftInfo } from '../shared/info.ts'
 import type { Sample, SourceKind } from '../shared/types.ts'
 
@@ -25,7 +28,14 @@ export const LANDED_HOLD_MS = 60_000 // … for this long (the roll-out and the 
 export const LOST_MS = 15 * 60_000
 export const NAME_MAX = 60 // characters of a recording's name // no new sample for this long: gone (out of coverage, or landed where no one hears it)
 
-export type EndReason = 'stopped' | 'landed' | 'lost'
+export type EndReason = 'stopped' | 'landed' | 'lost' | 'imported'
+
+/** A recording's path from its start and its aircraft: <UTC day>/<HHMMSS>Z-<callsign or hex>-<hex>.jsonl. */
+function fileOf(startMs: number, callsign: string | null, hex: string): string {
+  const iso = new Date(startMs).toISOString() // 2026-09-30T14:30:12.345Z
+  const name = (callsign ?? hex).replace(/[^A-Za-z0-9]/g, '')
+  return `${iso.slice(0, 10)}/${iso.slice(11, 19).replace(/:/g, '')}Z-${name}-${hex.replace('~', 'x')}.jsonl`
+}
 
 /** A recording's path under the flights directory, as start() names it: nothing else is ever read. */
 export const RECORDING_FILE = /^\d{4}-\d{2}-\d{2}\/\d{6}Z-[A-Za-z0-9]*-[0-9a-fx]{6,7}\.jsonl$/
@@ -63,10 +73,8 @@ export class FlightLog {
     const had = this.#active.get(hex)
     if (had) return { ...had.state }
     const now = this.#now()
-    const iso = new Date(now).toISOString() // 2026-09-30T14:30:12.345Z
-    const name = (info?.callsign ?? hex).replace(/[^A-Za-z0-9]/g, '')
-    const file = `${iso.slice(0, 10)}/${iso.slice(11, 19).replace(/:/g, '')}Z-${name}-${hex.replace('~', 'x')}.jsonl`
-    mkdirSync(join(this.#dir, iso.slice(0, 10)), { recursive: true })
+    const file = fileOf(now, info?.callsign ?? null, hex)
+    mkdirSync(join(this.#dir, file.slice(0, 10)), { recursive: true })
     const flight = {
       v: 1,
       hex,
@@ -99,6 +107,26 @@ export class FlightLog {
     appendFileSync(join(this.#dir, a.state.file), JSON.stringify({ end }) + '\n')
     this.#save()
     return { ...a.state }
+  }
+
+  /**
+   * Keeps a flight read from a file as a finished recording, named by its first point's time: `source` says the kind of
+   * file. Its file, or null when a recording of that aircraft from that second is kept already.
+   */
+  importFlight(f: FileFlight, source: string): string | null {
+    const { meta, samples } = f
+    const first = samples[0]
+    const file = fileOf(first.tMs, meta.callsign, first.hex)
+    if (existsSync(join(this.#dir, file))) return null
+    const flight = {
+      v: 1, hex: first.hex, callsign: meta.callsign, reg: meta.reg, typeCode: meta.typeCode, category: meta.category,
+      military: false, operator: meta.operator, route: meta.route, source, by: 'import', startedMs: first.tMs,
+    }
+    const end = { why: 'imported', endedMs: samples[samples.length - 1].tMs, samples: samples.length }
+    const lines = [{ flight }, ...(meta.name === null ? [] : [{ name: meta.name }]), ...samples.map((s) => ({ s })), { end }]
+    mkdirSync(join(this.#dir, file.slice(0, 10)), { recursive: true })
+    writeFileSync(join(this.#dir, file), lines.map((l) => JSON.stringify(l)).join('\n') + '\n')
+    return file
   }
 
   /** A new sample from the poller: appended when its aircraft is being recorded. */
@@ -173,6 +201,16 @@ export class FlightLog {
     return out.sort((a, b) => b.startedMs - a.startedMs)
   }
 
+  /** A recording's file as it is on disk, for a download; null: not a recording file, or missing. */
+  raw(file: string): string | null {
+    if (!RECORDING_FILE.test(file)) return null
+    try {
+      return readFileSync(join(this.#dir, file), 'utf8')
+    } catch {
+      return null
+    }
+  }
+
   /** One recording (its info and samples, oldest first), or null: not a recording file, missing, or no header. */
   read(file: string): RecordingTrack | null {
     if (!RECORDING_FILE.test(file)) return null
@@ -209,7 +247,8 @@ export class FlightLog {
       info: {
         file, name, hex,
         callsign: str(head.callsign), reg: str(head.reg), typeCode: str(head.typeCode), category: str(head.category),
-        military: head.military === true, route: route ?? str(head.route) ?? (active ? this.#routeOf(hex) : null), source: str(head.source) ?? '',
+        military: head.military === true, route: route ?? str(head.route) ?? (active ? this.#routeOf(hex) : null),
+        operator: str(head.operator), source: str(head.source) ?? '',
         startedMs: typeof head.startedMs === 'number' ? head.startedMs : 0,
         firstMs: samples.length > 0 ? samples[0].tMs : null,
         lastMs: samples.length > 0 ? samples[samples.length - 1].tMs : null,

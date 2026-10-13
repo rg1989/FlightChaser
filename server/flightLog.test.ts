@@ -137,3 +137,22 @@ test('rename: a name line (the file stays), trimmed and capped, blank clears it;
   assert.equal(log.remove(a.file), false)
   assert.equal(log.remove('active.json'), false)
 })
+
+test('importFlight: a flight from a file is kept as an ended recording under its first point\'s time; once', () => {
+  const { dir, log, lines } = setup()
+  const at = Date.UTC(2018, 10, 11, 13, 34, 7)
+  const meta = { hex: null, callsign: 'KZR1388', reg: 'P4-KCJ', typeCode: 'E190', category: null, operator: 'KZR', name: 'Air Astana 1388', route: null }
+  const f = { meta, samples: [sample(at, { hex: '000000' }), sample(at + 8000, { hex: '000000' })] }
+  const file = log.importFlight(f, 'KML file')
+  assert.equal(file, '2018-11-11/133407Z-KZR1388-000000.jsonl')
+  assert.equal(log.importFlight(f, 'KML file'), null, 'kept already')
+  const l = lines(file!)
+  assert.deepEqual(l[0].flight, { v: 1, hex: '000000', callsign: 'KZR1388', reg: 'P4-KCJ', typeCode: 'E190', category: null, military: false, operator: 'KZR', route: null, source: 'KML file', by: 'import', startedMs: at })
+  assert.deepEqual(l[1], { name: 'Air Astana 1388' })
+  assert.deepEqual(l[4], { end: { why: 'imported', endedMs: at + 8000, samples: 2 } })
+  const { info } = log.read(file!)!
+  assert.deepEqual([info.name, info.operator, info.source, info.ended, info.active, info.samples], ['Air Astana 1388', 'KZR', 'KML file', { why: 'imported', endedMs: at + 8000 }, false, 2])
+  assert.equal(log.raw(file!), readFileSync(join(dir, file!), 'utf8'))
+  assert.equal(log.raw('../x.jsonl'), null)
+  assert.deepEqual(log.hexes(), [], 'nothing is being recorded')
+})

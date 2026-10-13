@@ -5,6 +5,8 @@ import names from './airlines.json' with { type: 'json' }
 import iata from './airlines-iata.json' with { type: 'json' }
 
 const NAMES: Readonly<Record<string, string>> = names
+/** Every airline's name by its ICAO designator. */
+export const AIRLINE_NAMES = NAMES
 const IATA: Readonly<Record<string, string>> = iata
 
 /**

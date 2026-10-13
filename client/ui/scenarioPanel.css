@@ -284,6 +284,108 @@
   display: none;
 }
 
+/* A link that reads as one of the small buttons (Download, KML). */
+a.fh-scn-act {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* The Recordings heading holds Import a file at its right. */
+.fh-scn-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.fh-scn-section .fh-scn-act {
+  min-height: 24px;
+  padding: 0 9px;
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.fh-scn-section .fh-scn-act[hidden] {
+  display: none;
+}
+
+/* A scenario that plays sound. */
+.fh-scn-sound {
+  flex: none;
+  display: inline-flex;
+  color: var(--fh-muted);
+}
+
+/* Download and Download as KML, under Rename and Delete. */
+.fh-scn-links {
+  margin-top: 6px;
+}
+
+/* The form of a file picked to import: what it holds, then what to say of the aircraft. */
+.fh-scn-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 6px 14px 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--fh-hairline);
+  border-radius: 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.fh-scn-import[hidden] {
+  display: none;
+}
+
+.fh-scn-import p {
+  margin: 0;
+}
+
+.fh-scn-import .fh-scn-line {
+  white-space: normal;
+}
+
+.fh-scn-import-file {
+  overflow: hidden;
+  font: 600 13px/1.3 var(--fh-font);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fh-scn-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fh-scn-field {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 8px;
+  color: var(--fh-faint);
+}
+
+.fh-scn-hint {
+  color: var(--fh-muted);
+  font-size: 11.5px;
+}
+
+.fh-scn-field .fh-scn-hint {
+  grid-column: 2;
+}
+
+.fh-scn-hint[hidden] {
+  display: none;
+}
+
+select.fh-scn-input {
+  flex: none;
+}
+
 /* Loading: a row's shape in shimmer bars. */
 .fh-scn-skel {
   display: flex;
@@ -343,5 +445,9 @@
   .fh-scn-act,
   .fh-scn-input {
     min-height: 40px;
+  }
+
+  .fh-scn-section .fh-scn-act {
+    min-height: 36px;
   }
 }

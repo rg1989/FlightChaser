@@ -151,4 +151,7 @@ export interface Scenario {
 }
 
 /** The manifest alone (scenario.json), for the Scenarios panel's cards: no CSVs fetched. */
-export type ScenarioCard = Pick<Scenario, 'id' | 'title' | 'subtitle' | 'date' | 'clockLabel' | 'note' | 'summary' | 'crew' | 'aircraft' | 'start' | 'end'>
+export type ScenarioCard = Pick<Scenario, 'id' | 'title' | 'subtitle' | 'date' | 'clockLabel' | 'note' | 'summary' | 'crew' | 'aircraft' | 'start' | 'end'> & {
+  /** The sound it plays: the recording itself or a voice-over; null: none, or its file is not here (often in local/, git-ignored). */
+  sound: 'recording' | 'voice-over' | null
+}

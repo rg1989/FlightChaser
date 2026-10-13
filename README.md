@@ -39,7 +39,8 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
   shows whether the weather is on.
 - **History.** The map as it was at any time in the last 42 days, on a replay clock. Search a flight number
   (`W4 3257`) to see where it flies now and the days it flew, and replay any of them.
-- **Recordings.** Record a flight with one button and replay it later.
+- **Recordings.** Record a flight with one button and replay it later. Import a flight file found elsewhere (KML, GPX,
+  Flightradar24 CSV, an ADS-B trace) and replay it the same way; download any recording as its own file or as KML.
 - **Scenarios.** Reconstructed flights played back with a timeline and captions from the official record.
 - **Alerts.** Emergency squawks worldwide and steep descents, with optional push to a phone.
 - **Phone and TV.** A phone layout, and a kiosk mode driven by a TV remote ([tv/](tv/README.md)).

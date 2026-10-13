@@ -186,12 +186,13 @@ export interface RecordingInfo {
   category: string | null
   military: boolean
   route: string | null           // e.g. 'LIRF-LLBG'
-  source: string
+  operator?: string | null       // the airline said at import (ICAO designator), where the callsign does not say it
+  source: string                 // the feed it was recorded from, or the kind of file it was imported from ('KML file')
   startedMs: number
   firstMs: number | null         // tMs of its first and last sample (null: none)
   lastMs: number | null
   samples: number
-  ended: { why: 'stopped' | 'landed' | 'lost'; endedMs: number } | null // null: still recording, or cut short
+  ended: { why: 'stopped' | 'landed' | 'lost' | 'imported'; endedMs: number } | null // null: still recording, or cut short
   active: boolean                // being recorded now
 }
 

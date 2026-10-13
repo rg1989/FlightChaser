@@ -71,6 +71,24 @@ export class ApiClient {
     return ((await res.json()) as { recordings: RecordingInfo[] }).recordings
   }
 
+  /**
+   * Keeps a flight file's text as a recording (shared/flightFile.ts reads it, on the server): flight is which of the
+   * file's flights, the rest what to say of it (blank: nothing; left out: as the file says). Its file and the list after.
+   * A file that cannot be read rejects with the server's words for why.
+   */
+  async importRecording(text: string, o: { flight: number; name?: string; callsign?: string; reg?: string; type?: string; airline?: string }): Promise<{ file: string; recordings: RecordingInfo[] }> {
+    const q = new URLSearchParams(Object.entries(o).map(([k, v]) => [k, String(v)]))
+    const res = await this.#fetch(`${this.#base}/recordings/import?${q}`, { method: 'POST', body: text, headers: { 'content-type': 'text/plain' }, signal: AbortSignal.timeout(60_000) })
+    const body = (await res.json().catch(() => null)) as { file: string; recordings: RecordingInfo[]; error?: string } | null
+    if (!res.ok || body === null) throw new Error(body?.error ?? `HTTP ${res.status}`)
+    return body
+  }
+
+  /** Where a recording downloads from: its own file, or KML for other programs. */
+  recordingUrl(file: string, as?: 'kml'): string {
+    return `${this.#base}/recordings/file?file=${encodeURIComponent(file)}${as ? `&as=${as}` : ''}`
+  }
+
   /** One recorded flight's samples, for a replay. */
   async recording(file: string): Promise<RecordingTrack> {
     const res = await this.#fetch(`${this.#base}/recordings/track?file=${encodeURIComponent(file)}`, { signal: AbortSignal.timeout(30_000) })

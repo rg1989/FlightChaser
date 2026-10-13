@@ -8,6 +8,10 @@
 //   POST /api/record?hex&on=1|0         start or stop recording one aircraft → RecordResponse
 //   GET /api/recordings                 every recorded flight, newest first; /api/recordings/track?file= one of them
 //   POST /api/recordings/rename?file&name, POST /api/recordings/delete?file   name one (blank clears), delete one for good
+//   GET /api/recordings/file?file[&as=kml]   one of them as a download: its own file, or KML for other programs
+//   POST /api/recordings/import[?flight&name&callsign&reg&type&airline]   body: a flight file found elsewhere (KML, GPX, a
+//                                       Flightradar24 CSV, an ADS-B trace, an OpenSky track, a recording: shared/flightFile.ts),
+//                                       kept as a recording; the fields say what the file does not → { file, recordings }
 //   GET /api/events                     the alerts' switch and the last 7 days of events (EVENTS_DIR set, live source; else 404)
 //   POST /api/events?on=1|0             switch the worldwide watch on or off (kept across restarts) → EventsReply
 //                                       (every POST from a page on another site is refused: 403, by its Sec-Fetch-Site header)
@@ -48,6 +52,7 @@ import { gzip } from 'node:zlib'
 import type { ChaseResponse, RecordingInfo, RecordResponse, StatusBrief, ViewResponse } from '../shared/api.ts'
 import { airlineOf, icaoOfIata } from '../shared/airlines.ts'
 import type { LiveFlight } from '../shared/api.ts'
+import { FIELD, FILE_MAX_BYTES, FlightFileError, cleanName, parseFlightFile, toKml, withMeta, type FlightFile, type FlightMeta } from '../shared/flightFile.ts'
 import { distanceNm } from '../shared/geo.ts'
 import { callsignOf } from '../shared/readsb.ts'
 import { EVERYTHING_NM, SLOT_MS, newestSlotMs } from '../shared/history.ts'
@@ -100,7 +105,7 @@ const TYPES_WAIT_MS = 5000 // the first ask for the past, and the first late sca
 const META_TICK_MS = 60_000 // the type table and the oldest day are checked this often; each loads when it is due
 const SPAN_MAX_MS = 48 * 3_600_000 // the longest span of one aircraft's legs: the client asks for a day and the 12 h before it
 const gzipAsync = promisify(gzip)
-const POSTS = new Set(['/api/record', '/api/recordings/rename', '/api/recordings/delete', '/api/events']) // the only writes
+const POSTS = new Set(['/api/record', '/api/recordings/rename', '/api/recordings/delete', '/api/recordings/import', '/api/events']) // the only writes
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -197,6 +202,27 @@ async function sendBytes(req: IncomingMessage, res: ServerResponse, bytes: Uint8
 
 function sendText(res: ServerResponse, status: number, text: string): void {
   res.writeHead(status, { 'content-type': 'text/plain; charset=utf-8', 'content-length': Buffer.byteLength(text) }).end(text)
+}
+
+/** Text for the browser to save as a file of this name. */
+function sendDownload(res: ServerResponse, name: string, type: string, text: string): void {
+  res.writeHead(200, { 'content-type': type, 'content-disposition': `attachment; filename="${name.replace(/[^A-Za-z0-9._-]/g, '_')}"`, 'cache-control': 'no-store', 'content-length': Buffer.byteLength(text) }).end(text)
+}
+
+/** A request's body as text; null when it is over `max` bytes (what is over is read and dropped, not kept). */
+function readBody(req: IncomingMessage, max: number): Promise<string | null> {
+  return new Promise((done, fail) => {
+    if (Number(req.headers['content-length'] ?? 0) > max) return done(null)
+    const chunks: Buffer[] = []
+    let size = 0
+    req.on('data', (c: Buffer) => {
+      size += c.length
+      if (size <= max) chunks.push(c)
+      else chunks.length = 0
+    })
+    req.on('end', () => done(size > max ? null : Buffer.concat(chunks).toString('utf8')))
+    req.on('error', fail)
+  })
 }
 
 const isFile = (p: string): Promise<boolean> => stat(p).then((s) => s.isFile(), () => false)
@@ -569,6 +595,49 @@ export function createServer(
     return done ? [200, { recordings: flights.list() }] : [404, { error: 'no such recording' }]
   }
 
+  /** One recording as a download: [name, type, text], or null when there is none. */
+  function recordingDownload(q: URLSearchParams): [string, string, string] | null {
+    if (flights === null) throw new BadRequest('recording is off: set FLIGHTS_DIR')
+    const file = q.get('file') ?? ''
+    const as = q.get('as')
+    check(as === null || as === 'kml', 'as must be kml (or left out: the recording itself)')
+    const r = flights.read(file)
+    if (r === null) return null
+    const base = file.slice(file.indexOf('/') + 1, -'.jsonl'.length)
+    if (as === null) return [`${base}.jsonl`, 'application/x-ndjson', flights.raw(file) ?? '']
+    const { info } = r
+    const title = info.name ?? info.callsign ?? info.hex.toUpperCase()
+    return [`${base}.kml`, 'application/vnd.google-earth.kml+xml', toKml(title, [info.callsign, info.reg, info.typeCode, info.route].filter(Boolean).join(' · '), r.samples)]
+  }
+
+  /**
+   * Keeps a flight file's flight as a recording: [200, its file and the list after]; [400, why the file cannot be read];
+   * [409] when it is kept already. A field left out is as the file says; a blank one clears it.
+   * ponytail: the file is read on the event loop: a 30 MB trace holds it for about a second.
+   */
+  function importRecording(q: URLSearchParams, text: string): [number, unknown] {
+    if (flights === null) throw new BadRequest('recording is off: set FLIGHTS_DIR')
+    let parsed: FlightFile
+    try {
+      parsed = parseFlightFile(text)
+    } catch (e) {
+      if (e instanceof FlightFileError) return [400, { error: e.message }]
+      throw e
+    }
+    const flight = parsed.flights[num(q, 'flight', 0)]
+    check(flight !== undefined, `flight must be 0 to ${parsed.flights.length - 1}: the file's flights, in order`)
+    const over: Partial<FlightMeta> = {}
+    for (const [param, key] of [['callsign', 'callsign'], ['reg', 'reg'], ['type', 'typeCode'], ['airline', 'operator']] as const) {
+      const v = q.get(param)?.trim().toUpperCase()
+      if (v === undefined) continue
+      check(v === '' || FIELD[key].test(v), `${param} cannot be "${v}"`)
+      over[key] = v === '' ? null : v
+    }
+    if (q.has('name')) over.name = cleanName(q.get('name'))
+    const file = flights.importFlight(withMeta(flight, over), `${parsed.format} file`)
+    return file === null ? [409, { error: 'This flight is in the list already.' }] : [200, { file, recordings: flights.list() }]
+  }
+
   function record(q: URLSearchParams, post: boolean): RecordResponse {
     if (flights === null) throw new BadRequest('recording is off: set FLIGHTS_DIR')
     if (!post) return { rec: null, active: flights.active() }
@@ -634,6 +703,15 @@ export function createServer(
       else if (url.pathname === '/api/recordings') body = recordings()
       else if (post && url.pathname === '/api/recordings/rename') [status, body] = editRecording(url.searchParams, 'rename')
       else if (post && url.pathname === '/api/recordings/delete') [status, body] = editRecording(url.searchParams, 'delete')
+      else if (post && url.pathname === '/api/recordings/import') {
+        const text = await readBody(req, FILE_MAX_BYTES)
+        ;[status, body] = text === null ? [413, { error: `The file is over ${FILE_MAX_BYTES / 1024 / 1024} MB.` }] : importRecording(url.searchParams, text)
+      }
+      else if (url.pathname === '/api/recordings/file') {
+        const out = recordingDownload(url.searchParams)
+        if (out !== null) return sendDownload(res, ...out)
+        ;[status, body] = [404, { error: 'no such recording' }]
+      }
       else if (url.pathname === '/api/recordings/track') {
         if (flights === null) throw new BadRequest('recording is off: set FLIGHTS_DIR')
         const r = flights.read(url.searchParams.get('file') ?? '')

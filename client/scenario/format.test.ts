@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 import path from 'node:path'
-import { clockToS, sToClock, offsetMs, parseScenario, parseCard, loadScenario, ScenarioError } from './format.ts'
+import { clockToS, sToClock, offsetMs, parseScenario, parseCard, loadScenario, listScenarios, ScenarioError } from './format.ts'
 
 // ---- clockToS / sToClock / offsetMs -----------------------------------------------------------
 
@@ -123,6 +123,24 @@ test('parseCard: reads only the manifest, for the scenario panel', () => {
   assert.equal(card.id, 'jal123')
   assert.equal(card.title, 'Japan Air Lines Flight 123')
   assert.equal(card.start, clockToS('18:11:15'))
+})
+
+test('listScenarios: a card says what sound its scenario plays only when the sound file is there', async () => {
+  const withAudio = (reenacted: boolean): unknown => validManifest({ audio: { file: 'local/cvr.m4a', source: 'x', reenacted, clips: [{ from: 0, to: 10, at: '18:11:16' }] } })
+  const files: Record<string, unknown> = { 'index.json': { scenarios: ['a', 'b', 'c', 'd'] }, 'a/scenario.json': withAudio(false), 'b/scenario.json': withAudio(true), 'c/scenario.json': withAudio(false), 'd/scenario.json': validManifest() }
+  const heads: string[] = []
+  const fetcher = (async (url: string, init?: RequestInit) => {
+    const path = url.replace('/app/scenarios/', '')
+    if (init?.method === 'HEAD') {
+      heads.push(path)
+      // c's file is not there: Vite's dev server answers with the app's page.
+      return path.startsWith('c/') ? new Response('', { headers: { 'content-type': 'text/html' } }) : new Response('', { headers: { 'content-type': 'audio/mp4' } })
+    }
+    return path in files ? new Response(JSON.stringify(files[path])) : new Response('', { status: 404 })
+  }) as typeof fetch
+  const cards = await listScenarios('/app/', fetcher)
+  assert.deepEqual(cards.map((c) => c.sound), ['recording', 'voice-over', null, null])
+  assert.deepEqual(heads, ['a/local/cvr.m4a', 'b/local/cvr.m4a', 'c/local/cvr.m4a'], 'nothing is asked of a scenario that names no sound')
 })
 
 // ---- validation: manifest -----------------------------------------------------------------------

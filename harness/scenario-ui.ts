@@ -43,6 +43,7 @@ const CARD: ScenarioCard = {
   aircraft: { registration: 'JA8119', type: 'Boeing 747SR-46', callsign: 'JAL123', operator: 'Japan Air Lines', model: 'b744' },
   start: START,
   end: END,
+  sound: 'recording',
 }
 
 const MARKS = [
