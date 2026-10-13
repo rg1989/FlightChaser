@@ -1,47 +1,59 @@
+<img src="public/logo.png" alt="" width="84" align="right">
+
 # FlightHopper
 
 Live air traffic on a 3-D globe. Pick an aircraft and fly behind it over real terrain, down to the runway.
 
-![A Lufthansa A320neo over the English countryside, on its way into Heathrow](docs/images/hero.jpg)
+![A Lufthansa A320neo on final to Heathrow, gear down, the sun low behind it](docs/images/hero.jpg)
 
 <table>
 <tr>
-<td width="50%"><img src="docs/images/final.jpg" alt="A British Airways A320neo on short final to Heathrow, with the flight instruments round it"><br><sub>On final: flight instruments, 3-D buildings, the traffic ahead</sub></td>
-<td width="50%"><img src="docs/images/terrain.jpg" alt="An A320 over the hills east of San Francisco Bay"><br><sub>Real terrain under every flight</sub></td>
+<td width="50%"><img src="docs/images/final.jpg" alt="A Lufthansa A320neo on short final to Heathrow, with the flight instruments round it"><br><sub>On final: flight instruments, 3-D buildings, the traffic ahead</sub></td>
+<td width="50%"><img src="docs/images/terrain.jpg" alt="An A320 over the Inn valley, mountains on both sides"><br><sub>Real terrain under every flight: the Inn valley, on the way into Innsbruck</sub></td>
 </tr>
 <tr>
-<td><img src="docs/images/sunset.jpg" alt="An Iberia A350 with its gear down against the setting sun"><br><sub>The sun and moon where they are at that hour</sub></td>
-<td><img src="docs/images/night.jpg" alt="A British Airways A320 at night, cabin windows lit, street lights below"><br><sub>Night: cabin and navigation lights, street lights below</sub></td>
+<td><img src="docs/images/sculpted.jpg" alt="Clouds drawn as glass domes ahead of an A320, a hazard area fenced off in red"><br><sub>Weather in the Sculpted look: clouds as bodies, a hazard area fenced off</sub></td>
+<td><img src="docs/images/clouds.jpg" alt="An A320 at the edge of a cloud, low sun on the fields below"><br><sub>The Natural look: cloud round the aircraft</sub></td>
 </tr>
 <tr>
-<td><img src="docs/images/weather.jpg" alt="Clouds round an A320, and a strip that shows the weather ahead"><br><sub>Weather round the aircraft, and what lies ahead</sub></td>
+<td><img src="docs/images/night.jpg" alt="A Lufthansa A320neo over London at night, street lights below"><br><sub>Night: cabin and navigation lights, street lights below</sub></td>
+<td><img src="docs/images/ahead.jpg" alt="An A320 descending, with a strip that shows cloud on its path four minutes ahead"><br><sub>The ahead strip: the next six minutes of the path, and the weather on it</sub></td>
+</tr>
+<tr>
+<td><img src="docs/images/scenario.jpg" alt="The Air Astana 1388 scenario: the aircraft, its instruments, a caption of the radio and the timeline"><br><sub>A scenario: Air Astana 1388, its radio as captions, the timeline below</sub></td>
 <td><img src="docs/images/map.jpg" alt="The map west of London: aircraft coloured by altitude, one selected with its flown path"><br><sub>The live map: every aircraft in view, the selected one's path</sub></td>
 </tr>
 </table>
 
-<sub>Screenshots of the app replaying recorded traffic at Heathrow and San Francisco. The sunset and night views set
-the time of day with `?sun=`, the weather view shows the demo sky (`?wxdemo=1`), and the close-ups hide the instrument
-cards with the layout button.</sub>
+<sub>Screenshots of the app replaying recorded traffic at Heathrow, a synthetic approach into Innsbruck, and the Air
+Astana 1388 scenario. The time of day is set with `?sun=`, the weather views show the demo sky (`?wxdemo=`), and the
+close-ups hide the instrument cards with the layout button.</sub>
 
 A personal, non-commercial project. **Entertainment only: not for navigation, ATC or any operational decision.**
 
 ## What it does
 
-- **Live map.** Every aircraft in view from open ADS-B data, coloured by altitude. Search airports, cities and
-  flights. A flight card shows the aircraft's photo, route and flown path.
+- **Live map.** Every aircraft in view from open ADS-B data, coloured by altitude. One search box finds airports,
+  cities, countries and flights. A flight card shows the aircraft's photo, route and flown path. The Layers panel
+  picks the map, its theme and what is drawn on it.
 - **Chase view.** Follow one aircraft in 3-D: real terrain, sun and moon light for the time of day, city lights at
-  night, 3-D buildings, painted runways. Aircraft are type models in airline liveries, with landing gear, lights and
-  glass-cockpit instruments. Nearby traffic is drawn too. The layout button arranges the instruments: drag, size or
-  hide each card, switch a card to a smaller variant, or pick a ready-made layout (Compact, Stylistic, Detailed).
+  night, 3-D buildings (`B` switches them, `X` makes them see-through), painted runways. Aircraft are type models in
+  airline liveries, with landing gear, lights and glass-cockpit instruments. Nearby traffic is drawn too. The layout
+  button arranges the instruments: drag, size or hide each card, switch a card to a smaller variant, or pick a
+  ready-made layout (Compact, Stylistic, Detailed).
 - **Weather.** Rain radar, airport reports and hazard areas on the map. In the chase, clouds, rain and storms are
-  volumes round the aircraft. Over Europe, Africa and the Middle East the clouds stand where the Meteosat weather
-  satellite sees them, with the cloud tops it measures. The Weather panel has the master switch (`W`); its button on the rail
-  shows whether the weather is on.
+  volumes round the aircraft, in three looks: Natural, Severity colours and Sculpted. The ahead strip shows the next
+  six minutes of the aircraft's path and the weather on it. Over Europe, Africa and the Middle East the clouds stand
+  where the Meteosat weather satellite sees them, with the cloud tops it measures. The Weather panel has the master
+  switch (`W`); its button on the rail shows whether the weather is on.
 - **History.** The map as it was at any time in the last 42 days, on a replay clock. Search a flight number
   (`W4 3257`) to see where it flies now and the days it flew, and replay any of them.
-- **Recordings.** Record a flight with one button and replay it later. Import a flight file found elsewhere (KML, GPX,
-  Flightradar24 CSV, an ADS-B trace) and replay it the same way; download any recording as its own file or as KML.
-- **Scenarios.** Reconstructed flights played back with a timeline and captions from the official record.
+- **Recordings.** Record a flight with one button and replay it later. Import a flight from a file (KML, GPX, a
+  Flightradar24 CSV, an ADS-B trace, an OpenSky track); download a recording as its own file or as KML.
+- **Scenarios.** Reconstructed flights played back with a timeline, in 3-D or on the map. Captions come from the
+  official record; where none exists they are marked "as heard". A scenario can play a voice recording in time with
+  its captions. The recordings are not in the repository: [Scenarios](docs/scenarios.md) says how one is added and
+  checked.
 - **Alerts.** Emergency squawks worldwide and steep descents, with optional push to a phone.
 - **Phone and TV.** A phone layout, and a kiosk mode driven by a TV remote ([tv/](tv/README.md)).
 

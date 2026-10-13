@@ -118,8 +118,7 @@ export function mountSetup(root: HTMLElement, host: SetupHost): SetupHandle {
   dialog.setAttribute('aria-labelledby', 'fh-setup-title')
   const box = h('div', 'fh-settings-box')
   const head = h('header', 'fh-settings-head')
-  const headIcon = h('span', 'fh-settings-icon')
-  headIcon.append(icon('plane', 18))
+  const headIcon = h('span', 'fh-settings-icon fh-settings-mark') // the app's mark (settings.css)
   const title = h('h2', 'fh-settings-title', 'Set up FlightHopper')
   title.id = 'fh-setup-title'
   const close = h('button', 'fh-ibtn fh-sm')
