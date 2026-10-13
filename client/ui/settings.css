@@ -56,9 +56,21 @@
 
 .fh-settings-title {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   margin: 0;
   font: 600 15px/1 var(--fh-font);
   letter-spacing: 0.01em;
+}
+
+/* The app's mark before the title of Settings and of the setup guide. */
+.fh-settings-title::before {
+  content: '';
+  flex: none;
+  width: 26px;
+  height: 26px;
+  background: url('/logo.png') center / contain no-repeat;
 }
 
 .fh-settings-body {
