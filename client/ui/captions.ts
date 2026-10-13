@@ -1,6 +1,7 @@
 // client/ui/captions.ts
 // Scenario captions: the lines spoken at the scenario time, centred above the play bar, oldest first. Each line has a
-// head (who → to, the channel after a dot, a JA→EN mark when translated), the English text, and the original words in
+// head (who → to, the channel after a dot, a JA→EN mark when translated, 'as heard' when the words are our own
+// hearing of the recording), the English text, and the original words in
 // smaller type under it when they were not English. Lines are keyed: update() runs every frame, so a line that stays
 // keeps its element (its 150 ms fade-in plays once), gone lines go, new lines are added. Text only, never HTML: the
 // words are the official record's. A polite live region, so a screen reader reads each new line once.
@@ -13,6 +14,7 @@ export interface CaptionView {
   to: string | null // 'First Officer'; null: to anyone listening
   channel: Channel
   translated: boolean
+  heard?: boolean // our own hearing of the recording: no official transcript exists
   unintelligible: boolean
   text: string
   original: string | null
@@ -52,6 +54,11 @@ function line(c: CaptionView): HTMLElement {
     const tr = h('span', 'fh-cap-tr', 'JA→EN')
     tr.title = 'Translated from Japanese'
     head.append(tr)
+  }
+  if (c.heard) {
+    const hd = h('span', 'fh-cap-tr', 'as heard')
+    hd.title = 'Our own hearing of the recording. No official transcript exists.'
+    head.append(hd)
   }
   el.append(head, h('p', 'fh-cap-text', c.text))
   if (c.original !== null && c.original !== '') el.append(h('p', 'fh-cap-orig', c.original))

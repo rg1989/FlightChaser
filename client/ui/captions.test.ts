@@ -125,6 +125,14 @@ test('each line: who → to, the channel after a dot, the text; lines in the ord
   assert.equal(text(one(lines()[0], 'fh-cap-head')), 'Captain → Tokyo Control · radio')
 })
 
+test('a line that is our own hearing of the recording says so', () => {
+  const { c, lines } = mount()
+  c.update([{ ...B, heard: true }, A])
+  assert.equal(text(one(lines()[0], 'fh-cap-tr')), 'as heard')
+  assert.equal(find(lines()[1], 'fh-cap-tr').length, 0)
+  c.destroy()
+})
+
 test('a translated line carries the JA→EN mark and its original under the text', () => {
   const { c, lines } = mount()
   c.update([C, A])

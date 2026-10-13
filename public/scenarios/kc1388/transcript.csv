@@ -1,0 +1,176 @@
+time,dur,speaker,to,channel,lang,text,original,q,src
+13:32:45.5,,KZR,APP,radio,en,"[unintelligible] 1388, Mayday, Mayday, Mayday.",,H,LATC
+13:32:55.0,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, go ahead.",,H,LATC
+13:33:02.6,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, roger, Mayday, go ahead with your request.",,H,LATC
+13:33:09.2,,KZR,APP,radio,en,"Standby, standby, 1388.",,H,LATC
+13:34:01.8,,KZR,APP,radio,en,"Mayday, Mayday, Mayday. We have control problem.",,H,LATC
+13:34:13.3,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, roger, Mayday. Do you have any requests?",,H,LATC
+13:34:54.7,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, descend to 2,500 feet, QNH 1010.",,H,LATC
+13:35:00.5,,KZR,APP,radio,en,"Standby, 1388, on the heading 150 [unintelligible]",,H,LATC
+13:35:04.7,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, descend to 2,500 feet, QNH 1010.",,H,LATC
+13:35:13.3,,APP,KZR,radio,en,"Negative, Kilo Zulu Romeo 1388, now maintain 4,000 feet.",,H,LATC
+13:35:16.9,,KZR,APP,radio,en,"Roger, maintain 4,000 feet and [unintelligible] report when ready to proceed to Alverca.",,H,LATC
+13:35:32.1,,KZR,APP,radio,en,"Astanaline 1388, request back to airport.",,H,LATC
+13:35:37.5,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, turn left or right as you wish, heading 280.",,H,LATC
+13:37:23.3,10.8,KZR,APP,radio,en,"Astanaline 1388, we have flight control problem, [unintelligible] flight control capability, we're climbing 10,000 [unintelligible] 1010, present heading.",,H,LATC
+13:37:36.7,,APP,KZR,radio,en,"1388, roger, climb to 10,000 feet, QNH 1010.",,H,LATC
+13:37:42.0,,KZR,APP,radio,en,"Continue climbing, flight level 100, QNH 1010.",,H,LATC
+13:41:08.5,,APP,KZR,radio,en,"Unreadable, please say again.",,H,LATC
+13:41:10.6,,KZR,APP,radio,en,"1388, requesting heading for ditching, ditching.",,H,LATC
+13:41:18.0,,KZR,APP,radio,en,"[unintelligible] we need a vectoring to the sea, for the ditching, ditching, please.",,H,LATC
+13:41:25.3,,APP,KZR,radio,en,"1388, unreadable, confirm you need vectors to land or to ditch?",,H,LATC
+13:41:33.0,,KZR,APP,radio,en,"[unintelligible] ditching, ditching [unintelligible] uncontrollable [unintelligible]",,H,LATC
+13:41:51.3,,APP,KZR,radio,en,"1388, fly heading 260.",,H,LATC
+13:41:55.0,,KZR,APP,radio,en,260.,,H,LATC
+13:43:04.0,8.3,KZR,APP,radio,en,"[unintelligible] 1388, please [unintelligible] vectoring to the sea area, please. [unintelligible] completely unstable.",,H,LATC
+13:43:12.9,,APP,KZR,radio,en,"1388, you have the river if you turn by the left or right, heading 260, it's the closest.",,H,LATC
+13:43:20.0,,KZR,APP,radio,en,"260, river, okay. Maybe ocean [unintelligible]",,H,LATC
+13:43:24.8,,APP,KZR,radio,en,"The ocean is 40 miles from your position, sir.",,H,LATC
+13:43:30.2,,KZR,APP,radio,en,"Okay [unintelligible] us to the river, please.",,H,LATC
+13:43:34.9,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, left heading 260.",,H,LATC
+13:43:38.7,,KZR,APP,radio,en,Left heading 260.,,H,LATC
+13:47:58.7,9.2,KZR,APP,radio,en,"[unintelligible] Astanaline 1388, we are [unintelligible] aircraft completely uncontrolled, so we request vectoring [unintelligible]",,H,LATC
+13:48:10.1,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, turn left, heading 260 for the river.",,H,LATC
+13:48:15.4,,KZR,APP,radio,en,"260 for the river, Astanaline 1388.",,H,LATC
+13:50:15.5,,KZR,APP,radio,en,Astanaline 1388.,,H,LATC
+13:50:18.2,,APP,KZR,radio,en,"1388, go ahead.",,H,LATC
+13:50:21.2,,KZR,APP,radio,en,We cannot control the airplane.,,H,LATC
+13:50:23.3,7.2,KZR,APP,radio,en,We are under Mayday. Do you have any areas where weather is better? At least we need visual conditions.,,H,LATC
+13:50:32.5,,APP,KZR,radio,en,"1388, roger, Mayday, standby for any information. I believe south the weather is better, sir.",,H,LATC
+13:50:38.5,,KZR,APP,radio,en,"South weather is better, okay.",,H,LATC
+13:51:51.7,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, when able, [unintelligible] people on board and fuel.",,H,LATC
+13:51:56.9,,KZR,APP,radio,en,"We have 10 tons, 6 people on board. Airplane is completely uncontrollable, flight control problem.",,H,LATC
+13:52:06.5,,KZR,APP,radio,en,"We have manual control now. We would like to plan to land on the sea, at least, if possible.",,H,LATC
+13:52:13.5,,APP,KZR,radio,en,[unintelligible] the sea and not the river?,,H,LATC
+13:52:13.9,,KZR,APP,radio,en,"Maybe sea is better, if we can proceed there, please.",,H,LATC
+13:52:21.9,,KZR,APP,radio,en,And we need a better weather.,,H,LATC
+13:55:07.3,8.6,APP,KZR,radio,en,"1388, you can reach the sea on heading 210 from your present position. And you will find the sea in approximately 36 miles.",,H,LATC
+13:57:10.8,,KZR,APP,radio,en,"Astanaline 1388, confirm heading to the sea. We need ditching.",,H,LATC
+13:57:17.2,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, fly heading 210, sir.",,H,LATC
+13:57:21.0,,KZR,APP,radio,en,210 heading.,,H,LATC
+13:59:18.7,,KZR,APP,radio,en,"Astanaline 1388, able to turn left 15 degrees.",,H,LATC
+13:59:25.3,,KZR,APP,radio,en,We need a vectoring to the sea area [unintelligible] please.,,H,LATC
+13:59:30.7,,APP,KZR,radio,en,"Kilo Zulu Romeo 1388, continue on this present [unintelligible]",,H,LATC
+14:06:40.3,,KZR,APP,radio,en,"Astanaline 1388, control, our position in relation to sea, please.",,H,LATC
+14:06:46.0,,APP,KZR,radio,en,"If you fly southbound, you need to go another 36 miles.",,H,LATC
+14:06:53.7,,KZR,APP,radio,en,"Fly south, 36 miles, okay.",,H,LATC
+14:06:57.5,,APP,KZR,radio,en,"South-west, 38 miles and you'll reach the sea.",,H,LATC
+14:08:32.9,,KZR,APP,radio,en,"Astanaline 1388, [unintelligible] vectoring to the sea, please.",,H,LATC
+14:08:37.9,7.2,APP,KZR,radio,en,"Astanaline 1388, turn left and I'll tell you to stop the turn when you're in a good direction to the sea.",,H,LATC
+14:08:45.1,,KZR,APP,radio,en,[unintelligible] river below. What is the weather below us?,,H,LATC
+14:08:57.6,,APP,KZR,radio,en,"1388, we have rain at the present time. I don't know the weather below you.",,H,LATC
+14:09:07.5,,KZR,APP,radio,en,"On this heading, we are now heading to the north [unintelligible]",,H,LATC
+14:09:11.7,,APP,KZR,radio,en,"If you turn another 30 degrees left, you'll reach the sea in 40 miles.",,H,LATC
+14:11:17.7,,APP,KZR,radio,en,"If you keep the heading, you'll reach the sea in 43 miles.",,H,LATC
+14:11:29.5,,KZR,APP,radio,en,"On that heading, 43 miles to the sea.",,H,LATC
+14:17:32.8,,KZR,APP,radio,en,[unintelligible] Astanaline 1388.,,H,LATC
+14:17:37.9,,KZR,APP,radio,en,We are in thunderstorm now. [unintelligible] now heading 073.,,H,LATC
+14:17:48.0,,KZR,APP,radio,en,[unintelligible] where can we land?,,H,LATC
+14:17:52.5,,APP,KZR,radio,en,"You're flying on heading 073, as you said.",,H,LATC
+14:20:47.9,,KZR,APP,radio,en,"On this heading, can we proceed to the sea?",,H,LATC
+14:20:52.9,7.6,APP,KZR,radio,en,"You're always turning by the left. That heading is north now. If you can fly westbound, you'll reach the sea.",,H,LATC
+14:21:24.7,7.4,APP,KZR,radio,en,"1388, there's a couple of F-16 fighters, they're flying your way, trying to assist you in your navigation.",,H,LATC
+14:21:35.7,,KZR,APP,radio,en,"Yes sir, we're expecting emergency ditching or landing, the airplane is completely uncontrollable.",,H,LATC
+14:21:43.0,,APP,KZR,radio,en,[unintelligible] they're reaching [unintelligible] probably four or five minutes.,,H,LATC
+14:21:51.0,,KZR,APP,radio,en,"With this heading, can we reach the sea?",,H,LATC
+14:21:53.9,,APP,KZR,radio,en,"With that heading, you can, in 38 miles.",,H,LATC
+14:21:57.0,,KZR,APP,radio,en,"38 miles, okay.",,H,LATC
+14:23:21.0,,APP,KZR,radio,en,You have a river [unintelligible] south-east of your position.,,H,LATC
+14:26:08.2,,APP,KZR,radio,en,"Astanaline 1388, the F-16 fighters [unintelligible] your position now.",,H,LATC
+14:28:53.1,9.4,APP,F16,radio,en,"Bullet 21, traffic in distress, cannot maintain heading nor altitude, is flying at level 120 and climbing and descending all the time.",,H,LATC
+14:30:40.9,9.7,APP,KZR,radio,en,"1388, you're now 20 miles north of [unintelligible] position you had. [unintelligible] north-west, you'll reach the sea in about 44 miles.",,H,LATC
+14:31:01.3,,KZR,APP,radio,en,"Now we are on [unintelligible] 100, heading 300.",,H,LATC
+14:31:14.7,,APP,KZR,radio,en,You have the sea 26 miles west of your position.,,H,LATC
+14:32:01.9,,KZR,APP,radio,en,"Control, Astanaline 1388 [unintelligible] heading south, can we reach the sea?",,H,LATC
+14:32:08.4,,APP,KZR,radio,en,"You can also reach the sea if you head south, it's 57 miles.",,H,LATC
+14:32:15.5,,KZR,APP,radio,en,"Copy, we are now turning to the left, south.",,H,LATC
+14:32:22.9,,APP,KZR,radio,en,"If you fly south or south-west, you'll reach the sea.",,H,LATC
+14:32:28.1,,KZR,APP,radio,en,"Okay, south-west.",,H,LATC
+14:34:26.6,,KZR,APP,radio,en,"Control, Astanaline 1388, can we reach sea on this heading now, eastbound?",,H,LATC
+14:34:31.7,6.9,APP,KZR,radio,en,Eastbound won't take you to the sea. You cannot reach the sea on that heading. You need to turn left or right and fly westbound.,,H,LATC
+14:34:38.6,,KZR,APP,radio,en,"Copy, westbound.",,H,LATC
+14:36:16.2,,F16,KZR,radio,en,"Kilo Zulu Romeo, this is [unintelligible], this is Air Defence. How do you read?",,H,LATC
+14:36:23.1,10.2,F16,KZR,radio,en,[unintelligible] we are 60 miles north of your position. We will try to intercept you and give you any assistance required. How can we assist you?,,H,LATC
+14:36:35.1,,KZR,F16,radio,en,We have now a flight control problem [unintelligible] we will make ditching on sea.,,H,LATC
+14:36:46.8,,F16,KZR,radio,en,Confirm you are proceeding for a ditching over the sea?,,H,LATC
+14:36:53.9,,KZR,F16,radio,en,"Yes sir, we are trying [unintelligible] ditching on the sea.",,H,LATC
+14:37:09.1,,F16,KZR,radio,en,"Kilo Zulu Romeo, Faro should be Victor Mike Charlie. Don't you have fuel to reach Faro?",,H,LATC
+14:37:35.1,,APP,KZR,radio,en,You are closer if you fly westbound to the sea.,,H,LATC
+14:38:16.1,,APP,KZR,radio,en,"Astanaline 1388, turn right heading 210.",,H,LATC
+14:38:20.6,,KZR,APP,radio,en,Right heading 210.,,H,LATC
+14:38:26.9,,KZR,F16,radio,en,We are not able to reach Faro.,,H,LATC
+14:38:34.6,,KZR,APP,radio,en,We need ditching. [unintelligible],,H,LATC
+14:38:38.6,,APP,KZR,radio,en,"Copy, ditching.",,H,LATC
+14:40:43.4,7.5,APP,KZR,radio,en,"Astanaline 1388, if you continue that heading, you have an aerodrome, a civilian aerodrome, 13 miles ahead.",,H,LATC
+14:42:31.2,7.4,APP,KZR,radio,en,"Astanaline 1388, the maintenance officer from Alverca will try and contact you on this frequency as well.",,H,LATC
+14:43:19.7,,APP,KZR,radio,en,You're flying away from the sea. You're flying into Spanish territory.,,H,LATC
+14:43:41.3,,APP,KZR,radio,en,"Astanaline 1388, you'll probably find better weather if you move further east.",,H,LATC
+14:43:49.2,,KZR,APP,radio,en,"[unintelligible] Astanaline 1388, our aircraft is controllable.",,H,LATC
+14:43:54.8,,APP,KZR,radio,en,Roger. Confirm intentions.,,H,LATC
+14:44:03.3,,KZR,APP,radio,en,"Astanaline 1388, we need [unintelligible] airport with good weather.",,H,LATC
+14:44:10.8,,APP,KZR,radio,en,"Could you say again, please?",,H,LATC
+14:44:12.7,,KZR,APP,radio,en,"We need airport with good weather, with visibility, okay.",,H,LATC
+14:44:19.6,,APP,KZR,radio,en,"You have an aerodrome with good weather south of your position, 135 miles. Can you fly that?",,H,LATC
+14:44:31.8,,APP,KZR,radio,en,"Astanaline 1388, turn right heading 190.",,H,LATC
+14:44:48.2,,F16,KZR,radio,en,"Say again, are you now able to maintain a heading and an altitude?",,H,LATC
+14:44:57.1,7.0,F16,KZR,radio,en,"Okay, copy all. If you wish, we can intercept you and guide you to the aerodrome for you to land safely.",,H,LATC
+14:45:04.1,,F16,KZR,radio,en,"Are you able to maintain 18,000?",,H,LATC
+14:45:10.9,,KZR,F16,radio,en,Now maintaining 190.,,H,LATC
+14:45:14.2,,APP,F16,radio,en,"Bullet 21, verify Faro will be the divert aerodrome?",,H,LATC
+14:45:28.2,,APP,KZR,radio,en,"Astanaline 1388, you have Beja aerodrome, will be a shorter route, 70 miles south.",,H,LATC
+14:45:40.8,,APP,KZR,radio,en,"Astanaline 1388, right turn heading 195.",,H,LATC
+14:45:45.1,,KZR,APP,radio,en,Right heading 195.,,H,LATC
+14:45:50.8,,F16,APP,radio,en,"Lisboa, Bullet 21, confirm Beja will be suitable to divert this airplane?",,H,LATC
+14:46:00.8,9.5,APP,KZR,radio,en,"Astanaline 1388, Beja, it's a suitable aerodrome for you and they're expecting you. It's on a right or left turn, heading 195, 75 miles.",,H,LATC
+14:46:13.6,7.1,F16,KZR,radio,en,"[unintelligible] if you take a right turn now, you'll be more or less aligned with runway 19 in Beja.",,H,LATC
+14:47:23.4,,APP,KZR,radio,en,"Astanaline 1388, expect runway 19 and fly heading 205.",,H,LATC
+14:47:31.7,,KZR,APP,radio,en,205.,,H,LATC
+14:47:34.2,,APP,F16,radio,en,"Bullet 21, able to escort Astanaline 1388 to Beja?",,H,LATC
+14:47:39.9,,F16,APP,radio,en,"Bullet 21 [unintelligible] now 19 miles, closing in, and I'm Victor Mike Charlie.",,H,LATC
+14:48:26.3,8.7,F16,KZR,radio,en,"[unintelligible] turn right now, approximately heading 200, you'll be more or less aligned with the final runway 19 in Beja.",,H,LATC
+14:49:00.3,,APP,KZR,radio,en,"Astanaline 1388, on right heading 210 will be runway 19 [unintelligible] a straight-in approach.",,H,LATC
+14:49:10.2,8.4,F16,KZR,radio,en,"I'm now 10 miles from you. If you wish, if you need, I can intercept you and you can fly on my wing. How do you read me?",,H,LATC
+14:50:01.3,8.4,APP,KZR,radio,en,"Astanaline 1388, this is Lisbon Approach, I read you 5. We have the F-16 trying to guide you in, if you can follow them.",,H,LATC
+14:50:24.8,,F16,KZR,radio,en,"[unintelligible] four miles from you. Verify maintaining 18,000?",,H,LATC
+14:50:28.6,17.4,KZR,F16,radio,en,"[unintelligible] yes, we confirm, luckily now airplane is under control [unintelligible] very reduced capability of control. We need any assistance to land at an airport with a good weather, because we [unintelligible] problem with a flight control.",,H,LATC
+14:51:00.2,16.5,APP,KZR,radio,en,"Astanaline 1388, heading is good, course to Beja. We have runway 19, the weather: wind 190 degrees, 17 knots, visibility 10 kilometres or greater, clouds scattered at 3,000 feet, broken at 4,800, temperature 19, dew point 14, QNH 1011.",,H,LATC
+14:51:25.9,7.2,F16,APP,radio,en,"[unintelligible] maintain altitude, they are still manoeuvring aggressively from one side to the other.",,H,LATC
+14:51:33.4,,F16,KZR,radio,en,[unintelligible] F-16 on your left wing.,,H,LATC
+14:51:39.9,,KZR,F16,radio,en,"Okay, could you please give us space, please, because we have [unintelligible]",,H,LATC
+14:52:01.1,,APP,KZR,radio,en,"You can descend initially to 8,000 feet, QNH 1011, and turn right heading 240.",,H,LATC
+14:52:12.1,,KZR,APP,radio,en,Turning right heading 240 and descending.,,H,LATC
+14:52:31.4,9.0,F16,APP,radio,en,[unintelligible] request a clear descent altitude all the way until Beja. They are having still trouble controlling the airplane.,,H,LATC
+14:52:50.9,,KZR,APP,radio,en,"Astanaline 1388, sorry, we're now turning heading 210 and descending 8,000.",,H,LATC
+14:52:58.3,,APP,KZR,radio,en,"Astanaline 1388, continue right heading 220.",,H,LATC
+14:53:03.3,8.3,F16,APP,radio,en,"[unintelligible] Bullet 21 [unintelligible] runway 19, final heading 189, they need to turn even further to the right.",,H,LATC
+14:53:13.1,,KZR,APP,radio,en,We're turning further to the right.,,H,LATC
+14:53:21.1,,F16,KZR,radio,en,"If you are able to follow me, I can guide you all the way until the final runway 19.",,H,LATC
+14:53:29.3,,KZR,F16,radio,en,We see you.,,H,LATC
+14:53:34.9,,KZR,APP,radio,en,"[unintelligible] with the heading, and it's better for us to have ATC control.",,H,LATC
+14:53:39.2,,APP,KZR,radio,en,"Astanaline 1388, right heading 230, and do you have the F-16 in sight?",,H,LATC
+14:53:59.2,,KZR,APP,radio,en,Say again?,,H,LATC
+14:53:59.9,,APP,KZR,radio,en,Do you have the F-16 in sight?,,H,LATC
+14:54:03.6,,KZR,APP,radio,en,"Yeah, yeah, we have in sight.",,H,LATC
+14:54:04.8,,APP,KZR,radio,en,"Okay, just follow him, he'll take you in.",,H,LATC
+14:54:35.9,7.1,APP,KZR,radio,en,"Astanaline 1388, just to confirm, are you able to follow the F-16 to join final for runway 19 at Beja?",,H,LATC
+14:54:45.1,8.2,KZR,APP,radio,en,"Astanaline, we try [unintelligible] we have a complete manual control, we better to keep the heading [unintelligible]",,H,LATC
+14:54:55.9,,APP,KZR,radio,en,"Copy that, sir. Astanaline 1388, fly heading 225.",,H,LATC
+14:55:03.9,,KZR,APP,radio,en,Fly heading 225.,,H,LATC
+14:55:08.2,,F16,KZR,radio,en,"Okay, I'm visual now with you.",,H,LATC
+14:55:20.7,,APP,KZR,radio,en,"Astanaline 1388, 45 miles to Beja. Call me when you're visual with the ground.",,H,LATC
+14:55:38.1,,KZR,APP,radio,en,Can you spell the name of the airport by letters?,,H,LATC
+14:55:41.2,,APP,KZR,radio,en,"Okay, by letters: Lima Papa Bravo Juliet. And Beja: Bravo Echo Juliet Alpha.",,H,LATC
+14:55:50.6,,KZR,APP,radio,en,"Lima Papa Bravo Juliet, Beja. Thank you.",,H,LATC
+14:55:59.8,10.3,F16,KZR,radio,en,"[unintelligible] to intercept the ILS final, we are now 40 miles, you need to turn more to the right, I would say heading 230, something like that.",,H,LATC
+14:56:10.7,10.2,F16,KZR,radio,en,"And if you can, there are some big holes just in front of you, if you can descend and always maintain visual with the ground, that should be nice as well.",,H,LATC
+14:56:20.8,8.0,KZR,F16,radio,en,"Yeah, we have a visual with the ground, we [unintelligible] doing the best. Thank you [unintelligible] we appreciate your assistance.",,H,LATC
+14:56:28.8,,F16,KZR,radio,en,"Okay, ILS [unintelligible] will be 110.3 and final heading 189.",,H,LATC
+14:57:41.2,,KZR,APP,radio,en,"Astanaline 1388, we need a little bit of time to descend. We will descend and maintain 8,000.",,H,LATC
+14:58:48.4,,APP,KZR,radio,en,"Astanaline 1388, heading is good. For Beja it will make about a 9-mile final.",,H,LATC
+14:59:08.8,,APP,KZR,radio,en,"Astanaline 1388, minimum altitude 3,000 feet, QNH 1011.",,H,LATC
+14:59:13.7,,KZR,APP,radio,en,"Minimum 3,000 feet, 1011. [unintelligible] weather conditions [unintelligible] now?",,H,LATC
+14:59:20.1,9.0,APP,KZR,radio,en,"The weather is fair: wind 190 degrees, 17 knots, visibility 10 kilometres or greater, clouds scattered at 3,000, broken at 4,800.",,H,LATC
+15:00:14.4,9.0,APP,KZR,radio,en,"Astanaline 1388, 23 miles to the field. Call me if you have the field in sight. For a longer final [unintelligible] heading 230.",,H,LATC
+15:00:41.9,,APP,KZR,radio,en,"Astanaline 1388, transition level 55, below that QNH 1011.",,H,LATC
+15:02:21.2,,APP,KZR,radio,en,"[unintelligible] Astanaline 1388, change now with Beja on 130 decimal 1.",,H,LATC
+15:02:35.1,,KZR,APP,radio,en,"[unintelligible] with Beja, frequency 130 decimal 1.",,H,LATC

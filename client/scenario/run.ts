@@ -142,6 +142,7 @@ export function captionView(l: Line, i: number, speakers: Readonly<Record<string
     to: l.to === null ? null : (speakers[l.to]?.name ?? l.to),
     channel: l.channel,
     translated: l.q === 'T',
+    heard: l.q === 'H',
     unintelligible: l.q === 'U',
     text: l.text,
     original: l.original,
