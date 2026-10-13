@@ -64,7 +64,7 @@ const ASK_EVERY_MS = 30_000 // with no live polls, the events are asked for this
 const AUTO_MAP_QUIET_MS = 60_000 // Follow automatically waits this long after the person last moved the map…
 const AUTO_PICK_QUIET_MS = 2 * 60_000 // …and this long after they last picked an aircraft by hand
 const NOTIFY_LABEL = 'Notifications' // a phone's too: not "desktop" ones
-const NOTIFY_HINT = 'For each new event, while this tab is not in front' // in front, the toast says it
+const NOTIFY_HINT = 'When this tab is hidden' // in front, the toast says it
 const BLOCKED_HINT = 'Blocked in this browser’s settings'
 const NONE: ReadonlySet<string> = new Set()
 
@@ -403,7 +403,7 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
   root.dataset.state = 'loading'
 
   // The server's switch, then what it watches.
-  const watch = switchRow('watch', 'radar', 'Watch events', 'Emergency squawks and steep descents, worldwide', () => {
+  const watch = switchRow('watch', 'radar', 'Watch events', 'Emergencies and steep descents', () => {
     if (reply == null || switching) return
     switching = true
     failed = false
@@ -536,7 +536,8 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
       if (r.sw.disabled !== idle) r.sw.disabled = idle
       setAttr(r.row, 'aria-disabled', String(idle))
     }
-    line.hidden = reply === undefined && !failed
+    setAttr(under, 'aria-disabled', String(idle)) // the group dims as one (sceneToggles.css)
+    line.hidden = (reply === undefined || (reply !== null && !on)) && !failed // off: the switch says it
     line.dataset.state = failed ? 'error' : reply === undefined ? 'loading' : reply === null ? 'none' : on ? 'on' : 'off'
     setText(line, failed ? 'Could not change it. Try again.' : reply === undefined ? '' : watchText(reply))
   }

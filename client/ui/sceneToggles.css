@@ -1,5 +1,5 @@
 /* client/ui/sceneToggles.css */
-/* The Layers panel: one row per switch (icon, label with its key, a hint line, the switch). */
+/* The Layers panel: one row per switch (icon, label with its key, the switch; a hint line only where the label does not say it). */
 .fh-scene {
   display: flex;
   flex-direction: column;
@@ -17,7 +17,7 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 14px;
+  padding: 8px 14px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
@@ -54,6 +54,17 @@
 .fh-scene-row[aria-disabled='true'] {
   opacity: 0.4;
   pointer-events: none;
+}
+
+/* A whole group out of use (the switch it hangs under is off): all of it dims as one, its heads and legends too. What is out of
+   use inside it for a reason of its own is not dimmed twice. */
+.fh-scene-sub[aria-disabled='true'] {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+.fh-scene-sub[aria-disabled='true'] [aria-disabled='true'] {
+  opacity: 1;
 }
 
 .fh-scene-icon {

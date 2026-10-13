@@ -10,24 +10,25 @@ interface Section {
 // ponytail: keys only (the user's call, 2026-09-30); the mouse, trackpad and touch gestures are not listed.
 const KEYS: Section[] = [
   { title: 'Anywhere', rows: [
-    ['/', 'Search airports, cities, countries, recordings and scenarios, or a flight by its number, now and in the past days (also Cmd+K)'],
-    ['Esc', 'One step back: a panel, a card, the layout, the chase, a scenario or a flight’s replay, then the selection'],
-    ['M', 'Map or satellite, for the view on screen (in a scenario it mutes)'],
+    ['/', 'Search (also Cmd+K)'],
+    ['Esc', 'One step back'],
+    ['M', 'Map or satellite'],
     ['R', 'Roads over the satellite'],
     ['P', 'Borders and places over the satellite'],
-    ['W', 'Weather: on the top-down map, and round the aircraft in the 3-D chase'],
+    ['W', 'Weather'],
   ] },
   { title: '3-D chase', rows: [
     ['T', '3-D terrain'],
     ['L', 'Sun and moon light'],
     ['B', '3-D buildings'],
-    ['X', 'See-through buildings, while they are on'],
+    ['X', 'See-through buildings'],
+    ['U', 'Building textures'],
   ] },
   { title: 'In a scenario', rows: [
     ['Space', 'Play or pause'],
-    ['← →', 'Back or ahead 10 s; with Shift, 60 s'],
-    ['M', 'Mute or unmute the voices'],
-    ['V', 'The top-down map with the whole route, or back to the 3-D view'],
+    ['← →', 'Back or ahead 10 s (with Shift, 60 s)'],
+    ['M', 'Mute the voices'],
+    ['V', 'Map or 3-D view'],
   ] },
 ]
 

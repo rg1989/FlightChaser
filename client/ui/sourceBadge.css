@@ -84,6 +84,7 @@
 }
 
 .fh-status-line .fh-status-hero {
+  flex: 1 0 auto; /* pushes the rows to the right on one line; where they do not fit, they go to a second and start at its left */
   padding: 0;
   gap: 10px;
 }
@@ -97,7 +98,6 @@
   grid-template-rows: auto auto;
   grid-template-columns: none;
   gap: 3px 16px;
-  margin-left: auto;
   padding: 0;
   border-top: 0;
 }

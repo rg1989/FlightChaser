@@ -513,7 +513,7 @@ export class Buildings {
       t.prim.appearance = this.#look(t) // the old look is not drawn again: its picture can go
       old?.destroy()
     } catch (e) {
-      if (!this.#warned) console.warn('FlightHopper: roof picture failed (the tile stays clay):', e)
+      if (!this.#warned) console.warn('Flight Chaser: roof picture failed (the tile stays clay):', e)
       this.#warned = true
     } finally {
       t.photoBusy = false

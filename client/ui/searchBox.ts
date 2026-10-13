@@ -465,8 +465,8 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
     } else if (hits.length === 0) {
       state.classList.add('fh-search-hint')
       state.append(h('div', 'fh-search-hint-t', opts.flightSearch === undefined
-        ? 'Airports, cities, countries, the flights in view, recordings and scenarios.'
-        : 'Airports, cities, countries, recordings and scenarios; a flight by its number or callsign, now and in the past days.'))
+        ? 'Try a place, a flight in view or a recording.'
+        : 'Try a place, a flight number or a recording.'))
       const chips = h('div', 'fh-search-chips')
       for (const ex of EXAMPLES) {
         const c = h('button', 'fh-search-chip', ex)

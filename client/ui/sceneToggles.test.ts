@@ -131,13 +131,7 @@ test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), 3-
   const { root, topo, light, glass, roads, places } = mount({ ...DEFAULT_PREFS, topo: true, light: true, glass: false })
   const rows = all(root).filter((e) => e.className === 'fh-scene-row')
   assert.deepEqual(rows.map((r) => text(r.children[1])), [
-    'RoadsRStreets and highways over the satellite',
-    'Borders & placesPCountry lines and city names over the satellite',
-    '3-D terrainTMountains and valleys in relief',
-    'SunLReal sun and moon light, day and night',
-    '3-D buildingsBBuildings in relief round the aircraft',
-    'See-throughXGlassy, so they never hide the aircraft',
-    'TexturesURoofs from the satellite photo, walls with windows',
+    'RoadsR', 'Borders & placesP', '3-D terrainT', 'SunL', '3-D buildingsB', 'See-throughX', 'TexturesU', // the name and the key: the longer words are the row's tooltip
   ])
   for (const b of [roads, places, topo, light, glass]) {
     assert.equal(b.tag, 'button')

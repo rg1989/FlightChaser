@@ -62,10 +62,10 @@
   cursor: default;
 }
 
-/* The one line for the looks, styles and aids top-down, in the panel's margins. */
+/* The one line for the looks, styles and aids top-down: over their group, set in as it is (sceneToggles.css .fh-scene-sub). */
 .fh-wxm-note {
   margin: 0;
-  padding: 2px 14px 10px;
+  padding: 2px 14px 6px 31px;
   color: var(--fh-muted);
   font-size: 12px;
 }

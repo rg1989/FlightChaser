@@ -48,12 +48,12 @@ const HAZARDS: [HazardStyle, string][] = [['curtain', 'Curtain'], ['fence', 'Fen
 const LEGEND = ['Cloud', 'Light rain', 'Heavy rain', 'Thunderstorm']
 // How the weather reads at an airport (VFR to LIFR), in the colours of its markers' rings (wxText.ts).
 const CATEGORIES: [string, string][] = [['Good', CATEGORY_COLOR.VFR], ['Marginal', CATEGORY_COLOR.MVFR], ['Poor', CATEGORY_COLOR.IFR], ['Very poor', CATEGORY_COLOR.LIFR]]
-const MASTER_HINT = { top: 'Rain radar, airport weather, hazard areas', chase: 'Clouds, rain and hazard areas around the aircraft' } // per view
+const MASTER_TIP = { top: 'Rain radar, airport weather, hazard areas', chase: 'Clouds, rain and hazard areas around the aircraft' } // the switch row's tooltip, per view
 interface Aid { key: 'track' | 'slice' | 'strip'; icon: IconName; label: string; hint: string }
 const AIDS: Aid[] = [
-  { key: 'track', icon: 'plane', label: 'Weather on path', hint: 'Marks where this heading meets weather' },
-  { key: 'slice', icon: 'layers', label: 'Level slice', hint: "The weather at the aircraft's own altitude" },
-  { key: 'strip', icon: 'altitude', label: 'Ahead strip', hint: 'Side view of the next 6 minutes' },
+  { key: 'track', icon: 'plane', label: 'Weather on path', hint: 'Marks on this heading' },
+  { key: 'slice', icon: 'layers', label: 'Level slice', hint: "At the aircraft's altitude" },
+  { key: 'strip', icon: 'altitude', label: 'Ahead strip', hint: 'Side view, next 6 minutes' },
 ]
 const NO_SLICE = 'Not in the Sculpted look yet' // the level slice's hint in that look, where it is not drawn
 /** A control group or a row, in use or not: its controls, and the box that says so. */
@@ -141,7 +141,7 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     }
     return part(el, buttons)
   }
-  /** A switch row: the icon, the label (with its key), the hint, the switch; the whole row is the target (a finger's). */
+  /** A switch row: the icon, the label (with its key), the hint (none where the label says it), the switch; the whole row is the target (a finger's). */
   const switchRow = (ic: IconName, label: string, hint: string, ask: () => void, checked: boolean, shortcut?: string): { sw: HTMLButtonElement; hint: HTMLElement; part: Part } => {
     const el = h('div', 'fh-scene-row')
     const glyph = h('span', 'fh-scene-icon')
@@ -150,7 +150,8 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     const name = h('span', 'fh-scene-label', label)
     if (shortcut !== undefined) name.append(h('kbd', 'fh-kbd', shortcut))
     const hintEl = h('span', 'fh-scene-hint', hint)
-    text.append(name, hintEl)
+    text.append(name)
+    if (hint !== '') text.append(hintEl)
     const sw = h('button', 'fh-switch')
     sw.type = 'button'
     sw.setAttribute('role', 'switch')
@@ -164,7 +165,7 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
 
   // The master switch, with what hangs under it.
   const master = section(null)
-  const m = switchRow('cloud', 'Weather', MASTER_HINT.top, () => opts.onMaster(!view.wx), false, 'W')
+  const m = switchRow('cloud', 'Weather', '', () => opts.onMaster(!view.wx), false, 'W')
   const more = h('div', 'fh-wx-more')
   // The rain radar's colours, light rain to heavy, as drawn over the top-down map.
   const rain = h('div', 'fh-wx-rain')
@@ -220,6 +221,7 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
   // What the switch turns on hangs under it, set in, in its box (as See-through under 3-D buildings in the Layers panel).
   const under = h('div', 'fh-scene-sub')
   under.append(clouds, hazards, ahead)
+  const group = part(under, [])
   master.append(under)
   root.append(master)
 
@@ -238,8 +240,9 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
       if (a.hintEl.textContent !== words) a.hintEl.textContent = words
     }
     if (wx !== masterOn) m.sw.setAttribute('aria-checked', String((masterOn = wx)))
-    const hint = chasing ? MASTER_HINT.chase : MASTER_HINT.top
-    if (m.hint.textContent !== hint) m.hint.textContent = hint
+    const tip = chasing ? MASTER_TIP.chase : MASTER_TIP.top
+    if (m.part.box.title !== tip) m.part.box.title = tip
+    setOff(group, !use) // the whole group dims as one (sceneToggles.css), its heads and legend too
     const map = wx && !chasing // the radar's scale and the airports' legend: the top-down map's, with the weather on
     show(rain, map)
     show(airports, map)

@@ -15,10 +15,10 @@
   text-transform: uppercase;
 }
 
-/* What you do (up to 45 % of the width, wrapping), then what it does. */
+/* The key (one column width in every section, so the words line up down the tab), then what it does. */
 .fh-info-keys {
   display: grid;
-  grid-template-columns: fit-content(45%) 1fr;
+  grid-template-columns: 60px 1fr;
   gap: 7px 14px;
   margin: 0;
   font-size: 12px;

@@ -122,10 +122,10 @@ test('the panel: Clouds with its legend, Hazard areas, Looking ahead with a swit
   assert.deepEqual(group('Hazard area style').children.map(text), ['Curtain', 'Fence', 'Box'])
   const rows = all(root).filter((e) => e.className === 'fh-scene-row')
   assert.deepEqual(rows.map((r) => text(r.children[1])), [
-    'WeatherWClouds, rain and hazard areas around the aircraft', // the master switch, first (the chase's hint)
-    "Weather on pathMarks where this heading meets weather",
-    "Level sliceThe weather at the aircraft's own altitude",
-    'Ahead stripSide view of the next 6 minutes',
+    'WeatherW', // the master switch, first: its name and key (the longer words are its tooltip)
+    'Weather on pathMarks on this heading',
+    "Level sliceAt the aircraft's altitude",
+    'Ahead stripSide view, next 6 minutes',
   ])
   const switches = all(root).filter((e) => e.attrs.role === 'switch')
   assert.deepEqual(switches.map((s) => s.attrs['aria-label']), ['Weather', 'Weather on path', 'Level slice', 'Ahead strip'])
@@ -269,7 +269,7 @@ test('the master switch: Weather (W), first in the panel; it shows the Weather p
   const row = master.parent!
   assert.equal(row.className, 'fh-scene-row')
   assert.equal(row.parent, on.root.children[0], 'in the first section, above Clouds')
-  assert.equal(text(row.children[1]), 'WeatherWClouds, rain and hazard areas around the aircraft')
+  assert.equal(text(row.children[1]), 'WeatherW')
   master.click()
   assert.deepEqual(on.masters, [false]) // one ask, though the click rises to its row
   row.click({ target: row }) // on the row, not on its switch (a finger's)
@@ -283,12 +283,12 @@ test('the master switch: Weather (W), first in the panel; it shows the Weather p
   assert.equal(off.sw('Weather').attrs['aria-checked'], 'true')
 })
 
-test('the master row\'s hint follows the view: radar and airports top-down, clouds, rain and hazard areas round the aircraft in the chase', () => {
+test('the master row\'s tooltip follows the view: radar and airports top-down, clouds, rain and hazard areas round the aircraft in the chase', () => {
   const { menu, sw } = mount(DEFAULT_WX_PREFS, { chasing: false })
-  const hint = (): string => text(sw('Weather').parent!.children[1])
-  assert.equal(hint(), 'WeatherWRain radar, airport weather, hazard areas')
+  const tip = (): string => (sw('Weather').parent as unknown as { title: string }).title
+  assert.equal(tip(), 'Rain radar, airport weather, hazard areas')
   menu.setView({ ...CHASE })
-  assert.equal(hint(), 'WeatherWClouds, rain and hazard areas around the aircraft')
+  assert.equal(tip(), 'Clouds, rain and hazard areas around the aircraft')
 })
 
 test('Weather off: every other control keeps the stored choice but is disabled, and a click on one changes nothing', () => {
@@ -298,6 +298,7 @@ test('Weather off: every other control keeps the stored choice but is disabled, 
   for (const e of others(root)) assert.equal(e.disabled, true, `${e.attrs['aria-label'] ?? e.textContent} is disabled`)
   for (const g of [group('Clouds'), group('Hazard area style'), ...['Weather on path', 'Level slice', 'Ahead strip'].map((l) => sw(l).parent!)]) assert.equal(g.attrs['aria-disabled'], 'true')
   assert.equal(sw('Weather').disabled, false, 'the master stays in use')
+  assert.equal(root.children[0].children.at(-1)!.attrs['aria-disabled'], 'true', 'the group under the switch dims as one, its heads and legend too')
   assert.deepEqual([pressed('Clouds'), pressed('Hazard area style'), aids()], [['Natural'], ['Fence'], ['false', 'true', 'false']], 'the stored choices still show')
   for (const e of others(root)) e.click()
   for (const l of ['Weather on path', 'Level slice', 'Ahead strip']) sw(l).parent!.click({ target: sw(l).parent! }) // the rows too
@@ -356,7 +357,7 @@ test('setView() with nothing changed writes nothing', () => {
   for (let i = 0; i < 50; i++) menu.setView({ ...CHASE })
   assert.equal(writes(), before)
   menu.setView({ ...CHASE, wx: false })
-  assert.equal(writes(), before + 1 + 6, 'the master switch, and the six parts that go off (two segments, the opacity, three rows)')
+  assert.equal(writes(), before + 1 + 7, 'the master switch, and the seven parts that go off (the group as one, two segments, the opacity, three rows)')
 })
 
 test('the rain scale and the airports legend are the top-down map\'s, with the switch on; the status line is both views\'', () => {
@@ -474,7 +475,7 @@ test('in the Sculpted look the level slice is not drawn: its switch is disabled,
   sw('Level slice').parent!.click({ target: sw('Level slice').parent! })
   assert.deepEqual(changes, [])
   menu.update({ ...p, look: 'severity' }) // another look: in use again, with its own hint
-  assert.deepEqual([sw('Level slice').disabled, sw('Level slice').parent!.attrs['aria-disabled'], hint()], [false, 'false', "The weather at the aircraft's own altitude"])
+  assert.deepEqual([sw('Level slice').disabled, sw('Level slice').parent!.attrs['aria-disabled'], hint()], [false, 'false', "At the aircraft's altitude"])
   sw('Level slice').click()
   assert.deepEqual(changes, [{ ...p, look: 'severity', slice: false }])
   menu.update({ ...p, look: 'sculpted' })

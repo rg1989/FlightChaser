@@ -175,7 +175,7 @@ export function mountSettings(root: HTMLElement, opts: SettingsOpts): SettingsHa
   guide.type = 'button'
   guide.append(icon('chevronRight', 13))
   section.append(
-    h('p', 'fh-settings-intro', 'Flight Chaser runs without keys, on Re:Earth terrain and EOX 10 m imagery. A key saved here stays in this browser, goes only to its own provider, and takes over from .env.local when the page reloads.'),
+    h('p', 'fh-settings-intro', 'Optional. A key stays in this browser and goes only to its own provider.'),
     guide,
   )
   const controls = h('section', 'fh-settings-section fh-settings-controls')
@@ -199,7 +199,7 @@ export function mountSettings(root: HTMLElement, opts: SettingsOpts): SettingsHa
     for (const { b, on } of themeBtns) b.setAttribute('aria-pressed', String(on === dark))
   }
   showDark()
-  display.append(themeLabel, theme, h('p', 'fh-settings-intro', 'The street map in either view. Also in the Layers panel, under Map.'))
+  display.append(themeLabel, theme)
   // The tabs, under the title (the WAI-ARIA tab pattern: ← → Home End move between them, the focus goes with the tab).
   const tabList = h('div', 'fh-settings-tabs')
   tabList.setAttribute('role', 'tablist')

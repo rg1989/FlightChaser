@@ -35,6 +35,8 @@ const P: Record<string, string> = {
   altitude: 'M4 20V15M9.3 20V11M14.7 20V7M20 20V3.5',
   // i in a circle.
   info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM12 11v5.5M12 7.5h.01',
+  // A wall of bricks: the buildings' textures.
+  bricks: 'M3.5 5h17v14h-17zM3.5 9.7h17M3.5 14.3h17M9.5 5v4.7M15 9.7v4.6M9.5 14.3V19',
   // Four cards of different sizes: a layout (the flight-data frame's), to edit.
   layout: 'M3.5 3.5h7v9h-7zM13.5 3.5h7v5h-7zM13.5 11.5h7v9h-7zM3.5 15.5h7v5h-7z',
   // An eye, open and struck through: shown, hidden (the flight-data frame's cards), or a secret (Settings).

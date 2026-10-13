@@ -2,7 +2,8 @@
 // The Layers panel (the square under the rail): only what applies to the view on screen. Map: the base for that view,
 // Map or Satellite (M; the top-down view and the chase each keep their own); under Map its theme, Light or Dark (both
 // views; Settings › Display too); under Satellite, Roads (R) and Borders & places (P) over it. In the chase, the 3-D scene
-// (design D11): a switch row each for 3-D terrain (T), Sun (L), 3-D buildings (B) and See-through buildings (X). Each row has its icon and key.
+// (design D11): a switch row each for 3-D terrain (T), Sun (L), 3-D buildings (B), See-through (X) and Textures (U). Each row has its icon, its
+// name and its key, and nothing more: the longer words are its tooltip.
 // What hangs under a choice is set in under it, in one box with it (.fh-scene-sub; the Weather and Events panels do the same): the
 // map's theme and the satellite's overlays under Map | Satellite, See-through under 3-D buildings. See-through is a choice for
 // buildings that are drawn: with 3-D buildings off its row keeps the choice but is out of use (dimmed).
@@ -27,17 +28,17 @@ export interface SceneTogglesHandle {
 }
 
 type Key = Exclude<keyof ScenePrefs, 'mapTop' | 'mapChase' | 'dark'>
-interface Row { key: Key; icon: IconName; label: string; hint: string; shortcut: string }
+interface Row { key: Key; icon: IconName; label: string; tip: string; shortcut: string }
 const LAYER_ROWS: Row[] = [
-  { key: 'roads', icon: 'road', label: 'Roads', hint: 'Streets and highways over the satellite', shortcut: 'R' },
-  { key: 'places', icon: 'flag', label: 'Borders & places', hint: 'Country lines and city names over the satellite', shortcut: 'P' },
+  { key: 'roads', icon: 'road', label: 'Roads', tip: 'Streets and highways over the satellite', shortcut: 'R' },
+  { key: 'places', icon: 'flag', label: 'Borders & places', tip: 'Country lines and city names over the satellite', shortcut: 'P' },
 ]
 const SCENE_ROWS: Row[] = [
-  { key: 'topo', icon: 'mountain', label: '3-D terrain', hint: 'Mountains and valleys in relief', shortcut: 'T' },
-  { key: 'light', icon: 'sun', label: 'Sun', hint: 'Real sun and moon light, day and night', shortcut: 'L' },
-  { key: 'buildings', icon: 'building', label: '3-D buildings', hint: 'Buildings in relief round the aircraft', shortcut: 'B' },
-  { key: 'glass', icon: 'eye', label: 'See-through', hint: 'Glassy, so they never hide the aircraft', shortcut: 'X' },
-  { key: 'textures', icon: 'layout', label: 'Textures', hint: 'Roofs from the satellite photo, walls with windows', shortcut: 'U' },
+  { key: 'topo', icon: 'mountain', label: '3-D terrain', tip: 'Mountains and valleys in relief', shortcut: 'T' },
+  { key: 'light', icon: 'sun', label: 'Sun', tip: 'Real sun and moon light, day and night', shortcut: 'L' },
+  { key: 'buildings', icon: 'building', label: '3-D buildings', tip: 'Buildings in relief round the aircraft', shortcut: 'B' },
+  { key: 'glass', icon: 'eye', label: 'See-through', tip: 'Glassy, so they never hide the aircraft', shortcut: 'X' },
+  { key: 'textures', icon: 'bricks', label: 'Textures', tip: 'Roofs from the satellite photo, walls with windows. Over the satellite only', shortcut: 'U' },
 ]
 const ROWS = [...LAYER_ROWS, ...SCENE_ROWS]
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ''): HTMLElementTagNameMap[K] {
@@ -58,19 +59,17 @@ export function mountSceneToggles(root: HTMLElement, opts: SceneTogglesOpts): Sc
   let prefs = { ...opts.prefs }
   let chasing = false
   const switches = new Map<Key, HTMLButtonElement>()
-  const hints = new Map<Key, HTMLElement>()
   let spinner: HTMLElement | null = null
 
   const row = (r: Row): HTMLElement => {
     const el = h('div', 'fh-scene-row')
+    el.title = r.tip // the label says it; the longer words are the tooltip's
     const ic = h('span', 'fh-scene-icon')
     ic.append(icon(r.icon, 18))
     const text = h('div', 'fh-scene-text')
     const label = h('span', 'fh-scene-label', r.label)
     label.append(h('kbd', 'fh-kbd', r.shortcut))
-    const hint = h('span', 'fh-scene-hint', r.hint)
-    hints.set(r.key, hint)
-    text.append(label, hint)
+    text.append(label)
     const sw = h('button', 'fh-switch')
     sw.type = 'button'
     sw.setAttribute('role', 'switch')
@@ -155,6 +154,7 @@ export function mountSceneToggles(root: HTMLElement, opts: SceneTogglesOpts): Sc
     if (glass.disabled === prefs.buildings) {
       glass.disabled = !prefs.buildings
       glassRow.setAttribute('aria-disabled', String(!prefs.buildings))
+      glassSub.setAttribute('aria-disabled', String(!prefs.buildings)) // the whole group dims as one
     }
     // Textures: the same, and only over the satellite (the roofs are its picture).
     const textures = switches.get('textures')!
