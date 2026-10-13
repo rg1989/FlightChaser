@@ -1,6 +1,6 @@
 # API keys: what they are for and how to connect them
 
-Flight Chaser runs with no key and no account. `make` starts it with live traffic, terrain, imagery and weather.
+Flight Chaser runs with no key and no account. It starts with live traffic, terrain, imagery and weather.
 
 Three free keys are optional. Each one makes one thing better. This document says how to get each key, where to put
 it, how to check it, and what went wrong when we did it.
@@ -28,7 +28,7 @@ There are two places. Choose one for each key.
 
 1. If `.env.local` does not exist, copy the example: `cp .env.example .env.local`
 2. Open `.env.local` in an editor. Set the variable. Write no quotes and no spaces round the `=`.
-3. Stop `make` with Ctrl+C. Start `make` again. The app reads `.env.local` only when it starts.
+3. Stop the app with Ctrl+C. Start it again (`flight-chaser`, `npm start` or `make`). The app reads `.env.local` only when it starts.
 
 | Key | Variable |
 |---|---|
@@ -60,7 +60,7 @@ What went wrong for us:
 | The account has no page for API keys | The account was a public ArcGIS Online account. That type cannot make API keys | Sign up at `location.arcgis.com`, not at `arcgis.com`. The account type must be ArcGIS Location Platform. |
 | We lost the key after we made it | The page shows a key one time | Generate a new key in the same credentials item. |
 | Settings says "This key lacks the Basemap styles service privilege" | We missed step 5 | Edit the credentials, tick the privilege, generate the key again. |
-| The key is in `.env.local` and the picture is still coarse | We did not start `make` again | Stop `make` and start it. |
+| The key is in `.env.local` and the picture is still coarse | We did not start the app again | Stop the app and start it. |
 | The picture was sharp and became coarse | The key expired, or the free tiles of the month ran out | The status panel shows `Imagery: EOX` and the reason. Generate a new key, or wait for the next month. |
 | Some tiles are missing far from cities at the closest zoom | Esri has no picture there at that zoom | This is not a defect. The app enlarges the nearest picture. |
 
@@ -94,7 +94,7 @@ This pair is for the server. Without it the app shows the same clouds from EUMET
    EUMETSAT_KEY=<consumer key>
    EUMETSAT_SECRET=<consumer secret>
    ```
-5. Stop `make` and start it.
+5. Stop the app and start it.
 
 Check: chase an aircraft over Europe, Africa or the Middle East with the weather on. Wait 30 seconds after the server
 starts. Open the browser console and type `weather3d.satellite`. The answer has `raw: true` when the frame came through
@@ -105,10 +105,10 @@ What went wrong for us:
 | Problem | Cause | Fix |
 |---|---|---|
 | The key page says "Unable to get or create subscriptions for user" | The account was new. We accepted the licence, but the key service did not know the account yet | Wait some hours. Sign out, sign in, open the page again. Ours worked later the same day. |
-| The terminal of `make` says "the key was refused (HTTP 401)" | The key and the secret are exchanged, one is cut short, or only one is set | Copy both again. Both are necessary. |
+| The app's terminal says "the key was refused (HTTP 401)" | The key and the secret are exchanged, one is cut short, or only one is set | Copy both again. Both are necessary. |
 | The two variables do not work after we added them with `>>` | The last line of `.env.local` had no line end, so two variables are on one line | Open the file in an editor. Put each variable on its own line. |
 | The first clouds after a start come late | The first request gets a token, searches and downloads 2 files | Wait 30 seconds. After that the frames are in memory. |
-| `raw` is not `true` | The server started before we set the key, or the aircraft is outside the satellite's view | Start `make` again. The satellite sees Europe, Africa and the Middle East. |
+| `raw` is not `true` | The server started before we set the key, or the aircraft is outside the satellite's view | Start the app again. The satellite sees Europe, Africa and the Middle East. |
 
 EUMETSAT's terms: no commercial or operational use, and no redistribution of the original data. The server writes
 none of the data to disk.
@@ -127,7 +127,7 @@ none of the data to disk.
    JavaScript in `dist/`. For a public copy, build without them. Each visitor then adds their own keys in Settings.
 3. Do not put a key in a link, a screenshot, an issue or a chat.
 4. If a key leaks, delete it at the provider and make a new one.
-5. Other devices that can open your `make` address also get the `VITE_` keys of `.env.local`. Keys saved in Settings
+5. Other devices that can open your app's address also get the `VITE_` keys of `.env.local`. Keys saved in Settings
    stay in one browser.
 
 For an AI agent that works in this repository:
@@ -143,6 +143,6 @@ For an AI agent that works in this repository:
 |---|---|
 | Which imagery is in use? | The first panel on the rail: `Imagery: Esri`, `Imagery: EOX · <reason>`, or `Imagery: Bing`. |
 | Is a browser key valid? | Settings → API keys. The line under the field says "Saved in this browser" or the reason it failed. |
-| Did the app read `.env.local`? | Only after `make` starts again. A key saved in Settings has priority. |
+| Did the app read `.env.local`? | Only after the app starts again. A key saved in Settings has priority. |
 | Does the satellite key work? | Browser console: `weather3d.satellite` has `raw: true`. |
 | Does the app work with no key? | Yes. Remove the keys and reload. Nothing else changes. |

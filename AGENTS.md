@@ -12,7 +12,7 @@ for the client and `node --test` for the tests. There is no framework.
 
 Rules for every task:
 
-- `make` starts the app. It needs no key and no account.
+- `npm start` starts the app; `make` starts it for development (the client reloads as you edit). Neither needs a key or an account.
 - `npm run check` runs the type check and all tests. It must pass before you say that the work is done.
 - The user makes each account and pastes each key. Do not print a key. Do not read `.env.local` aloud.
 - Do not commit `.env.local`, `.work/`, `data/flights/`, `data/recordings/` or `public/scenarios/*/local/`. Git ignores

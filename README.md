@@ -85,16 +85,36 @@ Most of this is rare in a flight tracker.
 
 ## Quick start
 
-You need Node 24.2 or newer, npm and make.
+One command installs the app and starts it. No account and no key is needed.
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/rg1989/FlightChaser/main/install.sh | bash
+```
+
+Windows, in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/rg1989/FlightChaser/main/install.ps1 | iex
+```
+
+The installer puts the app into the folder `FlightChaser` in your home folder and opens http://localhost:8787 with live
+traffic from adsb.fi. Where Node 24.2 or newer is not installed, it puts a private copy of Node into that folder; it
+changes nothing outside it. Ctrl+C stops the app. To start it again, run `flight-chaser` in that folder. To update it,
+run the install command again: your settings and your data stay.
+
+With git and Node 24.2 or newer:
 
 ```bash
 git clone https://github.com/rg1989/FlightChaser.git
 cd FlightChaser
-make
+npm start
 ```
 
-`make` installs the dependencies the first time, starts the server with live traffic from adsb.fi and prints the link
-(http://localhost:5173). Ctrl+C stops it. No account and no key is needed.
+`npm start` installs the dependencies the first time, builds the app when its sources changed, starts the server and
+opens the browser. To work on the code, use `make` (it needs make): the client then reloads as you edit, on
+http://localhost:5173.
 
 ## Keys (optional)
 
@@ -128,7 +148,8 @@ The app works the same without it. [Weather in the chase](docs/weather.md) says 
 
 | Command | What it does |
 |---|---|
-| `make` | Live traffic from adsb.fi, and the client |
+| `npm start` | The app as people use it: live traffic from adsb.fi on http://localhost:8787. `npm start -- --port <n>` picks the port, `--no-open` leaves the browser closed |
+| `make` | The same for development: the client from Vite on http://localhost:5173, reloading as you edit |
 | `make replay` | The same, replaying the newest recording in `data/recordings/`, or the bundled fixtures |
 | `make live LIVE_SOURCE=adsblol` | Live from adsb.lol (needs `CONTACT`) |
 | `npm run check` | Type-check and all tests |

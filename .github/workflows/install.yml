@@ -1,0 +1,39 @@
+# Runs the installers on a clean macOS, Linux and Windows machine, then starts the app they installed and asks it for
+# its page and its status. The machines' own Node is older than the app needs, so each run also fetches the private Node.
+name: install
+on:
+  push:
+    branches: [main]
+    paths: [install.sh, install.ps1, tools/start.ts, package.json, package-lock.json, vite.config.ts, .github/workflows/install.yml]
+  workflow_dispatch:
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pack this commit as the archive the installer fetches
+        shell: bash
+        run: git archive --format=tar.gz --prefix=FlightChaser/ -o "$RUNNER_TEMP/app.tar.gz" HEAD
+      - name: Install (macOS, Linux)
+        if: runner.os != 'Windows'
+        run: FLIGHT_CHASER_DIR="$RUNNER_TEMP/fc" FLIGHT_CHASER_SOURCE="$RUNNER_TEMP/app.tar.gz" FLIGHT_CHASER_START=0 bash install.sh
+      - name: Install (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:FLIGHT_CHASER_DIR = "$env:RUNNER_TEMP\fc"
+          $env:FLIGHT_CHASER_SOURCE = "$env:RUNNER_TEMP\app.tar.gz"
+          $env:FLIGHT_CHASER_START = '0'
+          .\install.ps1
+      - name: Start it; ask for the page and the status
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/fc"
+          if [ "$RUNNER_OS" = Windows ]; then ./flight-chaser.cmd --no-open & else ./flight-chaser --no-open & fi
+          for i in $(seq 240); do curl -fsS http://127.0.0.1:8787/ > /dev/null 2>&1 && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8787/ | grep -q '<title>'
+          curl -fsS http://127.0.0.1:8787/api/status | head -c 300

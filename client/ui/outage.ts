@@ -37,7 +37,7 @@ export const OUTAGE_COPY: Record<OutageKind, Copy> = {
   server: {
     icon: 'server', tone: 'red',
     title: () => 'The Flight Chaser server isn’t answering',
-    body: () => 'No new positions are arriving because the app’s own server stopped responding. If you started it with make, check that it is still running.',
+    body: () => 'No new positions are arriving because the app’s own server stopped responding. Check that it is still running in its terminal.',
     pill: () => 'Server not answering · retrying',
   },
   blocked: {
