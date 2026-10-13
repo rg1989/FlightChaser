@@ -126,7 +126,7 @@ blender -b --python scripts/bl_join.py -- source/flightairmap-glb/E190.glb out/ 
 mkdir -p in && mv out/E190.single.glb in/E190.glb
 python3 scripts/canonicalise.py in/ models/ --report report.json
 python3 -c "import sys; sys.path.insert(0, 'scripts'); import embed_copyright as e; e.COPYRIGHT = 'GPL-2.0-only, derived from FlightGear E-jet-family (Narendran Muraleedharan) via FlightAirMap-3dmodels'; print(e.stamp('models/E190.glb'))"
-cp models/E190.glb ../../public/models/e190.glb
+cp models/E190.glb ../../public/models/e190/model.glb
 ```
 
 The last Python command uses `embed_copyright.py` unchanged, with the correct licence string for this file.

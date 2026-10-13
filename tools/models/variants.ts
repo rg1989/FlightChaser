@@ -559,6 +559,7 @@ export function build(id: string, r: Recipe, manifest: ModelManifest): Built {
   let work = toWork(glb, base)
   const baseProfile = profileOf(base)
   const paint = structuredClone(base.paint)
+  if (r.fuselage) throw new Error(`${id}: recipe.fuselage is not built in yet (tools/models/fuselage.ts is being finished): try again in a few minutes`)
   if (r.wingtip) work = applyWingtip(work, r.wingtip, baseProfile.profile, baseProfile.wingPlane)
   if (r.nacelle) {
     const { work: moved, moveBox } = applyNacelle(work, r.nacelle, base)

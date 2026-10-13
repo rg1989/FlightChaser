@@ -333,14 +333,21 @@ node tools/livery-shots.ts --views refs a21n:WZZ b738:ELY
 - Airlines with only colours in `liveries.json` (and scenario liveries) become designs automatically
   (`client/livery/legacy.ts`).
 
-## Part 5. The agent workflow
+## Part 5. The agent workflows
 
-`tools/liveries/livery.workflow.js` runs Parts 3.1–3.6 with agents for one or more airlines: a researcher gets the
-photos and writes the dossier, a checker verifies it, a designer writes the design and iterates with the lab shots, and
-an independent critic compares the shots with the photos until they match. In Claude Code:
+Two saved workflows do the work with agents, many airlines or models at the same time. Each agent writes only its own
+folder. Renders and tests run on a second machine (`.planning/tools/fleet-qa.sh`: `QA_HOST`, `QA_DIR`), not on yours.
+
+- `tools/liveries/livery.workflow.js` runs Part 3 for each airline: a researcher gets the photos and writes the
+  dossier, a designer writes the design and compares renders with the photos, an independent critic lists the
+  differences, and a fixer corrects them.
+- `tools/models/model.workflow.js` runs Part 2.3 for each model: a builder converts the source mesh and makes the
+  package, and an independent reviewer checks the shape, the size, the gear, the lights and the paint regions.
+
+In Claude Code:
 
 ```
-Workflow({ scriptPath: 'tools/liveries/livery.workflow.js', args: [{ code: 'AEE', airline: 'Aegean', model: 'a21n', types: 'A321neo (A21N)' }] })
+Workflow({ scriptPath: 'tools/liveries/livery.workflow.js', args: { repo: '/path/to/checkout', airlines: [{ code: 'AEE', airline: 'Aegean Airlines', types: 'Airbus A320, A321neo', pairs: ['a320:AEE', 'a21n:AEE'] }] } })
 ```
 
-It needs the dev server on :5182 (`liveries-replay-client`) or `args.host`.
+First run `.planning/tools/fleet-qa.sh sync`: it copies the checkout to the second machine and starts the dev server there.
