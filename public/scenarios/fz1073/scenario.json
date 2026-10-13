@@ -8,22 +8,22 @@
   "clockLabel": "UTC",
   "start": "03:04:20",
   "end": "06:45:34",
-  "note": "A reconstruction from the aircraft's own ADS-B broadcasts of what Israel calls an attempted suicide terror attack, in which everyone aboard survived. The take-off roll and the last half hour before landing rest on few positions and are partly reconstructed; the Saudi and UAE investigations have not concluded.",
+  "note": "A reconstruction from the aircraft's own ADS-B broadcasts of what the UAE and Israel call an attempted terror attack, in which everyone aboard survived. The take-off roll and the last half hour before landing rest on few positions and are partly reconstructed; the investigations have not concluded and no charges have been announced.",
   "summary": [
     "flydubai 1073, a Boeing 737 MAX 8, from Dubai to Tel Aviv on 30 September 2026 with 174 passengers, most of them Israelis.",
-    "Over northern Saudi Arabia the first officer stabbed the captain and the aircraft dived from 34,000 to 16,600 ft in about a minute, far past its speed limits. The wounded captain opened the cockpit door; cabin crew and passengers overpowered the attacker, and two off-duty flydubai pilots flew on and landed at Tabuk at about 06:45 UTC.",
-    "Israel's assessment: an attempted jihadist suicide attack by a first officer radicalized over the past year, acting alone. Saudi Arabia's preliminary inquiry found he assaulted the captain; the UAE is investigating a terrorist link."
+    "Over northern Saudi Arabia the first officer attacked the captain, with the cockpit's crash axe by the UAE Attorney General's account, and the aircraft dived from 34,000 to 16,600 ft in about a minute, far past its speed limits. The wounded captain opened the cockpit door; the return flight's captain, cabin crew and passengers overpowered the attacker, and two off-duty flydubai pilots flew on and landed at Tabuk at about 06:45 UTC.",
+    "The UAE Attorney General (9 October 2026): a premeditated terrorist plot to crash into Ben Gurion Airport's passenger terminal; the first officer confessed and says he acted alone, which is still being checked. Israel calls it an attempted jihadist suicide attack. No charges have been announced, and Saudi Arabia's safety investigation has not reported."
   ],
   "crew": [
     {
       "role": "Captain",
       "name": "Smit Machchhar",
-      "detail": "pilot flying; Indian national; stabbed, opened the cockpit door"
+      "detail": "pilot flying; Indian national; wounded in the head, opened the cockpit door; in hospital in the UAE and improving (7 October)"
     },
     {
       "role": "First officer",
       "name": "",
-      "detail": "pilot monitoring; Omani national, with flydubai about a year; the attacker, by Saudi and Israeli accounts"
+      "detail": "pilot monitoring; Omani national, 29, with flydubai since January 2026; the attacker, by Saudi, UAE and Israeli accounts"
     },
     {
       "role": "Relief pilots",
@@ -45,9 +45,9 @@
     "card": {
       "title": "flydubai Flight 1073",
       "lines": [
-        "30 September 2026 · Boeing 737 MAX 8 A6-FKF, Dubai to Tel Aviv, 174 passengers and 6 crew.",
-        "The first officer stabbed the captain and the aircraft dived. Cabin crew and passengers broke into the cockpit and overpowered him; two off-duty flydubai pilots landed it on runway 31 at Tabuk at about 06:45 UTC. Everyone aboard survived; the captain, Smit Machchhar, is recovering from his wounds.",
-        "Israel calls it an attempted jihadist suicide attack by a first officer radicalized over the past year. Saudi Arabia's preliminary inquiry found he assaulted the captain; the UAE, which now holds him, is investigating a link to terrorism. There is no official finding on the motive yet.",
+        "30 September 2026 · Boeing 737 MAX 8 A6-FKF, Dubai to Tel Aviv, 174 passengers and 8 crew by Saudi Arabia's count.",
+        "The first officer attacked the captain and the aircraft dived. The captain opened the cockpit door; the return flight's captain, cabin crew and passengers overpowered the attacker, and two off-duty flydubai pilots landed it on runway 31 at Tabuk at about 06:45 UTC. Everyone aboard survived; the captain, Smit Machchhar, is recovering in hospital.",
+        "The UAE Attorney General calls it a premeditated terrorist plot to crash into Ben Gurion Airport, to which the first officer confessed; Israel calls it an attempted jihadist suicide attack. No charges have been announced, and Saudi Arabia's safety investigation has not reported.",
         "From the aircraft's ADS-B broadcasts as received by adsb.lol (ODbL) and, where no open network heard it, by other receivers and published tracking data. The take-off roll and the 15 minutes before the final approach are reconstructed."
       ]
     }
@@ -75,13 +75,19 @@
       "id": "SAUDI",
       "title": "Saudi Interior Ministry, preliminary inquiry (1 October), and the UAE Attorney General's investigation (1 October)",
       "url": "https://www.aljazeera.com/news/2026/10/1/flydubai-co-pilot-assaulted-captain-before-landing-initial-saudi-probe",
-      "note": "Saudi Arabia: \"the pilot was assaulted by his co-pilot, resulting in various injuries to both\". The UAE, which received the first officer from Saudi Arabia on 2 October, is examining a possible connection to terrorist activity or intent and prior planning."
+      "note": "Saudi Arabia: \"the pilot was assaulted by his co-pilot, resulting in various injuries to both\". The UAE, which received the first officer from Saudi Arabia on the morning of 1 October, is examining a possible connection to terrorist activity or intent and prior planning."
+    },
+    {
+      "id": "UAE",
+      "title": "UAE Attorney General, statements of 3 and 9 October 2026 (WAM, the Emirates News Agency)",
+      "url": "https://sharjah24.ae/en/Articles/2026/10/09/d73",
+      "note": "3 October (https://www.uaebarq.ae/en/2026/10/03/planning-attempted-terrorist-act-behind-flydubai-flight-fz1073-incident-attorney-general/): the crash axe, and a forensic report of head wounds that match it. 9 October: a premeditated terrorist plot to crash into Ben Gurion Airport's passenger terminal; the first officer, 29, joined flydubai in January 2026, had shown signs of radicalization since 2017, confessed and says he acted alone (still being checked); the return flight's captain got into the cockpit and, with a cabin crew member and passengers, restrained him. No charges announced by 13 October."
     },
     {
       "id": "MEDIA",
-      "title": "News reports, 30 September–2 October 2026 (passenger accounts in ABC News and CBS News; The Times of Israel's photos of the tail; The Aviation Herald; flydubai's statements)",
+      "title": "News reports, 30 September–13 October 2026 (passenger accounts in ABC News and CBS News; The Times of Israel's photos of the tail; The Aviation Herald; flydubai's statements)",
       "url": "https://www.abc.net.au/news/2026-10-01/passengers-recount-flydubai-flight/107214804",
-      "note": "Passengers: the wounded captain released the cockpit door; cabin crew and passengers overpowered the first officer, one passenger pulled back on the controls, and two off-duty flydubai pilots took over and landed. Photos at Tabuk: much of the rudder missing (The Times of Israel, 30 September). flydubai: the aircraft was \"secured by on-duty flydubai crew travelling on the flight\"."
+      "note": "Passengers: the wounded captain released the cockpit door; cabin crew and passengers overpowered the first officer, one passenger pulled back on the controls, and two off-duty flydubai pilots took over and landed. Photos at Tabuk: much of the rudder missing (The Times of Israel, 30 September). flydubai: the aircraft was \"secured by on-duty flydubai crew travelling on the flight\". Later: the captain's account of the first blow (Ynetnews, 3 October); 174 passengers and 8 crew, and the hand-over on 1 October (Saudi Interior Ministry in Gulf News, 2 October); Israel's readiness to shoot the aircraft down (CBS News, 5 October); the captain's recovery (WION, 8 October)."
     }
   ]
 }
