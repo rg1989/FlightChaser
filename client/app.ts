@@ -75,6 +75,7 @@ import { BOX_HALF, Traffic, minScale, trafficRangeNm } from './scene/traffic.ts'
 import { AircraftLights } from './scene/aircraftLights.ts'
 import { makeNightLayer } from './scene/nightLights.ts'
 import { Buildings } from './scene/buildings.ts'
+import { photoSource } from './scene/roofPhoto.ts'
 import { addRunways } from './scene/runways.ts'
 import { FlatTerrainProvider, areasFor, stripsFor, type AirfieldAirport } from './scene/flatTerrain.ts'
 import { gearWanted } from './scene/gear.ts'
@@ -305,7 +306,7 @@ export function relHFor(at: { lat: number; lon: number } | null, groundM: number
 const TYPING = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
 
 /**
- * The scene toggle a keydown asks for (design D11): T topography, L sun, B 3-D buildings, X see-through buildings; and the map layers: M
+ * The scene toggle a keydown asks for (design D11): T topography, L sun, B 3-D buildings, X see-through buildings, U their textures; and the map layers: M
  * map or satellite, R roads, P borders and places, W weather. null with a modifier (Cmd/Ctrl+L and Ctrl+T are
  * the browser's), on auto-repeat and while typing in a field.
  */
@@ -314,15 +315,19 @@ export function sceneKey(e: { key: string; metaKey: boolean; ctrlKey: boolean; a
   const t = e.target as { tagName?: string; isContentEditable?: boolean } | null
   if (t?.isContentEditable || TYPING.has(t?.tagName ?? '')) return null
   const k = e.key.toLowerCase()
-  return ({ t: 'topo', l: 'light', b: 'buildings', x: 'glass', m: 'base', r: 'roads', p: 'places', w: 'wx' } as const)[k as 't'] ?? null
+  return ({ t: 'topo', l: 'light', b: 'buildings', x: 'glass', u: 'textures', m: 'base', r: 'roads', p: 'places', w: 'wx' } as const)[k as 't'] ?? null
 }
+
+/** Whether the buildings carry their textures: the switch, and the chase over the satellite (the roofs are its picture). */
+export const texturesOn = (prefs: ScenePrefs): boolean => prefs.textures && !prefs.mapChase
 
 /**
  * Whether a scene key acts now. A choice that hangs under another acts only while that one is on, as its row in the Layers
- * panel: X with the buildings on, R and P over the satellite (the base of the view on screen).
+ * panel: X with the buildings on, U with them on over the satellite, R and P over the satellite (the base of the view on screen).
  */
 export function sceneKeyActs(key: keyof ScenePrefs, prefs: ScenePrefs, chasing: boolean): boolean {
   if (key === 'glass') return prefs.buildings
+  if (key === 'textures') return prefs.buildings && !prefs.mapChase
   if (key === 'roads' || key === 'places') return !prefs[baseKey(chasing)]
   return true
 }
@@ -907,8 +912,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const heroStrips = stripsFor(airports)
   viewer.terrainProvider = new FlatTerrainProvider(baseTerrain, heroStrips, [])
   let airfield: ReturnType<typeof addRunways> | null = null // the playing scenario's runways
-  const buildings = new Buildings(viewer) // chase only: update() gets no focus in browse
+  const buildings = new Buildings(viewer, { photo: photoSource(cfg) }) // chase only: update() gets no focus in browse
   buildings.setGlass(prefs.glass)
+  buildings.setPhoto(texturesOn(prefs))
   // The city lights go right above the satellite base layer, under the street map added next (browse shows it on top).
   const day = viewer.imageryLayers.length > 0 ? viewer.imageryLayers.get(0) : null
   const night = makeNightLayer()
@@ -917,6 +923,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   if (cfg.imagery === 'esri' && day) {
     eoxOnEsriFailure(viewer.imageryLayers, day, (eox, why) => {
       sun.setDay(eox)
+      buildings.setPhotoSource(photoSource({ imagery: 'eox' })) // the roofs take the picture the ground now shows
       const v = badgeView({ source: 'eox', fallback: why })
       statusPanel.setImagery(v.text, v.state)
       settings.setFallback('arcgis', 'imagery', why)
@@ -1938,6 +1945,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     prefs = next
     sun.setEnabled(chasing && next.light)
     buildings.setGlass(next.glass)
+    buildings.setPhoto(texturesOn(next))
     applyLayers()
     writeScenePrefs(next, store)
     toggles.update(next)

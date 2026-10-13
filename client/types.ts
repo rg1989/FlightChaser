@@ -185,6 +185,7 @@ export interface ScenePrefs {
   light: boolean                                // sun lighting in chase (browse stays unlit)
   buildings: boolean                            // 3-D buildings round the chased aircraft (off: none drawn, none loaded)
   glass: boolean                                // 3-D buildings see-through (translucent) instead of solid; applies while buildings is on
+  textures: boolean                             // 3-D buildings with roofs from the satellite imagery and drawn walls (else clay); applies while buildings is on, over the satellite
   mapTop: boolean                               // the top-down view shows the street map (else the satellite imagery)
   mapChase: boolean                             // the chase view shows the street map (else the satellite imagery)
   dark: boolean                                 // the street map in its dark theme (its own tiles recoloured), both views

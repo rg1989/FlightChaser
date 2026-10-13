@@ -3,6 +3,9 @@
 // schema, z14 layer `building`), extruded as one unpickable Primitive per tile on the terrain's TRUE heights and moved
 // with the terrain exaggeration like the runways. One "clay" colour, lit by the app's sun; the see-through toggle swaps
 // every tile to a translucent twin of the same shader (no geometry rebuild).
+// Textures (setPhoto, with a picture source: opts.photo, roofPhoto.ts): a tile's roofs carry the satellite picture of the ground
+// under them and its walls are drawn, tinted with the roof's colour, with rows of windows that light up at night. Until its
+// picture is in, with the switch off and without a source, a tile is clay.
 import {
   Appearance,
   Cartesian3,
@@ -20,10 +23,12 @@ import {
   PolygonHierarchy,
   Primitive,
   ShadowMode,
+  Transforms,
   type Viewer,
 } from 'cesium'
 import type { TerrainFrame } from '../types.ts'
 import { decodeLayer, type Layer } from './mvt.ts'
+import { mosaic, photoTexture, type PhotoSource, type PhotoTexture } from './roofPhoto.ts'
 import { followExaggeration } from './runways.ts'
 import { TerrainHeights } from './terrainHeights.ts'
 
@@ -40,8 +45,13 @@ const OPENFREEMAP_ORIGIN = 'https://tiles.openfreemap.org'
 const n2 = (): number => 2 ** BUILDINGS_Z
 /** The z14 slippy-map tile [x, y] of a point (Web Mercator, y down from the north). */
 export function tileOf(lat: number, lon: number): [number, number] {
+  const [x, y] = tileXY(lat, lon)
+  return [Math.floor(x), Math.floor(y)]
+}
+/** The same in fractions of a tile: tileXY − tileOf is where the point lies in its tile, from its north-west corner. */
+export function tileXY(lat: number, lon: number): [number, number] {
   const r = (lat * Math.PI) / 180
-  return [Math.floor(((lon + 180) / 360) * n2()), Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n2())]
+  return [((lon + 180) / 360) * n2(), ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n2()]
 }
 /** Longitude of a (fractional) tile x; tileLonDeg(x + 1) is the east edge. */
 export const tileLonDeg = (x: number): number => (x / n2()) * 360 - 180
@@ -179,6 +189,12 @@ out vec3 v_normalEC;
 out vec4 v_color;
 out float v_h;
 out float v_exact;
+#ifdef PHOTO
+out vec2 v_uv;   // where the fragment lies in the tile's picture
+out vec2 v_cuv;  // where its footprint's centre does
+out vec2 v_wall; // metres along a wall, metres above the ground
+out float v_tall; // 0 a house … 1 a tower: glass fronts
+#endif
 void main() {
   vec4 p = czm_computePosition();
   v_positionEC = (czm_modelViewRelativeToEye * p).xyz;
@@ -189,6 +205,22 @@ void main() {
   v_h = czm_eyeHeight + up + s2 / 12742000.0 - czm_batchTable_ground(batchId);
   vec3 n = normalize(position3DHigh + position3DLow);
   v_exact = step(abs(dot(n, mat3(czm_model) * n) - 1.0), 1e-3);
+#ifdef PHOTO
+  // The tile's frame, per instance (the same for a whole tile): its centre (high and low parts, as the positions), and east and
+  // north over the tile's width and height. fc: the footprint's centre in the picture, and its ground against the centre's height.
+  vec3 fe = czm_batchTable_fe(batchId);
+  vec3 fn = czm_batchTable_fn(batchId);
+  vec3 fc = czm_batchTable_fc(batchId);
+  vec3 d = (position3DHigh - czm_batchTable_fch(batchId)) + (position3DLow - czm_batchTable_fcl(batchId));
+  v_uv = 0.5 + vec2(dot(d, fe), dot(d, fn));
+  v_cuv = fc.xy;
+  vec3 upT = normalize(cross(fe, fn));
+  float hT = dot(d, upT);
+  vec3 along = cross(upT, normal); // horizontal, along a wall; nothing on a roof
+  float la = length(along);
+  v_wall = vec2(la > 0.01 ? dot(d, along) / la : 0.0, hT + (dot(d, d) - hT * hT) / 12742000.0 - fc.z);
+  v_tall = smoothstep(30.0, 55.0, czm_batchTable_tall(batchId));
+#endif
   gl_Position = czm_modelViewProjectionRelativeToEye * p;
 }`
 
@@ -206,6 +238,13 @@ in vec3 v_normalEC;
 in vec4 v_color;
 in float v_h;
 in float v_exact;
+#ifdef PHOTO
+in vec2 v_uv;
+in vec2 v_cuv;
+in vec2 v_wall;
+in float v_tall;
+float fhHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+#endif
 const float NEAR_M = 30.0;
 void main() {
   float dist = length(v_positionEC);
@@ -214,16 +253,51 @@ void main() {
   vec3 upEC = normalize(czm_viewRotation * normalize((czm_inverseView * vec4(v_positionEC, 1.0)).xyz));
   float up = dot(n, upEC);
   float roof = smoothstep(0.6, 0.8, up);
-  vec3 base = mix(v_color.rgb, v_color.rgb * vec3(0.80, 0.79, 0.78), roof);
   czm_materialInput mi;
+#ifdef PHOTO
+  // m: diffuse the picture here, emission the roof's mean colour, alpha night, normal (the day imagery's brightness, the globe's
+  // shadow floor, its Lambert multiplier), shininess whether the globe is lit (PHOTO_SOURCE).
+  mi.st = v_uv;
+  mi.str = vec3(v_cuv, 0.0);
+  czm_material m = czm_getMaterial(mi);
+  float night = m.alpha;
+  // Walls: the clay tinted with the hue of the roof's mean colour (most of its lightness is the photograph's shade, not the
+  // wall's), and a window to each bay (2.4–3.6 m, by building) of each 3 m storey above the ground: a hole in the wall on a
+  // house, most of the bay in sky-coloured glass on a tower. Where a bay is smaller than a pixel the windows give way to their
+  // mean cover (no moiré).
+  float meanL = dot(m.emission, vec3(0.30, 0.59, 0.11));
+  vec3 tint = m.emission / max(meanL, 0.05) * clamp(mix(0.84, meanL * 1.5, 0.4), 0.5, 0.95);
+  vec3 wall = mix(v_color.rgb, min(tint, vec3(1.0)), WALL_TINT);
+  vec2 g = vec2(v_wall.x / mix(2.4, 3.6, fract(v_color.a * 3.7)), v_wall.y / 3.0);
+  vec2 fw = fwidth(g);
+  vec2 cell = fract(g);
+  vec2 lo = mix(vec2(0.24, 0.32), vec2(0.06, 0.10), v_tall);
+  vec2 hi = mix(vec2(0.76, 0.74), vec2(0.94, 0.90), v_tall);
+  vec2 w2 = smoothstep(lo - fw, lo + fw, cell) - smoothstep(hi - fw, hi + fw, cell);
+  float far = smoothstep(0.25, 0.7, max(fw.x, fw.y));
+  float win = mix(w2.x * w2.y, (hi.x - lo.x) * (hi.y - lo.y), far) * step(0.0, v_wall.y) * (1.0 - roof);
+  float lamp = mix(step(0.7, fhHash(floor(g) + v_color.a * 91.0)), 0.3, far); // three windows in ten are lit at night
+  vec3 base = mix(wall, mix(vec3(0.16, 0.19, 0.24), vec3(0.34, 0.44, 0.54), v_tall), mix(0.75, 0.9, v_tall) * win);
+#else
+  vec3 base = mix(v_color.rgb, v_color.rgb * vec3(0.80, 0.79, 0.78), roof);
   float night = czm_getMaterial(mi).alpha;
+#endif
   float sun = max(dot(n, czm_lightDirectionEC), 0.0);
   float sky = 0.40 + 0.15 * up;
   vec3 c = base * (sky * mix(1.0, 0.30, night) + 0.55 * sun * czm_lightColor * mix(1.0, 0.25, night));
   float contact = mix(0.62, 1.0, smoothstep(0.0, 9.0, v_h)) * mix(0.94, 1.06, smoothstep(10.0, 160.0, v_h));
   c *= mix(1.0, contact, v_exact);
+#ifdef PHOTO
+  // a tower's bay is nearly all glass: less light a window, or it glows as a slab; far away, where the windows merge, buildings differ
+  c += night * win * lamp * vec3(1.0, 0.74, 0.42) * mix(0.9, 0.3, v_tall) * mix(1.0, 0.35 + 1.3 * fract(v_color.a * 5.3), far);
+  // Roofs: the picture, lit as the globe lights the ground beside it (GlobeFS, ENABLE_VERTEX_LIGHTING), so a roof and the
+  // street under it are one photograph.
+  vec3 lit = mix(vec3(1.0), czm_lightColor * clamp(sun * m.normal.z + m.normal.y, 0.0, 1.0), m.shininess);
+  c = mix(c, m.diffuse * m.normal.x * lit, roof);
+#else
   float lit = step(0.5, fract(v_color.a * 7.13)) * (1.0 - roof);
   c += night * lit * vec3(1.0, 0.72, 0.38) * (0.10 + 0.10 * v_color.a);
+#endif
   vec3 haze = vec3(0.72, 0.79, 0.87) * mix(1.0, 0.05, night);
   c = mix(c, haze, 1.0 - exp(-dist / 16000.0));
 #ifdef GLASS
@@ -258,6 +332,36 @@ function looks(): { solid: Appearance; glass: Appearance } {
 }
 const CLAY = new Color(0.9, 0.88, 0.84)
 
+// ---------- roofs from the satellite picture ----------
+const PHOTO_NEAR_Z = 17 // ≈ 1 m a pixel at mid latitudes, 64 imagery tiles a building tile
+const PHOTO_SHARP_BELOW_M = 2000 // the aircraft's height over the ground up to which that much shows
+/**
+ * The imagery zoom of a tile's picture. The sharpest for the 3 × 3 tiles round a low aircraft; a zoom coarser (a quarter of
+ * the requests and of the memory) for the tiles beyond, and for each doubling of the aircraft's height from 2,000 m: from
+ * cruise a roof is a few pixels and a tile's picture one imagery tile. ring: the tile's distance from the aircraft's, in tiles;
+ * have: the zoom of the picture it has (0: none). A picture gets coarser only a ring farther out or a quarter higher than
+ * where it got sharper, so a flight along a tile edge or at a level on the line does not reload it.
+ */
+export function photoZoom(ring: number, heightM: number, have: number, maxZ: number): number {
+  const at = (r: number, hM: number): number =>
+    Math.max(BUILDINGS_Z, Math.min(maxZ, PHOTO_NEAR_Z - (r <= 1 ? 0 : 1) - Math.max(0, Math.floor(Math.log2(Math.max(hM, 1) / PHOTO_SHARP_BELOW_M)) + 1)))
+  const want = at(ring, heightM)
+  if (have === 0 || want >= have) return want
+  return Math.max(want, Math.min(have, at(ring - 1, heightM / 1.25)))
+}
+const PHOTO_MAX_IN_FLIGHT = 3 // pictures being put together at once (each up to 2048 px a side)
+// The mean colour is the picture's mip level whose pixel is 1/128 of the tile (~16 m): textureLod and textureSize are WebGL 2.
+const PHOTO_SOURCE = `czm_material czm_getMaterial(czm_materialInput materialInput) {
+  czm_material m = czm_getDefaultMaterial(materialInput);
+  m.alpha = clamp(night, 0.0, 1.0);
+  m.diffuse = texture(image, materialInput.st).rgb;
+  m.emission = textureLod(image, materialInput.str.xy, log2(float(textureSize(image, 0).x)) - 7.0).rgb;
+  m.normal = globe;
+  m.shininess = sunlit;
+  return m;
+}`
+const PHOTO_DEFINES = '#define PHOTO\n#define WALL_TINT 0.6\n'
+
 interface Tile {
   state: 'loading' | 'done' | 'failed'
   failedAtMs: number
@@ -266,11 +370,17 @@ interface Tile {
   up: Cartesian3 // the ellipsoid normal at the tile centre
   upDotBase: number
   hM: number // the mean ground under the tile's buildings: the exaggeration's reference height
+  tex: PhotoTexture | null // the tile's picture on the card (ours to destroy); null: clay
+  mat: Material | null // the material of its picture look, for the light written every frame
+  photoZ: number // the imagery zoom of the picture it has or last asked for; 0: none yet
+  photoBusy: boolean
+  framed: boolean // built with the picture's frame (a source was set then): only such a tile can take a picture
 }
 
 export interface BuildingsOpts {
   loadLayer?: (x: number, y: number) => Promise<Layer | null> // default: OpenFreeMap
   groundM?: (at: Cartographic[]) => Promise<(number | undefined)[]> // true terrain heights; default: TerrainHeights
+  photo?: PhotoSource | null // the satellite picture for the roofs (roofPhoto.ts photoSource), on until setPhoto(false); none: clay
 }
 
 /**
@@ -288,6 +398,10 @@ export class Buildings {
   readonly #ground: (at: Cartographic[]) => Promise<(number | undefined)[]>
   readonly #tiles = new Map<string, Tile>()
   readonly #looks = looks()
+  #source: PhotoSource | null // where the roofs' picture comes from
+  #photoOn = true
+  #photoInFlight = 0
+  #night = 0
   #inFlight = 0
   #glass = false
   #shown = false
@@ -303,9 +417,24 @@ export class Buildings {
     this.#load = opts.loadLayer ?? openFreeMapLayer
     const heights = opts.groundM ? null : new TerrainHeights(viewer.terrainProvider)
     this.#ground = opts.groundM ?? ((at) => heights!.heights(at))
+    this.#source = this.#webgl2() ? (opts.photo ?? null) : null
   }
 
-  update(focus: { lat: number; lon: number } | null, frame: TerrainFrame): void {
+  /** The source while the pictures are on. */
+  get #photo(): PhotoSource | null {
+    return this.#photoOn ? this.#source : null
+  }
+
+  #context(): { webgl2?: boolean } | undefined {
+    return (this.#viewer.scene as unknown as { context?: { webgl2?: boolean } }).context
+  }
+  /** The picture's shader is WebGL 2 (PHOTO_SOURCE): without it, no source. */
+  #webgl2(): boolean {
+    return this.#context()?.webgl2 === true
+  }
+
+  /** focus: the chased aircraft (hM: its height, WGS84 m; without it the pictures are as for a low aircraft). */
+  update(focus: { lat: number; lon: number; hM?: number } | null, frame: TerrainFrame): void {
     if (this.#destroyed) return
     if ((frame.fNow !== this.#f || frame.relHM !== this.#relHM) && Number.isFinite(frame.fNow) && Number.isFinite(frame.relHM)) {
       this.#f = frame.fNow
@@ -317,9 +446,10 @@ export class Buildings {
       this.#shown = show
       for (const t of this.#tiles.values()) if (t.prim) t.prim.show = show
     }
+    if (this.#photo) for (const t of this.#tiles.values()) if (t.mat) this.#light(t.mat)
     if (focus === null || !Number.isFinite(focus.lat) || !Number.isFinite(focus.lon)) return
     const [fx, fy] = tileOf(focus.lat, focus.lon)
-    const planKey = `${fx}/${fy}`
+    const planKey = `${fx}/${fy}/${Math.round((focus.hM ?? 0) / 250)}` // the height: the pictures' zoom follows it
     if (planKey === this.#planKey && !this.#dirty) return
     this.#planKey = planKey
     this.#dirty = false
@@ -333,11 +463,99 @@ export class Buildings {
       if (t && !(t.state === 'failed' && nowMs - t.failedAtMs > RETRY_MS)) continue
       void this.#fetch(x, y, k)
     }
+    // Pictures, nearest first (the map keeps the order the tiles were asked for in), each at photoZoom's zoom.
+    const src = this.#photo
+    if (src === null) return
+    for (const [k, t] of this.#tiles) {
+      if (this.#photoInFlight >= PHOTO_MAX_IN_FLIGHT) break
+      if (!t.prim || !t.framed || t.photoBusy) continue
+      const [x, y] = k.split('/').map(Number)
+      const z = photoZoom(Math.max(Math.abs(x - fx), Math.abs(y - fy)), (focus.hM ?? t.hM) - t.hM, t.photoZ, src.maxZ)
+      if (z !== t.photoZ) void this.#loadPhoto(src, k, t, x, y, z)
+    }
+  }
+
+  /** Textures on or off, for every tile now and later: off, the tiles go back to clay and their pictures are freed. */
+  setPhoto(on: boolean): void {
+    if (on === this.#photoOn) return
+    this.#photoOn = on
+    this.#clearPhotos()
+  }
+
+  /** Another source for the pictures (the imagery fell back to another), or none: the tiles' pictures are taken again. */
+  setPhotoSource(source: PhotoSource | null): void {
+    this.#source = this.#webgl2() ? source : null
+    this.#clearPhotos()
+  }
+
+  #clearPhotos(): void {
+    for (const t of this.#tiles.values()) {
+      t.photoZ = 0
+      if (t.tex === null) continue
+      t.tex.destroy()
+      t.tex = null
+      t.mat = null
+      if (t.prim) t.prim.appearance = this.#look(t)
+    }
+    this.#dirty = true
+  }
+
+  async #loadPhoto(src: PhotoSource, k: string, t: Tile, x: number, y: number, z: number): Promise<void> {
+    t.photoBusy = true
+    t.photoZ = z // also after a failure: not asked again until the aircraft's ring asks for another zoom
+    this.#photoInFlight++
+    try {
+      const canvas = await mosaic(src, x, y, BUILDINGS_Z, z)
+      if (this.#destroyed || this.#tiles.get(k) !== t || !t.prim) return // dropped while loading
+      if (this.#photo !== src) return void (t.photoZ = 0) // switched off, or another source, while loading
+      const old = t.tex
+      t.tex = photoTexture(this.#context(), canvas)
+      t.prim.appearance = this.#look(t) // the old look is not drawn again: its picture can go
+      old?.destroy()
+    } catch (e) {
+      if (!this.#warned) console.warn('FlightHopper: roof picture failed (the tile stays clay):', e)
+      this.#warned = true
+    } finally {
+      t.photoBusy = false
+      this.#photoInFlight--
+      this.#dirty = true
+    }
+  }
+
+  /** The look of a tile now: its picture's own (a Material each: the picture is its uniform), else the shared clay. */
+  #look(t: Tile): Appearance {
+    if (t.tex === null) return this.#glass ? this.#looks.glass : this.#looks.solid
+    const translucent = this.#glass
+    t.mat = new Material({
+      translucent,
+      fabric: { type: 'FhBuildingsPhoto', uniforms: { night: 0, image: Material.DefaultImageId, globe: { x: 1, y: 1, z: 0 }, sunlit: 0 }, source: PHOTO_SOURCE },
+    })
+    t.mat.uniforms.image = t.tex
+    this.#light(t.mat)
+    return new Appearance({
+      material: t.mat,
+      translucent,
+      closed: false,
+      vertexShaderSource: PHOTO_DEFINES + VS,
+      fragmentShaderSource: PHOTO_DEFINES + (translucent ? '#define GLASS\n' : '') + FS,
+      renderState: { depthTest: { enabled: true } },
+    })
+  }
+
+  /** Night, and how the globe lights its imagery this frame: the roofs' picture takes the same. */
+  #light(m: Material): void {
+    const globe = this.#viewer.scene.globe
+    const layers = this.#viewer.imageryLayers
+    m.uniforms.night = this.#night
+    m.uniforms.globe.x = layers.length > 0 ? layers.get(0).brightness : 1
+    m.uniforms.globe.y = globe.vertexShadowDarkness
+    m.uniforms.globe.z = globe.lambertDiffuseMultiplier
+    m.uniforms.sunlit = globe.enableLighting ? 1 : 0
   }
 
   /** Nothing loading and every loaded tile's geometry built (harnesses and gates wait for it). */
   get settled(): boolean {
-    if (this.#inFlight > 0) return false
+    if (this.#inFlight > 0 || this.#photoInFlight > 0 || (this.#photo !== null && this.#dirty)) return false
     for (const t of this.#tiles.values()) if (t.prim && !t.prim.ready) return false
     return true
   }
@@ -346,12 +564,13 @@ export class Buildings {
   setGlass(on: boolean): void {
     if (on === this.#glass) return
     this.#glass = on
-    for (const t of this.#tiles.values()) if (t.prim) t.prim.appearance = on ? this.#looks.glass : this.#looks.solid
+    for (const t of this.#tiles.values()) if (t.prim) t.prim.appearance = this.#look(t)
   }
 
   /** 0 day … 1 night, every frame: the Sun's night while it lights the chase view, else 0. One uniform write. */
   setNight(n: number): void {
     const v = Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0
+    this.#night = v // the picture looks read it in update()
     this.#looks.solid.material.uniforms.night = v
     this.#looks.glass.material.uniforms.night = v
   }
@@ -366,6 +585,9 @@ export class Buildings {
     this.#tiles.delete(k)
     if (t.prim && !this.#viewer.isDestroyed()) this.#viewer.scene.primitives.remove(t.prim) // and destroys it
     t.prim = null
+    t.tex?.destroy()
+    t.tex = null
+    t.mat = null
   }
 
   #place(t: Tile): void {
@@ -374,7 +596,7 @@ export class Buildings {
   }
 
   async #fetch(x: number, y: number, k: string): Promise<void> {
-    const t: Tile = { state: 'loading', failedAtMs: 0, prim: null, model: new Matrix4(), up: new Cartesian3(), upDotBase: 0, hM: 0 }
+    const t: Tile = { state: 'loading', failedAtMs: 0, prim: null, model: new Matrix4(), up: new Cartesian3(), upDotBase: 0, hM: 0, tex: null, mat: null, photoZ: 0, photoBusy: false, framed: false }
     this.#tiles.set(k, t)
     this.#inFlight++
     try {
@@ -413,12 +635,37 @@ export class Buildings {
 
   #build(t: Tile, fps: Footprint[], grounds: number[][], x: number, y: number): Primitive | null {
     const instances: GeometryInstance[] = []
-    let sum = 0
+    const extents = fps.map((f, i) => (grounds[i].length === 0 ? null : extentM(f, grounds[i]))) // null: no terrain read under it
+    const stood = extents.filter((e) => e !== null)
+    if (stood.length === 0) return null
+    t.hM = stood.reduce((a, e) => a + e.groundM, 0) / stood.length
+    const vec3 = (value: number[]): GeometryInstanceAttribute => new GeometryInstanceAttribute({ componentDatatype: ComponentDatatype.FLOAT, componentsPerAttribute: 3, value })
+    // The picture's frame (VS, PHOTO): the tile's centre at the mean ground, east and north over its width and height there.
+    let frame: Record<string, GeometryInstanceAttribute> | null = null
+    if (this.#source) {
+      t.framed = true
+      const [w, e, mid] = [tileLonDeg(x), tileLonDeg(x + 1), tileLonDeg(x + 0.5)]
+      const [north, south, midLat] = [tileLatDeg(y), tileLatDeg(y + 1), tileLatDeg(y + 0.5)]
+      const c = Cartesian3.fromDegrees(mid, midLat, t.hM)
+      const enu = Transforms.eastNorthUpToFixedFrame(c)
+      const widthM = Cartesian3.distance(Cartesian3.fromDegrees(w, midLat, t.hM), Cartesian3.fromDegrees(e, midLat, t.hM))
+      const heightM = Cartesian3.distance(Cartesian3.fromDegrees(mid, south, t.hM), Cartesian3.fromDegrees(mid, north, t.hM))
+      // high and low parts as Cesium splits its positions: any exact split serves, the shader only takes differences
+      const high = [c.x, c.y, c.z].map((v) => Math.floor(v / 65536) * 65536)
+      frame = {
+        fch: vec3(high),
+        fcl: vec3([c.x - high[0], c.y - high[1], c.z - high[2]]),
+        fe: vec3([enu[0] / widthM, enu[1] / widthM, enu[2] / widthM]),
+        fn: vec3([enu[4] / heightM, enu[5] / heightM, enu[6] / heightM]),
+      }
+    }
     for (let i = 0; i < fps.length; i++) {
-      if (grounds[i].length === 0) continue // no terrain read under it
+      const ext = extents[i]
+      if (ext === null) continue
       const f = fps[i]
-      const { baseM, topM, groundM } = extentM(f, grounds[i])
-      sum += groundM
+      const { baseM, topM, groundM } = ext
+      const ring = f.rings[0]
+      const [cx, cy] = tileXY(ring.reduce((a, p) => a + p[1], 0) / ring.length, ring.reduce((a, p) => a + p[0], 0) / ring.length)
       instances.push(
         new GeometryInstance({
           geometry: new PolygonGeometry({
@@ -435,20 +682,20 @@ export class Buildings {
             // ponytail: alpha carries the per-building random for the night glow (the solid pass ignores alpha)
             color: ColorGeometryInstanceAttribute.fromColor(Color.fromAlpha(Color.multiplyByScalar(CLAY, 0.95 + 0.07 * f.rnd, new Color()), 0.5 + 0.5 * f.rnd)),
             ground: new GeometryInstanceAttribute({ componentDatatype: ComponentDatatype.FLOAT, componentsPerAttribute: 1, value: [groundM] }),
+            // the picture's v runs north; tall: the top above the ground, m
+            ...(frame ? { ...frame, fc: vec3([cx - x, 1 - (cy - y), groundM - t.hM]), tall: new GeometryInstanceAttribute({ componentDatatype: ComponentDatatype.FLOAT, componentsPerAttribute: 1, value: [f.heightM] }) } : {}),
           },
         }),
       )
     }
-    if (instances.length === 0) return null
     const lon = (tileLonDeg(x) + tileLonDeg(x + 1)) / 2
     const lat = (tileLatDeg(y) + tileLatDeg(y + 1)) / 2
-    t.hM = sum / instances.length
     Ellipsoid.WGS84.geodeticSurfaceNormalCartographic(Cartographic.fromDegrees(lon, lat), t.up)
     t.upDotBase = Cartesian3.dot(t.up, Cartesian3.fromDegrees(lon, lat, t.hM))
     this.#place(t)
     return new Primitive({
       geometryInstances: instances,
-      appearance: this.#glass ? this.#looks.glass : this.#looks.solid,
+      appearance: this.#look(t),
       modelMatrix: t.model,
       show: this.#shown,
       asynchronous: true,

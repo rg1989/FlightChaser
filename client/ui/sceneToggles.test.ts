@@ -110,7 +110,7 @@ const screen = (root: El): string[] => visible(root).flatMap((e) => {
   return []
 })
 const MAP = ['Map', 'Base map']
-const SCENE = ['3-D scene', '3-D terrain', 'Sun', '3-D buildings', 'See-through']
+const SCENE = ['3-D scene', '3-D terrain', 'Sun', '3-D buildings', 'See-through', 'Textures']
 
 function mount(prefs: ScenePrefs) {
   const root = new El('div')
@@ -127,7 +127,7 @@ function mount(prefs: ScenePrefs) {
   return { root, topo, light, glass, roads, places, mapB, satB, lightB, darkB, theme, view, t, changes, checked, spinner }
 }
 
-test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), 3-D buildings (B), See-through (X), real buttons with a label each; no Weather row (its switch is the Weather panel\'s)', () => {
+test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), 3-D buildings (B), See-through (X), Textures (U), real buttons with a label each; no Weather row (its switch is the Weather panel\'s)', () => {
   const { root, topo, light, glass, roads, places } = mount({ ...DEFAULT_PREFS, topo: true, light: true, glass: false })
   const rows = all(root).filter((e) => e.className === 'fh-scene-row')
   assert.deepEqual(rows.map((r) => text(r.children[1])), [
@@ -137,6 +137,7 @@ test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), 3-
     'SunLReal sun and moon light, day and night',
     '3-D buildingsBBuildings in relief round the aircraft',
     'See-throughXGlassy, so they never hide the aircraft',
+    'TexturesURoofs from the satellite photo, walls with windows',
   ])
   for (const b of [roads, places, topo, light, glass]) {
     assert.equal(b.tag, 'button')
@@ -207,6 +208,21 @@ test('what hangs under a choice is set in under it, in its box: See-through unde
   const under = base.parent!.children[base.parent!.children.indexOf(base) + 1]
   assert.equal(under.className, 'fh-scene-sub')
   assert.deepEqual(under.children, [theme, roads.parent, places.parent])
+})
+
+test('Textures hangs under 3-D buildings too, and is out of use with them off or with the chase on the street map (the roofs are the satellite picture)', () => {
+  const state = (prefs: ScenePrefs): [boolean, string | undefined, string] => {
+    const { root, glass } = mount(prefs)
+    const sw = all(root).find((e) => e.attrs['aria-label'] === 'Textures')!
+    assert.equal(sw.parent!.parent, glass.parent!.parent, 'in the box under 3-D buildings, with See-through')
+    return [sw.disabled, sw.parent!.attrs['aria-disabled'], sw.attrs['aria-checked']]
+  }
+  assert.deepEqual(state(DEFAULT_PREFS), [false, undefined, 'true'])
+  assert.deepEqual(state({ ...DEFAULT_PREFS, buildings: false }), [true, 'true', 'true'])
+  assert.deepEqual(state({ ...DEFAULT_PREFS, mapChase: true }), [true, 'true', 'true'])
+  const { root, changes } = mount(DEFAULT_PREFS)
+  all(root).find((e) => e.attrs['aria-label'] === 'Textures')!.click()
+  assert.deepEqual(changes, [{ ...DEFAULT_PREFS, textures: false }])
 })
 
 test('3-D buildings off: the See-through row keeps its choice but is out of use; on again, it is back', () => {

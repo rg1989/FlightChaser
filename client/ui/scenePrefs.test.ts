@@ -93,7 +93,7 @@ test('glass (see-through buildings): off by default, ?glass=1 or the stored fiel
 })
 
 test('map layers: street map top-down, satellite in the chase, borders and places but no roads over it, no weather; the URL and storage set each', () => {
-  assert.deepEqual(readScenePrefs('', null), { topo: true, light: true, buildings: true, glass: false, mapTop: true, mapChase: false, dark: false, roads: false, places: true, wx: false })
+  assert.deepEqual(readScenePrefs('', null), { topo: true, light: true, buildings: true, glass: false, textures: true, mapTop: true, mapChase: false, dark: false, roads: false, places: true, wx: false })
   const p = readScenePrefs('?mapTop=0&mapChase=1&wx=1', '{"roads":true}')
   assert.deepEqual([p.mapTop, p.mapChase, p.roads, p.wx], [false, true, true, true])
 })
