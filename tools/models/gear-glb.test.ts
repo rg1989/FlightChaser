@@ -5,10 +5,13 @@ import { readFileSync } from 'node:fs'
 import { Cartesian3, Matrix3, Matrix4, Quaternion } from 'cesium'
 import { GLTF_TO_CESIUM, fixMatrix } from '../../client/scene/model.ts'
 import type { ModelManifest } from '../../client/types.ts'
-import { GEAR, allGear, gearFor, rootMatrix } from './gear-glb.ts'
-import { MANIFEST, loadBody } from './light-anchors.ts'
+import { allGear, gearFor, rootMatrix, type GearSpec } from './gear-glb.ts'
+import { loadBody } from './light-anchors.ts'
+import { readManifest, recipeOf } from './packages.ts'
 
-const manifest: ModelManifest = JSON.parse(readFileSync(MANIFEST, 'utf8'))
+const manifest: ModelManifest = readManifest()
+// each source model's gear layout (its recipe.json); a derived model's gear is variants.ts's work
+const GEAR: Record<string, GearSpec> = Object.fromEntries(manifest.models.flatMap((m) => { const r = recipeOf(m.id); return r.base === undefined && r.gear ? [[m.id, r.gear]] : [] }))
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${msg} got ${a}, expected ${b} ± ${tol}`)
 const built = allGear(manifest)
 
@@ -137,7 +140,7 @@ test('the E175 stands on its published gear (Embraer APM-2259): 11.40 m wheelbas
   near(hinge('mainL')[1] - hinge('mainR')[1], 5.2, 1e-9, 'track: neither main moved inboard off the wing')
 })
 
-test('public/models/<id>-gear.glb and the manifest are up to date (regenerate: node tools/models/gear-glb.ts --write)', () => {
+test('public/models/<id>/gear.glb and its model.json are up to date (regenerate: node tools/models/gear-glb.ts --write)', () => {
   for (const { e, bytes, entry } of built) {
     assert.deepEqual(new Uint8Array(readFileSync(new URL(`../../public/${entry.uri}`, import.meta.url))), bytes, e.id)
     assert.deepEqual(e.gear, entry, `${e.id} manifest gear`)

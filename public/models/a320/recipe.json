@@ -1,0 +1,18 @@
+{
+  "stations": {
+    "lengthM": 37.57,
+    "doors": [5.04, 29.53],
+    "cockpit": 3.26,
+    "source": "https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-01/AC_A320_0624.pdf"
+  },
+  "gear": {
+    "noseAftM": 5.1,
+    "wheelbaseM": 12.64,
+    "trackM": 7.59,
+    "mains": 2,
+    "mainTyre": [1.17, 0.43],
+    "noseTyre": [0.76, 0.22],
+    "clearanceM": 0.55,
+    "mainsRetract": "inboard"
+  }
+}

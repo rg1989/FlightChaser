@@ -1,13 +1,11 @@
 // tools/models/profile.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 import type { ModelManifest, ModelProfile } from '../../client/types.ts'
-import { MANIFEST } from './light-anchors.ts'
-import { DOCS, paintMesh, profileLine, profileOf, section, writeProfiles } from './profile.ts'
+import { paintMesh, profileLine, profileOf, section } from './profile.ts'
+import { readManifest, recipeOf } from './packages.ts'
 
-const text = readFileSync(MANIFEST, 'utf8')
-const manifest: ModelManifest = JSON.parse(text)
+const manifest = readManifest()
 const painted = manifest.models.filter((e) => e.paint !== undefined)
 const measured = new Map(painted.map((e) => [e.id, profileOf(e).profile]))
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${msg} got ${a}, expected ${b} ± ${tol}`)
@@ -83,9 +81,9 @@ test('the device, the engines and the doors where the types have them', () => {
   near(b738.winglet![5] - b738.wing[4], 1.8, 0.3, 'the 737-800 winglet stands ~1.8 m over the wing (mesh; real 2.44 m from its lowest point)')
   const b744 = measured.get('b744')!
   assert.ok(b744.engines![1] - b744.engines![0] > 8, 'both 747 engines on the left in the box')
-  for (const [id, d] of Object.entries(DOCS)) {
-    const p = measured.get(id)
-    if (p === undefined || d.doors.length === 0) continue // a derived model not built yet; no doors
+  for (const e of painted) {
+    const [id, d, p] = [e.id, recipeOf(e.id).stations, measured.get(e.id)!]
+    if (d === undefined || d.doors.length === 0 || recipeOf(id).base !== undefined) continue // no doors; a derived model: variants.ts's stations
     assert.equal(p.doors.length, d.doors.length, `${id} doors`)
     const k = d.lengthM === null ? 1 : (p.body[0][0] - p.box[0]) / d.lengthM
     near(p.body[0][0] - p.doors[0], d.doors[0] * k, 0.3, `${id} door 1 from the nose`)
@@ -94,6 +92,5 @@ test('the device, the engines and the doors where the types have them', () => {
 
 test('the manifest carries every painted model\'s profile (regenerate: node tools/models/profile.ts --write)', () => {
   for (const e of painted) assert.deepEqual(e.profile, measured.get(e.id), `${e.id} profile`)
-  assert.equal(writeProfiles(text, measured), text, 'the manifest lines are the writer\'s')
   assert.ok(profileLine(measured.get('a320')!).startsWith('"profile": { "box": ['))
 })

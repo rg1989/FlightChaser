@@ -1,0 +1,9 @@
+{
+  "stations": {
+    "lengthM": null,
+    "doors": [1.65, 2.62],
+    "cockpit": 2.1,
+    "source": "the mesh: the pilot door and the sliding cabin door"
+  },
+  "flags": ["rotor", "finBeacon", "noBellyBeacon", "noWindows"]
+}

@@ -1,0 +1,19 @@
+{
+  "stations": {
+    "lengthM": 70.67,
+    "doors": [9.5, 18.8, 30.61, 40.74, 55.14],
+    "cockpit": 6.3,
+    "source": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/747-400_Rev_F.pdf"
+  },
+  "gear": {
+    "noseAftM": 7.5,
+    "wheelbaseM": 26.9,
+    "trackM": 11,
+    "mains": 4,
+    "mainTyre": [1.24, 0.43],
+    "noseTyre": [1.18, 0.41],
+    "clearanceM": 1.89,
+    "mainsRetract": "inboard",
+    "body": { "aftM": 3, "trackM": 3.8 }
+  }
+}

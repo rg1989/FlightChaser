@@ -9,8 +9,9 @@ import {
   navSector, phaseOf, strobeAt, strobesOn, taxiOn,
 } from './aircraftLights.ts'
 import { fixMatrix } from './model.ts'
+import { readManifest } from '../../tools/models/packages.ts'
 
-const manifest: ModelManifest = JSON.parse(readFileSync(new URL('../../public/models/manifest.json', import.meta.url), 'utf8'))
+const manifest: ModelManifest = readManifest()
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${msg} got ${a}, expected ${b} ± ${tol}`)
 const air = { onGround: false, altFt: 3000, gsKt: 160, damaged: false }
 const ground = (gsKt: number): typeof air => ({ onGround: true, altFt: null as unknown as number, gsKt, damaged: false })

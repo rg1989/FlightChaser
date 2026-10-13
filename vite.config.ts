@@ -2,6 +2,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
+import { readManifest } from './tools/models/packages.ts'
 import { packageIds } from './tools/scenarios/packages.ts'
 
 // Cesium needs its Workers/Assets/Widgets/ThirdParty served as static files at CESIUM_BASE_URL.
@@ -47,11 +48,34 @@ function liveryFiles(): Plugin {
   }
 }
 
+/**
+ * models/manifest.json (the models the app can draw) is the folders under public/models, read each time it is asked
+ * for: a model package dropped in there is drawn after a reload, with no list to edit. A build writes the file.
+ */
+function modelManifest(): Plugin {
+  let dir = 'public/models'
+  const body = (): string => JSON.stringify(readManifest(dir))
+  return {
+    name: 'fh-model-manifest',
+    configResolved: (c) => void (dir = path.join(c.publicDir, 'models')),
+    configureServer(server) {
+      server.middlewares.use('/models/manifest.json', (_req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        res.end(body())
+      })
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'models/manifest.json', source: body() })
+    },
+  }
+}
+
 export default defineConfig({
   define: { CESIUM_BASE_URL: JSON.stringify(`/${cesiumBaseUrl}`) },
   plugins: [
     scenarioIndex(),
     liveryFiles(),
+    modelManifest(),
     viteStaticCopy({
       targets: ['ThirdParty', 'Workers', 'Assets', 'Widgets'].map((d) => ({ src: `${cesiumSource}/${d}`, dest: cesiumBaseUrl, rename: { stripBase: 4 } })),
     }),

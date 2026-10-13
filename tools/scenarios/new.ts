@@ -14,6 +14,7 @@ import { recordingScenario } from '../../client/scenario/fromRecording.ts'
 import { physicsReport } from '../../client/scenario/physics.ts'
 import type { RecordingInfo } from '../../shared/api.ts'
 import { NO_HEX, parseFlightFile, type FileFlight } from '../../shared/flightFile.ts'
+import { readManifest } from '../models/packages.ts'
 import { PACKAGE_ID } from './packages.ts'
 
 const HEARD_S = 5 // a row within this of a point of the file is the file's (q=A); farther, the app's own estimate (q=R)
@@ -99,7 +100,7 @@ if (import.meta.main) {
   const [model, flight] = [opt('--model'), opt('--flight')]
   const [fileName, id] = args
   const root = path.resolve(import.meta.dirname, '../../public')
-  const models = (JSON.parse(readFileSync(path.join(root, 'models/manifest.json'), 'utf8')) as { models: { id: string; name?: string }[] }).models
+  const models = readManifest().models
   try {
     const modelList = `The models:\n${models.map((m) => `  ${m.id}${m.name ? `  ${m.name}` : ''}`).join('\n')}`
     if (fileName === undefined || id === undefined) throw new Error(`usage: node tools/scenarios/new.ts <flight file> <id> --model <model id> [--flight <n>]\n${modelList}`)

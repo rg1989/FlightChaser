@@ -13,9 +13,10 @@ import { ModelPicker } from './modelFor.ts'
 import { placeholderShader } from './placeholder.ts'
 import { BOX_CENTRE, BOX_HALF, MIN_PX, RANGE_NM, Traffic, flightId, hitAt, isOccluded, minScale, shownLabels, nearestInRange, scaleFor, squarePx, trafficHpr, trafficMatrix, trafficRangeNm } from './traffic.ts'
 import type { Box } from './traffic.ts'
+import { readManifest } from '../../tools/models/packages.ts'
 
 const root = new URL('../../', import.meta.url)
-const manifest: ModelManifest = JSON.parse(readFileSync(new URL('public/models/manifest.json', root), 'utf8'))
+const manifest: ModelManifest = readManifest()
 const m = manifest.models.find((x) => x.id === manifest.default)!
 const axes = measureGlb(readFileSync(new URL(`public/${m.uri}`, root)))
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b} ${msg}`)

@@ -7,7 +7,7 @@ import { readGlb, writeGlb } from './glb.ts'
 const file = (name: string): Uint8Array => new Uint8Array(readFileSync(new URL(`../../public/models/${name}`, import.meta.url)))
 
 test('readGlb → writeGlb → readGlb keeps the mesh, the nodes and the asset notice', () => {
-  const a = readGlb(file('a320.glb'))
+  const a = readGlb(file('a320/model.glb'))
   assert.equal(a.pos.length, 3 * 9388)
   assert.equal(a.idx.length % 3, 0)
   const b = readGlb(writeGlb(a))
@@ -21,7 +21,7 @@ test('readGlb → writeGlb → readGlb keeps the mesh, the nodes and the asset n
 })
 
 test('writeGlb: POSITION min/max, normalised colours, 4-byte chunks, 16-bit indices while they fit, else 32-bit', () => {
-  const a = readGlb(file('b738.glb'))
+  const a = readGlb(file('b738/model.glb'))
   const out = writeGlb(a)
   const dv = new DataView(out.buffer)
   assert.equal(dv.getUint32(8, true), out.length)
@@ -45,5 +45,5 @@ test('writeGlb: POSITION min/max, normalised colours, 4-byte chunks, 16-bit indi
 
 test('readGlb refuses what the writer cannot keep: not a GLB, several meshes', () => {
   assert.throws(() => readGlb(new TextEncoder().encode('{"asset":{}}')), /GLB/)
-  assert.throws(() => readGlb(file('Cesium_Air.glb')), /one mesh/)
+  assert.throws(() => readGlb(file('cesium-air/model.glb')), /one mesh/)
 })

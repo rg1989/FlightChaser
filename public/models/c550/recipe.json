@@ -1,0 +1,20 @@
+{
+  "stations": {
+    "lengthM": 14.39,
+    "doors": [4.5],
+    "cockpit": 3.1,
+    "source": "https://www.the-blueprints.com/vectordrawings/show/4741/cessna_citation_ii_model_550/"
+  },
+  "gear": {
+    "noseAftM": 2.2,
+    "wheelbaseM": 5.4,
+    "trackM": 3.6,
+    "mains": 1,
+    "mainTyre": [0.56, 0.15],
+    "noseTyre": [0.46, 0.11],
+    "noseWheels": 1,
+    "clearanceM": 0.35,
+    "mainsRetract": "inboard"
+  },
+  "flags": ["finBeacon"]
+}

@@ -1,14 +1,15 @@
 // tools/models/variants.ts
-// Builds derived type models from a base model by recipe (tools/models/variants.json): a new wingtip device and bigger
-// engine nacelles on the same airframe (A320neo and A321neo sharklets and neo nacelles, the 737 MAX's AT winglets and
-// LEAP-1B nacelles). Writes public/models/<id>.glb and its manifest entry (the base's, with the new id, name, uri, types,
-// box, lights, outline, engine region and profile; the types move from the base's entry).
+// Builds derived type models from a base model by recipe (public/models/<id>/recipe.json with a `base`): a new wingtip
+// device and bigger engine nacelles on the same airframe (A320neo and A321neo sharklets and neo nacelles, the 737 MAX's
+// AT winglets and LEAP-1B nacelles), a longer or shorter fuselage (fuselage.ts). Writes the package public/models/<id>/:
+// model.glb, gear.glb and model.json (the base's, with the new id, name, uri, types, box, lights, outline, engine region
+// and profile). The recipe's types come off the other packages' lists.
 //
-//   node tools/models/variants.ts                build every recipe (GLB + manifest entry)
+//   node tools/models/variants.ts [id…]          build these recipes, or every one (a base before what is derived from it)
 //   node tools/models/variants.ts --png <dir>    also render each result (render.py): whole views and close-ups
 //
 // Frames: the ops work in the paint frame (profile.ts: +x left wing, +y up, +z nose), metres, on the left side, and
-// mirror to the right. The recipe's sizes are the real aircraft's (sources in variants.json), used as mesh metres (the
+// mirror to the right. The recipe's sizes are the real aircraft's (its `sources`), used as mesh metres (the
 // base meshes are within 2 % of true size).
 //
 // wingtip: removes the base's own device (winglet or fence parts by the tip) and cuts the base wing at the blend start
@@ -18,16 +19,18 @@
 // a lower blade from under the tip. Closed, smooth-shaded (normals from the loft's faces), the wing's COLOR_0 shade.
 // nacelle: scales each nacelle's parts (profile.ts engineParts) about its axis, from the inlet lip aft, and moves them
 // forward and up; its pylon follows by height (the nacelle's top all the way, the wing's underside not at all).
-import { readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import { measureGlb } from '../../client/scene/model.ts'
 import type { ModelManifest, ModelManifestEntry, ModelProfile } from '../../client/types.ts'
 import { readGlb, writeGlb, type Glb } from './glb.ts'
-import { MANIFEST, lightsFor, lightsLine, type Mesh } from './light-anchors.ts'
-import { outlineFor, outlineLine } from './outline.ts'
-import { engineParts, partBoxes, parts, profileLine, profileOf, section } from './profile.ts'
+import { gearEntry, gearFor, glb as gearGlb, rootMatrix, type GearSpec } from './gear-glb.ts'
+import { lightsFor, loadBody, type Mesh } from './light-anchors.ts'
+import { outlineFor } from './outline.ts'
+import { MODELS, fileOf, readManifest, recipeOf, writeModel, type Recipe as PackageRecipe, type Stations } from './packages.ts'
+import { engineParts, partBoxes, parts, profileOf, section } from './profile.ts'
 
 type V3 = [number, number, number]
 
@@ -58,21 +61,21 @@ export interface NacelleOp {
   upM: number
 }
 
-export interface Recipe {
-  base: string
-  name: string
-  types: string[]
-  date: string
-  wingtip?: Wingtip
-  nacelle?: NacelleOp
-}
+/** A derived model's recipe.json: a recipe with a base, a name and types. */
+export type Recipe = PackageRecipe & { base: string; name: string; types: string[]; date: string }
 
-export const RECIPES = fileURLToPath(new URL('./variants.json', import.meta.url))
 const PUBLIC = fileURLToPath(new URL('../../public/', import.meta.url))
 
+/** Every recipe with a base, by package id (a folder with only its recipe.json counts: it is not built yet). */
 export function recipes(): Record<string, Recipe> {
-  const all = JSON.parse(readFileSync(RECIPES, 'utf8'))
-  return Object.fromEntries(Object.entries(all).filter(([k]) => !k.startsWith('_'))) as Record<string, Recipe>
+  const ids = readdirSync(MODELS, { withFileTypes: true }).filter((d) => d.isDirectory() && existsSync(fileOf(d.name, 'recipe.json'))).map((d) => d.name).sort()
+  return Object.fromEntries(ids.map((id) => [id, recipeOf(id)] as const).filter(([, r]) => r.base !== undefined)) as Record<string, Recipe>
+}
+
+/** A recipe's own setting, else the nearest one up its chain of bases. */
+function nearest<K extends 'stations' | 'gear'>(id: string, key: K): PackageRecipe[K] {
+  const r = recipeOf(id)
+  return r[key] ?? (r.base === undefined ? undefined : nearest(r.base, key))
 }
 
 // ---------- the working mesh: paint frame, growable ----------
@@ -541,8 +544,15 @@ export function applyNacelle(w: Work, op: NacelleOp, e: ModelManifestEntry): { w
 
 const cm = (x: number): number => Math.round(x * 100) / 100 + 0
 
-/** Builds a recipe: the GLB bytes, and its manifest entry (profile, lights and outline measured on the new mesh). */
-export function build(id: string, r: Recipe, manifest: ModelManifest): { bytes: Uint8Array; entry: ModelManifestEntry } {
+export interface Built {
+  bytes: Uint8Array
+  entry: ModelManifestEntry // without what is measured on the written mesh: lights, outline, profile (measure())
+  stations: Stations | undefined // the doors and the cockpit windows on the new airframe
+  gear: GearSpec | undefined // a gear of its own to build; undefined: its base's gear as it is
+}
+
+/** Builds a recipe: the GLB bytes and its model.json entry. */
+export function build(id: string, r: Recipe, manifest: ModelManifest): Built {
   const base = manifest.models.find((m) => m.id === r.base)
   if (base === undefined || base.paint === undefined) throw new Error(`${id}: no painted base ${r.base}`)
   const glb = readGlb(readFileSync(join(PUBLIC, base.uri)))
@@ -562,78 +572,64 @@ export function build(id: string, r: Recipe, manifest: ModelManifest): { bytes: 
   out.json.asset = {
     ...out.json.asset,
     generator: `${glb.json.asset?.generator ?? 'unknown'}; FlightHopper tools/models/variants.ts`,
-    copyright: `${licence}, derived from ${base.uri.replace('models/', '')} (${base.author}); ${note} ${r.date}: recipe ${id} in tools/models/variants.json`,
+    copyright: `${licence}, derived from ${base.id}/model.glb (${base.author}); ${note} ${r.date}: public/models/${id}/recipe.json`,
   }
   out.json.nodes[0].name = id
   out.json.meshes[0].name = id
   const bytes = writeGlb(out)
   const entry: ModelManifestEntry = {
-    ...structuredClone(base), id, uri: `models/${id}.glb`, author: `${base.author}; ${note}`, source: `${base.source}; ${note}, recipe ${id} in tools/models/variants.json`,
+    ...structuredClone(base), id, uri: `models/${id}/model.glb`, author: `${base.author}; ${note}`, source: `${base.source}; ${note}, public/models/${id}/recipe.json`,
     name: r.name, types: [...r.types], paint,
   }
+  if (entry.gear) entry.gear.uri = `models/${id}/gear.glb`
   delete entry.standIns // a model made for its types stands in for nothing
   delete entry.profile
   delete entry.lights
   delete entry.outline
   const axes = measureGlb(bytes)
   entry.box = { centre: [cm(axes.centre.x), cm(axes.centre.y), cm(axes.centre.z)], half: Math.ceil(108 * Math.max(axes.spanM, axes.lengthM) / 2) / 100 }
-  return { bytes, entry }
+  return { bytes, entry, stations: r.stations ?? nearest(r.base, 'stations'), gear: r.gear }
 }
 
-/** The lines of the manifest entry with this id, [first, last] (its "    {" and "    }" lines), or null. */
-function blockOf(lines: string[], id: string): [number, number] | null {
-  const at = lines.findIndex((l) => l.includes(`"id": "${id}"`))
-  if (at < 0) return null
-  return [lines.findLastIndex((l, i) => i < at && /^ {4}\{/.test(l)), lines.findIndex((l, i) => i > at && /^ {4}\}/.test(l))]
+/** What is measured on a built variant's mesh (its model.glb is on disk): the lights, the outline, the profile; and its own gear. */
+export function measure(b: Built): { entry: ModelManifestEntry; gear: Uint8Array | null } {
+  const entry = structuredClone(b.entry)
+  let gear: Uint8Array | null = null
+  if (b.gear !== undefined) {
+    const g = gearFor(entry, b.gear, loadBody(entry))
+    gear = gearGlb(g.legs, rootMatrix(entry))
+    entry.gear = gearEntry(entry.id, g)
+    entry.gearHeightM = entry.gear.heightM
+  }
+  entry.lights = lightsFor(entry)
+  entry.outline = outlineFor(entry)
+  entry.profile = profileOf(entry, undefined, b.stations).profile
+  return { entry, gear }
 }
 
-/** A value on one line in the manifest's style: `{ "a": [1, 2], "b": 3 }`. */
-export function inline(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(inline).join(', ')}]`
-  if (v !== null && typeof v === 'object') return `{ ${Object.entries(v).map(([k, x]) => `${JSON.stringify(k)}: ${inline(x)}`).join(', ')} }`
-  return JSON.stringify(v)
+/** Builds a recipe's package: model.glb, gear.glb (its own, or a copy of its base's), model.json. */
+export function writePackage(id: string, r: Recipe, manifest: ModelManifest): ModelManifestEntry {
+  const built = build(id, r, manifest)
+  mkdirSync(join(MODELS, id), { recursive: true })
+  writeFileSync(fileOf(id, 'model.glb'), built.bytes)
+  const { entry, gear } = measure(built)
+  if (gear !== null) writeFileSync(fileOf(id, 'gear.glb'), gear)
+  else if (entry.gear) copyFileSync(fileOf(r.base, 'gear.glb'), fileOf(id, 'gear.glb'))
+  writeModel(entry)
+  return entry
 }
 
 /**
- * The manifest text with the variant's entry: the base's lines with the variant's id, name, uri, author, source, types, box,
- * lights, outline, engine region and profile, without the base's stand-ins; after the base's entry (or in place of its
- * own). Its types come off every other entry, the types they stood in for too: a model of its own ends a stand-in.
+ * A model made for a designator ends another model's claim to it: the entries that listed one of `types` (as their own
+ * family's, or as a stand-in), without it. The picker would choose the new model anyway (modelFor.ts); this keeps the lists true.
  */
-export function withEntry(text: string, e: ModelManifestEntry, baseId: string): string {
-  let lines = text.split('\n')
-  const [bs, be] = blockOf(lines, baseId)!
-  const block = lines.slice(bs, be + 1)
-  const set = (key: string, value: string): void => {
-    const k = block.findIndex((l) => l.trimStart().startsWith(`"${key}":`))
-    if (k < 0) throw new Error(`${baseId}: no "${key}" line to copy`)
-    block[k] = block[k].replace(new RegExp(`"${key}": .*?(,?)$`), (_m, comma: string) => `"${key}": ${value}${comma}`)
-  }
-  set('id', JSON.stringify(e.id))
-  set('name', JSON.stringify(e.name))
-  const standIns = block.findIndex((l) => l.trimStart().startsWith('"standIns":'))
-  if (standIns >= 0) block.splice(standIns, 1)
-  set('uri', JSON.stringify(e.uri))
-  set('author', JSON.stringify(e.author))
-  set('source', JSON.stringify(e.source))
-  set('types', inline(e.types))
-  set('box', inline(e.box))
-  set('lights', lightsLine(e.lights!).replace(/^"lights": /, ''))
-  set('outline', outlineLine(e.outline!).replace(/^"outline": /, ''))
-  set('profile', profileLine(e.profile!).replace(/^"profile": /, ''))
-  const paintAt = block.findIndex((l) => l.trimStart().startsWith('"paint": {'))
-  const ei = block.findIndex((l, i) => i > paintAt && l.includes('"engines": ['))
-  block[ei] = block[ei].replace(/"engines": \[[^\]]*\]/, `"engines": ${inline(e.paint!.engines)}`)
-  const old = blockOf(lines, e.id)
-  if (old !== null) lines.splice(old[0], old[1] - old[0] + 1, ...block)
-  else lines.splice(be + 1, 0, ...block)
-  // commas: every entry's closing line but the last one's
-  const ends = lines.flatMap((l, i) => (/^ {4}\},?$/.test(l) ? [i] : []))
-  for (const [k, i] of ends.entries()) lines[i] = k === ends.length - 1 ? '    }' : '    },'
-  // the types move: off every other entry, whether it was their model or stood in for them
-  const own = blockOf(lines, e.id)!
-  lines = lines.map((l, i) => (i >= own[0] && i <= own[1]) || !/^"(?:types|standIns)":/.test(l.trimStart()) ? l
-    : l.replace(/\[([^\]]*)\]/, (_m, list: string) => inline(list.split(',').map((t) => JSON.parse(t.trim())).filter((t: string) => !(e.types ?? []).includes(t)))))
-  return lines.join('\n')
+export function withoutTypes(models: ModelManifestEntry[], id: string, types: string[]): ModelManifestEntry[] {
+  return models.flatMap((m) => {
+    if (m.id === id) return []
+    const keep = (list: string[] | undefined): string[] | undefined => list?.filter((t) => !types.includes(t))
+    const [own, standIns] = [keep(m.types), keep(m.standIns)]
+    return own?.length === m.types?.length && standIns?.length === m.standIns?.length ? [] : [{ ...m, types: own, standIns }]
+  })
 }
 
 const RENDER = fileURLToPath(new URL('./render.py', import.meta.url))
@@ -670,18 +666,17 @@ export function variantPng(e: ModelManifestEntry, dir: string): string {
 if (import.meta.main) {
   const png = process.argv.indexOf('--png')
   const dir = png >= 0 ? process.argv[png + 1] : null
-  for (const [id, r] of Object.entries(recipes())) {
-    let text = readFileSync(MANIFEST, 'utf8')
-    const manifest: ModelManifest = JSON.parse(text)
-    const { bytes, entry } = build(id, r, manifest)
-    writeFileSync(join(PUBLIC, entry.uri), bytes)
-    entry.lights = lightsFor(entry)
-    entry.outline = outlineFor(entry)
-    entry.profile = profileOf(entry).profile
-    text = withEntry(text, entry, r.base)
-    writeFileSync(MANIFEST, text)
-    JSON.parse(readFileSync(MANIFEST, 'utf8')) // still JSON
-    console.log(`${id}: ${entry.uri} (${bytes.length} B), types ${(entry.types ?? []).join(' ')}; box ${JSON.stringify(entry.box)}`)
+  const ids = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--png')
+  const all = recipes()
+  for (const id of ids) if (!(id in all)) throw new Error(`no recipe with a base in public/models/${id}/recipe.json`)
+  const todo = new Set(ids.length > 0 ? ids : Object.keys(all))
+  while (todo.size > 0) {
+    const id = [...todo].find((k) => !todo.has(all[k].base)) // a base before what is derived from it
+    if (id === undefined) throw new Error(`recipes that are each other's base: ${[...todo].join(', ')}`)
+    todo.delete(id)
+    const entry = writePackage(id, all[id], readManifest())
+    for (const m of withoutTypes(readManifest().models, id, entry.types ?? [])) writeModel(m)
+    console.log(`${id}: ${entry.uri}, types ${(entry.types ?? []).join(' ')}; box ${JSON.stringify(entry.box)}`)
     if (dir !== null) console.log(`  ${variantPng(entry, dir)}`)
   }
 }

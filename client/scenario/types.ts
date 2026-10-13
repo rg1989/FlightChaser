@@ -75,7 +75,7 @@ export interface AircraftSpec {
   type: string
   callsign: string
   operator: string
-  model: string // id in public/models/manifest.json
+  model: string // a model package's id: the folder public/models/<id>/
   shape?: { halfSpanM?: number }
   livery?: LiverySpec
 }

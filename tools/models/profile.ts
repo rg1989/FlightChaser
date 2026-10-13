@@ -26,17 +26,18 @@
 //   it; the tip, the outermost vertex at the wing's own level (its upper surface, fitted outboard of the engines); the
 //   device: whole triangles near the tip reaching above (or well below) that level.
 // - engines: every left nacelle and its pylon (engineParts); stab: the flat parts by the fin reaching out past it.
-// - doors (left passenger doors) and cockpit (the aft edge of the cockpit side windows): published stations (DOCS)
+// - doors (left passenger doors) and cockpit (the aft edge of the cockpit side windows): published stations (the package's recipe.json: stations)
 //   scaled to the mesh's length. The meshes model neither reliably, and their COLOR_0 is a shade from the normals
 //   (0.55…1), not dark at the windows.
 // - A helicopter (ROTOR): its rotor (above the cabin and cowling) and skids (below the cabin) are left out of the body;
 //   it has no wing: its `wing` is the rotor mast's station on the body top, with no chord or span.
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { ModelManifest, ModelManifestEntry, ModelProfile, Paint } from '../../client/types.ts'
-import { MANIFEST, loadBody, type Mesh } from './light-anchors.ts'
+import type { ModelManifestEntry, ModelProfile, Paint } from '../../client/types.ts'
+import { loadBody, type Mesh } from './light-anchors.ts'
+import { asked, flagged, readManifest, recipeOf, writeModel, type Stations } from './packages.ts'
 
 type Seg = number[] // flat [u0, v0, u1, v1, …]
 
@@ -221,54 +222,7 @@ function simplify(pts: Array<[number, number]>, tol: number): Array<[number, num
   return far <= tol ? [a, b] : [...simplify(pts.slice(0, at + 1), tol).slice(0, -1), ...simplify(pts.slice(at), tol)]
 }
 
-/** Helicopters: no wing (see rotorWing). */
-const ROTOR = new Set(['ec135'])
-
 const cm = (x: number): number => Math.round(x * 100) / 100 + 0 // + 0: no −0 in the JSON
-
-/**
- * Published door and cockpit stations, metres aft of the nose tip, and the length they were measured on (the
- * document's overall length): scaled onto the mesh's own length (null: read off the mesh itself). Doors: the left passenger (and service) doors' centre
- * lines, nose → tail; overwing window exits are not doors. Cockpit: the aft edge of the side windows.
- */
-export const DOCS: Record<string, { lengthM: number | null; doors: number[]; cockpit: number; source: string }> = {
-  // Airbus AC A320 (2025-01) §2-2 door location (PDF p.74), cockpit off the side view (PDF p.42)
-  a320: { lengthM: 37.57, doors: [5.04, 29.53], cockpit: 3.26, source: 'https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-01/AC_A320_0624.pdf' },
-  // the A320neo: the A320's doors and nose (the same AC document)
-  a20n: { lengthM: 37.57, doors: [5.04, 29.53], cockpit: 3.26, source: 'https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-01/AC_A320_0624.pdf' },
-  // Airbus AC A321 (2023-12) PDF p.87: L1, L2 and L3 (the emergency-exit doors either side of the wing), L4; nose as the A320
-  a321: { lengthM: 44.51, doors: [5.02, 13.84, 24.79, 36.58], cockpit: 3.26, source: 'https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2023-12/ac_a321_1223.pdf' },
-  // the same, PDF p.89: the A321neo Airbus Cabin Flex (the Wizz Air layout): L1, L3 moved aft, L4; overwing exits instead of L2
-  a21n: { lengthM: 44.51, doors: [5.04, 26.82, 36.47], cockpit: 3.26, source: 'https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2023-12/ac_a321_1223.pdf' },
-  // Boeing D6-58325-7 Rev C (737NG) §2.7.1, figure 2-14
-  b738: { lengthM: 39.47, doors: [5.03, 31.88], cockpit: 2.92, source: 'https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737NG_REV_C.pdf' },
-  // Boeing D6-38A004 Rev H (737 MAX) §2.7.1: the MAX 8's doors where the 737-800's are
-  b38m: { lengthM: 39.52, doors: [5.03, 31.88], cockpit: 2.92, source: 'https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737MAX_RevH.pdf' },
-  // Boeing 777-200LR/-300ER/F Rev G §2.7.1, figure 2-4 (the -300ER: the -300's fuselage)
-  b773: { lengthM: 73.86, doors: [6.74, 17.07, 32.92, 46.46, 59.87], cockpit: 2.98, source: 'https://www.boeing.com/content/dam/boeing/v2/airports/acaps/777-200LR-300ER-F_Rev_G.pdf' },
-  // Boeing 787 §2.7.1, figure 2-6 (the 787-9)
-  b789: { lengthM: 62.81, doors: [6.3, 18.36, 35.43, 49.66], cockpit: 3.46, source: 'https://www.boeing.com/content/dam/boeing/v2/airports/acaps/787.pdf' },
-  // Airbus AC A330 (2025-12) PDF p.119, p.60 (the -300)
-  a333: { lengthM: 63.67, doors: [5.85, 17.74, 35.96, 50.96], cockpit: 3.22, source: 'https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-12/AC_A330_20251201.pdf' },
-  // Airbus AC A350 (2025-07) PDF p.108, p.50 (the -900)
-  a359: { lengthM: 66.8, doors: [6.82, 18.86, 37.93, 52.55], cockpit: 3.69, source: 'https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-07/AC_A350_20250715.pdf' },
-  // Boeing 747-400 Rev F §2.7.1, figure 2-14: the main deck doors; the flight deck on the upper deck
-  b744: { lengthM: 70.67, doors: [9.5, 18.8, 30.61, 40.74, 55.14], cockpit: 6.3, source: 'https://www.boeing.com/content/dam/boeing/v2/airports/acaps/747-400_Rev_F.pdf' },
-  // Embraer 175 APM figure 2.3 (via NTSB docket DCA20IA014): L1 at 5.18; the aft door's front edge 23.04, its centre estimated
-  e75l: { lengthM: 31.68, doors: [5.18, 23.45], cockpit: 3.26, source: 'https://data.ntsb.gov/Docket/Document/docBLOB?ID=13691419&FileExtension=pdf&FileName=DCA20IA014+Attachment+2+-+Embraer+175+Airport+Planning+Manual-Rel.pdf' },
-  // Embraer 190 APM (a mirror; Embraer's link is gone) PDF p.30, p.33: the aft door's centre estimated from its front edge
-  e190: { lengthM: 36.24, doors: [5.18, 28.0], cockpit: 3.26, source: 'https://s3728f283e85acd32.jimcontent.com/download/version/1613653381/module/9054823520/name/Embraer%20190%20Airport%20Planning%20Manual.pdf' },
-  // Bombardier CRJ900 APM figure 4 (PDF p.38): one passenger door, off the drawing
-  crj9: { lengthM: 36.24, doors: [4.71], cockpit: 3.84, source: 'https://customer.aero.bombardier.com/webd/BAG/CustSite/BRAD/RACSDocument.nsf/51aae8b2b3bfdf6685256c300045ff31/ec63f8639ff3ab9d85257c1500635bd8/$FILE/ATTQF1EY.pdf/CRJ900APMR11.pdf' },
-  // ATR 72-600 fact sheet side view: the passenger door is aft on the left (the forward left door is the cargo door)
-  at75: { lengthM: 27.17, doors: [19.7], cockpit: 2.6, source: 'https://skybrary.aero/sites/default/files/bookshelf/3696.pdf' },
-  // a Citation II three-view (estimate, ±0.2 m); cockpit off the mesh's own windows
-  c550: { lengthM: 14.39, doors: [4.5], cockpit: 3.1, source: 'https://www.the-blueprints.com/vectordrawings/show/4741/cessna_citation_ii_model_550/' },
-  // lengthM null: read off the mesh's own side view (its modelled door and windows), metres aft of its nose tip
-  c182: { lengthM: null, doors: [2.85], cockpit: 3.2, source: 'the mesh: the cabin door and its window' },
-  ec135: { lengthM: null, doors: [1.65, 2.62], cockpit: 2.1, source: 'the mesh: the pilot door and the sliding cabin door' },
-  'cesium-air': { lengthM: null, doors: [], cockpit: 2.5, source: 'estimate: 1 m behind the windscreen top (the windows are texture only)' },
-}
 
 /** A left engine's parts (ids from parts()): the nacelle (cowl, fan, cone, nozzle) and its pylon, and their box. */
 export interface EngineParts {
@@ -330,7 +284,7 @@ export interface Measured {
 }
 
 /** e's profile, measured on its paint-frame mesh m. */
-export function profileOf(e: ModelManifestEntry, m: Mesh = paintMesh(e)): Measured {
+export function profileOf(e: ModelManifestEntry, m: Mesh = paintMesh(e), doc: Stations | undefined = recipeOf(e.id).stations): Measured {
   const P = e.paint
   if (P === undefined) throw new Error(`${e.id}: no paint map (its fuselage width and fin are needed)`)
   const hw = P.bodyHalfWidth
@@ -358,7 +312,7 @@ export function profileOf(e: ModelManifestEntry, m: Mesh = paintMesh(e)): Measur
     if (engines !== null && Math.min(Math.abs(b[0]), Math.abs(b[1])) >= engines[0] - 0.1 && Math.max(Math.abs(b[0]), Math.abs(b[1])) <= engines[1] + 0.1 &&
       b[2] >= engines[4] - 0.1 && b[3] <= engines[5] + 0.1 && b[4] >= engines[2] - 0.1 && b[5] <= engines[3] + 0.1) spans.add(k)
   }
-  if (ROTOR.has(e.id)) { // and the rotor above the cabin and cowling (the two biggest parts), the skids below the cabin
+  if (flagged(e.id, 'rotor')) { // and the rotor above the cabin and cowling (the two biggest parts), the skids below the cabin
     const big = [...boxes.values()].sort((a, b) => b.n - a.n).slice(0, 2).map((b) => b.box)
     const [floor, roof] = [big[0][2], Math.max(big[0][3], big[1][3])]
     for (const [k, { box: b }] of boxes) if (b[2] > roof - 0.05 || b[3] < floor + 0.1) spans.add(k)
@@ -518,15 +472,15 @@ export function profileOf(e: ModelManifestEntry, m: Mesh = paintMesh(e)): Measur
     fin,
     finRoot: [cm(yRoot), cm(leLine(yRoot)), cm(teLine(yRoot))],
     finTip: [cm(tipEdge.y), cm(leLine(tipEdge.y)), cm(teLine(tipEdge.y))],
-    wing: ROTOR.has(e.id) ? rotorWing() : [cm(rootLe), cm(rootTe), cm(r1.y), cm(tipX), cm(tipY)],
+    wing: flagged(e.id, 'rotor') ? rotorWing() : [cm(rootLe), cm(rootTe), cm(r1.y), cm(tipX), cm(tipY)],
     engines,
     winglet,
     stab,
     doors: [],
     cockpit: cm(nose[0]),
   }
-  const doc = DOCS[e.id]
-  if (doc !== undefined) {
+  if (doc !== undefined) { // the published stations, scaled onto the mesh's own length
+
     const k = doc.lengthM === null ? 1 : (zMax - zMin) / doc.lengthM
     profile.doors = doc.doors.map((d) => cm(nose[0] - k * d))
     profile.cockpit = cm(nose[0] - k * doc.cockpit)
@@ -540,23 +494,6 @@ export function profileLine(p: ModelProfile): string {
   return `"profile": { "box": ${a(p.box)}, "body": [${p.body.map(a).join(', ')}], "fin": [${p.fin.map(a).join(', ')}], ` +
     `"finRoot": ${a(p.finRoot)}, "finTip": ${a(p.finTip)}, "wing": ${a(p.wing)}, "engines": ${a(p.engines)}, ` +
     `"winglet": ${a(p.winglet)}, "stab": ${a(p.stab)}, "doors": ${a(p.doors)}, "cockpit": ${p.cockpit} }`
-}
-
-/** Replaces (or adds, after "lights") each listed model's profile line in the manifest text. */
-export function writeProfiles(text: string, profiles: Map<string, ModelProfile>): string {
-  const lines = text.split('\n')
-  for (const [id, p] of profiles) {
-    const at = lines.findIndex((l) => l.includes(`"id": "${id}"`))
-    const end = lines.findIndex((l, i) => i > at && /^ {4}\}/.test(l))
-    const line = profileLine(p)
-    const old = lines.findIndex((l, i) => i > at && i < end && l.trim().startsWith('"profile"'))
-    if (old >= 0) lines[old] = lines[old].replace(/"profile".*?(,?)$/, `${line}$1`)
-    else {
-      const after = lines.findLastIndex((l, i) => i > at && i < end && /^ {6}"(lights|box|scale|gearHeightM)"/.test(l))
-      lines.splice(after + 1, 0, `      ${line},`)
-    }
-  }
-  return lines.join('\n')
 }
 
 const RENDER = fileURLToPath(new URL('./render.py', import.meta.url))
@@ -624,15 +561,11 @@ export function profilePng(e: ModelManifestEntry, r: Measured, dir: string): str
 }
 
 if (import.meta.main) {
-  const text = readFileSync(MANIFEST, 'utf8')
-  const manifest: ModelManifest = JSON.parse(text)
   const png = process.argv.indexOf('--png')
   const dir = png >= 0 ? process.argv[png + 1] : null
   if (dir !== null) mkdirSync(dir, { recursive: true })
-  const only = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--png')
-  const found = new Map<string, ModelProfile>()
-  for (const e of manifest.models) {
-    if (e.paint === undefined || (only.length > 0 && !only.includes(e.id))) continue
+  for (const e of asked(readManifest(), process.argv.slice(2).filter((a, i, all) => all[i - 1] !== '--png'))) {
+    if (e.paint === undefined) continue
     let r: Measured
     try {
       r = profileOf(e)
@@ -641,13 +574,10 @@ if (import.meta.main) {
       process.exitCode = 1
       continue
     }
-    found.set(e.id, r.profile)
     console.log(`${e.id}: ${profileLine(r.profile).slice(0, 400)}…`)
     if (dir !== null) console.log(`  ${profilePng(e, r, dir)}`)
-  }
-  if (process.argv.includes('--write')) {
-    writeFileSync(MANIFEST, writeProfiles(text, found))
-    JSON.parse(readFileSync(MANIFEST, 'utf8')) // still JSON
-    console.log(`wrote ${MANIFEST}`)
+    if (!process.argv.includes('--write')) continue
+    e.profile = r.profile
+    writeModel(e)
   }
 }

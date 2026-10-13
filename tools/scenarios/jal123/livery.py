@@ -13,7 +13,7 @@ After writing, the script checks both images against the placements it printed a
 --check re-measures the model, prints every placement and checks the images already written, without writing.
 
 The body-wrap contract (shared with paintShaderText() in client/scene/livery.ts; b744 Paint.body in
-public/models/manifest.json = [zNose 35.5, zTail -35.5, yBottom -8.7, yTop -0.5], the paint's turned frame: x = the
+public/models/b744/model.json = [zNose 35.5, zTail -35.5, yBottom -8.7, yTop -0.5], the paint's turned frame: x = the
 aircraft's left, y up, z nose-forward, unscaled metres):
   column 0 = zNose, column 4095 = zTail                  u = (zNose - z) / (zNose - zTail)
   rows 0-511 = the LEFT side (turned +x), rows 512-1023 = the RIGHT side; inside a half the first row is yTop and
@@ -26,7 +26,7 @@ or doors in the mesh). Every mark is placed on the real aircraft's body stations
 nose is BS 90) and on heights above the main-deck floor, then mapped onto the mesh:
   z(BS) = nose tip z - (BS - 90) * k,  k = (nose tip z - tail cone end z) / (2792 - 90)     (tail cone end: BS 2792)
   y(h)  = floor y + h * s,  floor y = belly + 0.40 * (crown - belly),  s = (crown - belly) / 6.97 m
-The nose tip, tail cone end, belly and main crown are measured from public/models/b744.glb below.
+The nose tip, tail cone end, belly and main crown are measured from public/models/b744/model.glb below.
 
 Sources (R05 = AAIC 1987 report part 5 figures, https://jtsb.mlit.go.jp/aircraft/download/62-2-JA8119-05.pdf):
   S1  R05 p.140 付図-4, 747SR-100 three-view: floor line at 0.40 of the body height above the keel (side view), body
@@ -53,8 +53,8 @@ from pathlib import Path
 from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 ROOT = Path(__file__).resolve().parents[3]
-MANIFEST = ROOT / 'public/models/manifest.json'
-GLB = ROOT / 'public/models/b744.glb'
+MODEL = ROOT / 'public/models/b744/model.json'
+GLB = ROOT / 'public/models/b744/model.glb'
 BODY_PNG = ROOT / 'public/scenarios/jal123/livery/body.png'
 FIN_PNG = ROOT / 'public/scenarios/jal123/local/fin.png'
 
@@ -476,7 +476,7 @@ def main():
     ap.add_argument('--check', action='store_true', help='print the placements and check the written images, write nothing')
     a = ap.parse_args()
 
-    paint = next(m for m in json.loads(MANIFEST.read_text())['models'] if m['id'] == 'b744')['paint']
+    paint = json.loads(MODEL.read_text())['paint']
     if tuple(paint['body']) != BOX:
         raise SystemExit(f'b744 Paint.body is {paint["body"]}, the wrap contract says {list(BOX)}')
     m = measure(read_glb(GLB))

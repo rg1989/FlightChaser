@@ -1,0 +1,18 @@
+{
+  "stations": {
+    "lengthM": 31.68,
+    "doors": [5.18, 23.45],
+    "cockpit": 3.26,
+    "source": "https://data.ntsb.gov/Docket/Document/docBLOB?ID=13691419&FileExtension=pdf&FileName=DCA20IA014+Attachment+2+-+Embraer+175+Airport+Planning+Manual-Rel.pdf"
+  },
+  "gear": {
+    "noseAftM": 3.7,
+    "wheelbaseM": 11.4,
+    "trackM": 5.2,
+    "mains": 2,
+    "mainTyre": [0.97, 0.33],
+    "noseTyre": [0.61, 0.2],
+    "clearanceM": 0.6,
+    "mainsRetract": "inboard"
+  }
+}

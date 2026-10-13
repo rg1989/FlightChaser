@@ -1,0 +1,9 @@
+{
+  "stations": {
+    "lengthM": null,
+    "doors": [],
+    "cockpit": 2.5,
+    "source": "estimate: 1 m behind the windscreen top (the windows are texture only)"
+  },
+  "flags": ["noWindows"]
+}

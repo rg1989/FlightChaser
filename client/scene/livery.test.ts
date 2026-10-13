@@ -8,9 +8,10 @@ import { drawDesign, profileOf } from '../livery/kit.ts'
 import type { Op } from '../livery/kit.ts'
 import type { ModelManifest, ModelManifestEntry } from '../types.ts'
 import { liveryCode, MILITARY, liveryFromSpec, liveryOf, LiveryShaders, paintShaderText, paintVertexText, TABLE, WHITE } from './livery.ts'
+import { readManifest } from '../../tools/models/packages.ts'
 
 const root = new URL('../../', import.meta.url)
-const manifest: ModelManifest = JSON.parse(readFileSync(new URL('public/models/manifest.json', root), 'utf8'))
+const manifest: ModelManifest = readManifest()
 const b744 = manifest.models.find((m) => m.id === 'b744')!
 const a320 = manifest.models.find((m) => m.id === 'a320')!
 

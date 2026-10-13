@@ -13,6 +13,7 @@ import { ModelPicker } from '../../client/scene/modelFor.ts'
 import type { ModelManifest } from '../../client/types.ts'
 import { DESIGNS, DESIGN_ALIASES } from '../../client/livery/designs/index.ts'
 import table from '../../client/scene/liveries.json' with { type: 'json' }
+import { readManifest } from '../models/packages.ts'
 
 export interface Seen {
   hex: string
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
       } catch { /* a torn line */ }
     }
   }
-  const man: ModelManifest = JSON.parse(readFileSync('public/models/manifest.json', 'utf8'))
+  const man = readManifest()
   const pick = new ModelPicker(man)
   const t = table as { aliases: Record<string, string>; liveries: Record<string, unknown> }
   const all = combos(seen)

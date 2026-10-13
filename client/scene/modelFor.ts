@@ -13,16 +13,26 @@ export type ModelFit = 'own' | 'standIn' | 'generic'
 
 export interface Picked { entry: ModelManifestEntry; fit: ModelFit }
 
+/** A model's claim to a designator: on which list, and how far down it. */
+interface Listed { picked: Picked; own: boolean; at: number }
+
+/**
+ * Two models list the same designator: its own model (types) wins over a stand-in, then the model that lists it earlier
+ * (a model's first type is the aircraft it shows; the rest are its family). So a model package dropped into
+ * public/models takes its types over from the models that drew them until then, with nothing else to edit.
+ */
+const better = (a: Listed, b: Listed): boolean => (a.own !== b.own ? a.own : a.at < b.at)
+
 /**
  * Picks a manifest model per aircraft. Order: an entry listing the designator exactly (in types: its own; in standIns: a
- * stand-in); the longest "PREFIX*" listed in either; then the generic ones: a helicopter designator → fallback.heli; the
+ * stand-in); the longest "PREFIX*" listed in either; where two models list the same one, `better`; then the generic ones: a helicopter designator → fallback.heli; the
  * ADS-B category's fallback (A2 small jets → the bizjet); the type family's (iconFor: light / jet / heavy); the default.
  * Throws on a fallback that names no model.
  */
 export class ModelPicker {
   readonly #byId = new Map<string, ModelManifestEntry>()
-  readonly #exact = new Map<string, Picked>()
-  readonly #prefixes: [string, Picked][] = []
+  readonly #exact = new Map<string, Listed>()
+  readonly #prefixes: [string, Listed][] = []
   readonly #generic = new Map<ModelManifestEntry, Picked>()
   readonly #fallback: Record<string, string>
   readonly #default: ModelManifestEntry
@@ -33,14 +43,15 @@ export class ModelPicker {
       this.#generic.set(m, { entry: m, fit: 'generic' })
       // One answer per entry and fit, made here: pick() hands the same object out every time.
       for (const [list, fit] of [[m.types, 'own'], [m.standIns, 'standIn']] as const) {
-        const p: Picked = { entry: m, fit }
-        for (const t of list ?? []) {
-          if (t.endsWith('*')) this.#prefixes.push([t.slice(0, -1), p])
-          else this.#exact.set(t, p)
+        const picked: Picked = { entry: m, fit }
+        for (const [at, t] of (list ?? []).entries()) {
+          const l: Listed = { picked, own: fit === 'own', at }
+          if (t.endsWith('*')) this.#prefixes.push([t.slice(0, -1), l])
+          else if (!this.#exact.has(t) || better(l, this.#exact.get(t)!)) this.#exact.set(t, l)
         }
       }
     }
-    this.#prefixes.sort((a, b) => b[0].length - a[0].length)
+    this.#prefixes.sort((a, b) => b[0].length - a[0].length || (better(a[1], b[1]) ? -1 : better(b[1], a[1]) ? 1 : 0))
     this.#fallback = man.fallback ?? {}
     for (const id of [man.default, ...Object.values(this.#fallback)]) if (!this.#byId.has(id)) throw new Error(`manifest names no model "${id}"`)
     this.#default = this.#byId.get(man.default)!
@@ -55,7 +66,7 @@ export class ModelPicker {
     const t = typeCode ? typeCode.toUpperCase() : null
     if (t !== null) {
       const hit = this.#exact.get(t) ?? this.#prefixes.find(([p]) => t.startsWith(p))?.[1]
-      if (hit) return hit
+      if (hit) return hit.picked
     }
     const kind = iconFor(category, t)
     const id = kind === 'heli' ? this.#fallback.heli : ((category ? this.#fallback[category] : undefined) ?? this.#fallback[kind])

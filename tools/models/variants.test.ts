@@ -4,13 +4,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import type { ModelManifest, ModelManifestEntry } from '../../client/types.ts'
 import { readGlb } from './glb.ts'
-import { MANIFEST, lightsFor } from './light-anchors.ts'
-import { outlineFor } from './outline.ts'
 import { engineParts, partBoxes, parts, profileOf } from './profile.ts'
-import { build, cutOutboard, devicePieces, measureTip, meshOf, recipes, signedVolume, spine, toWork, withEntry, type Work } from './variants.ts'
+import { build, cutOutboard, devicePieces, measure, measureTip, meshOf, recipes, signedVolume, spine, toWork, withoutTypes, type Work } from './variants.ts'
+import { readManifest } from './packages.ts'
 
-const text = readFileSync(MANIFEST, 'utf8')
-const manifest: ModelManifest = JSON.parse(text)
+const manifest = readManifest()
 const byId = (id: string): ModelManifestEntry => manifest.models.find((m) => m.id === id)!
 const all = recipes()
 const built = Object.entries(all).map(([id, r]) => ({ id, r, ...build(id, r, manifest) }))
@@ -137,12 +135,11 @@ test('the nacelles: scaled about their axis by the recipe, from the inlet lip af
   }
 })
 
-test('public/models/<id>.glb and its manifest entry are up to date (regenerate: node tools/models/variants.ts)', () => {
-  for (const { id, r, bytes, entry } of built) {
-    assert.deepEqual(new Uint8Array(readFileSync(new URL(`../../public/${entry.uri}`, import.meta.url))), bytes, `${id}.glb`)
-    const e = byId(id)
-    assert.deepEqual(e, { ...entry, lights: lightsFor(entry), outline: outlineFor(entry), profile: profileOf(entry).profile, ...{} } as ModelManifestEntry, `${id} entry`)
-    assert.equal(withEntry(text, e, r.base), text, `${id}: the manifest lines are the writer's`)
+test('public/models/<id>/ (model.glb, model.json) is up to date (regenerate: node tools/models/variants.ts)', () => {
+  for (const b of built) {
+    const { id, bytes } = b
+    assert.deepEqual(new Uint8Array(readFileSync(new URL(`../../public/${b.entry.uri}`, import.meta.url))), bytes, `${id}/model.glb`)
+    assert.deepEqual(byId(id), JSON.parse(JSON.stringify(measure(b).entry)), `${id}/model.json`)
   }
 })
 
@@ -153,13 +150,10 @@ test('a variant takes its recipe\'s name and stands in for nothing; its types co
     assert.equal(byId(id).name, r.name, `${id} in the manifest`)
   }
   // A model made for a designator that another model only stood in for takes it off that list (the A321 stands in for the 757).
-  const moved: ModelManifest = JSON.parse(withEntry(text, { ...byId('a21n'), types: ['A21N', 'B752'] }, 'a321'))
-  const of = (id: string): ModelManifestEntry => moved.models.find((m) => m.id === id)!
-  assert.deepEqual(of('a321').standIns, ['B753'])
-  assert.deepEqual(of('a321').types, ['A321'])
-  assert.deepEqual(of('a21n').types, ['A21N', 'B752'])
-  assert.equal(of('a21n').standIns, undefined)
-  assert.equal(of('a21n').name, 'Airbus A321neo')
+  const changed = withoutTypes(manifest.models, 'a21n', ['A21N', 'B752'])
+  assert.deepEqual(changed.map((m) => m.id), ['a321'], 'only the entries that listed one of them')
+  assert.deepEqual(changed[0].standIns, ['B753'])
+  assert.deepEqual(changed[0].types, ['A321'])
 })
 
 test('the variants own their types; provenance: the base\'s licence, authors and source, and the modification noted', () => {
@@ -171,9 +165,11 @@ test('the variants own their types; provenance: the base\'s licence, authors and
     assert.ok((base.types ?? []).length > 0, `${r.base} keeps its other types`)
     assert.equal(e.license, base.license)
     assert.ok(e.author.startsWith(base.author) && e.author.endsWith('modified by FlightHopper (tools/models/variants.ts)'))
-    assert.ok(e.source.startsWith(base.source) && e.source.includes(`recipe ${id}`))
-    for (const k of ['forwardAxisFix', 'gearHeightM', 'lengthM', 'scale', 'gear'] as const) assert.deepEqual(e[k], base[k], `${id} ${k} as its base's`)
+    assert.ok(e.source.startsWith(base.source) && e.source.includes(`public/models/${id}/recipe.json`))
+    for (const k of ['forwardAxisFix', 'gearHeightM', 'lengthM', 'scale'] as const) assert.deepEqual(e[k], base[k], `${id} ${k} as its base's`)
+    assert.deepEqual({ ...e.gear, uri: '' }, { ...base.gear, uri: '' }, `${id}: its base's gear, in its own folder`)
+    assert.deepEqual(readFileSync(new URL(`../../public/${e.gear!.uri}`, import.meta.url)), readFileSync(new URL(`../../public/${base.gear!.uri}`, import.meta.url)))
     const asset = readGlb(new Uint8Array(readFileSync(new URL(`../../public/${e.uri}`, import.meta.url)))).json.asset
-    assert.match(asset.copyright, new RegExp(`^GPL-2\\.0-only, derived from ${r.base}\\.glb .*modified by FlightHopper .*recipe ${id}`))
+    assert.match(asset.copyright, new RegExp(`^GPL-2\\.0-only, derived from ${r.base}/model\\.glb .*modified by FlightHopper .*public/models/${id}/recipe\\.json`))
   }
 })

@@ -1,0 +1,9 @@
+{
+  "stations": {
+    "lengthM": null,
+    "doors": [2.85],
+    "cockpit": 3.2,
+    "source": "the mesh: the cabin door and its window"
+  },
+  "flags": ["finBeacon", "noBellyBeacon", "noWindows"]
+}

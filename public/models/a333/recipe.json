@@ -1,0 +1,18 @@
+{
+  "stations": {
+    "lengthM": 63.67,
+    "doors": [5.85, 17.74, 35.96, 50.96],
+    "cockpit": 3.22,
+    "source": "https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-12/AC_A330_20251201.pdf"
+  },
+  "gear": {
+    "noseAftM": 5,
+    "wheelbaseM": 25.37,
+    "trackM": 10.68,
+    "mains": 4,
+    "mainTyre": [1.37, 0.53],
+    "noseTyre": [1.14, 0.46],
+    "clearanceM": 0.75,
+    "mainsRetract": "inboard"
+  }
+}

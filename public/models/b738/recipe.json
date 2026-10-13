@@ -1,0 +1,18 @@
+{
+  "stations": {
+    "lengthM": 39.47,
+    "doors": [5.03, 31.88],
+    "cockpit": 2.92,
+    "source": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737NG_REV_C.pdf"
+  },
+  "gear": {
+    "noseAftM": 3.4,
+    "wheelbaseM": 15.6,
+    "trackM": 5.72,
+    "mains": 2,
+    "mainTyre": [1.13, 0.42],
+    "noseTyre": [0.69, 0.2],
+    "clearanceM": 0.46,
+    "mainsRetract": "inboard"
+  }
+}

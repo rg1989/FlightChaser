@@ -1,0 +1,18 @@
+{
+  "stations": {
+    "lengthM": 66.8,
+    "doors": [6.82, 18.86, 37.93, 52.55],
+    "cockpit": 3.69,
+    "source": "https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-07/AC_A350_20250715.pdf"
+  },
+  "gear": {
+    "noseAftM": 5.3,
+    "wheelbaseM": 28.67,
+    "trackM": 10.6,
+    "mains": 4,
+    "mainTyre": [1.27, 0.51],
+    "noseTyre": [1.02, 0.41],
+    "clearanceM": 0.9,
+    "mainsRetract": "inboard"
+  }
+}

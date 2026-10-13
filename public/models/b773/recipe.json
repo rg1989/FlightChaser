@@ -1,0 +1,18 @@
+{
+  "stations": {
+    "lengthM": 73.86,
+    "doors": [6.74, 17.07, 32.92, 46.46, 59.87],
+    "cockpit": 2.98,
+    "source": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/777-200LR-300ER-F_Rev_G.pdf"
+  },
+  "gear": {
+    "noseAftM": 5.6,
+    "wheelbaseM": 31.22,
+    "trackM": 10.97,
+    "mains": 6,
+    "mainTyre": [1.32, 0.53],
+    "noseTyre": [1.09, 0.44],
+    "clearanceM": 0.8,
+    "mainsRetract": "inboard"
+  }
+}

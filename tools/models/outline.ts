@@ -11,9 +11,9 @@
 // sparse vertex layout does not matter); one sphere per cell the surface passes through, round the box of the cell's
 // samples and what of the surface lies between samples. A thin part (a wing, the fin) so gets spheres about as wide as
 // a cell, not as wide as the aircraft.
-import { readFileSync, writeFileSync } from 'node:fs'
-import type { ModelManifest, ModelManifestEntry } from '../../client/types.ts'
-import { MANIFEST, loadBody, toModelFrame, type Mesh } from './light-anchors.ts'
+import type { ModelManifestEntry } from '../../client/types.ts'
+import { loadBody, toModelFrame, type Mesh } from './light-anchors.ts'
+import { asked, readManifest, writeModel } from './packages.ts'
 
 export type Sphere = [x: number, y: number, z: number, r: number]
 export const CELLS = 16
@@ -61,37 +61,12 @@ export function outlineFor(e: ModelManifestEntry): Sphere[] {
   return outlineOf(loadBody(e)).map(([x, y, z, r]) => [...toModelFrame(e, [x, y, z]), Math.ceil((r + 0.01) * 100) / 100])
 }
 
-/** The manifest line: `"outline": [[x, y, z, r], …]`, the manifest's one-line-per-field style. */
-export const outlineLine = (o: Sphere[]): string => `"outline": [${o.map((s) => `[${s.join(', ')}]`).join(', ')}]`
-
-/** Replaces (or adds, after "lights") each listed model's outline line in the manifest text. */
-export function writeOutlines(text: string, outlines: Map<string, Sphere[]>): string {
-  const lines = text.split('\n')
-  for (const [id, o] of outlines) {
-    const at = lines.findIndex((l) => l.includes(`"id": "${id}"`))
-    const end = lines.findIndex((l, i) => i > at && /^ {4}\}/.test(l))
-    const line = outlineLine(o)
-    const old = lines.findIndex((l, i) => i > at && i < end && l.trim().startsWith('"outline"'))
-    if (old >= 0) lines[old] = lines[old].replace(/"outline".*?(,?)$/, `${line}$1`)
-    else {
-      const after = lines.findLastIndex((l, i) => i > at && i < end && /^ {6}"(lights|box|scale|gearHeightM)"/.test(l))
-      const last = !lines[after].endsWith(',') // the entry's last line has no comma: it gets one, the new line none
-      if (last) lines[after] += ','
-      lines.splice(after + 1, 0, `      ${line}${last ? '' : ','}`)
-    }
-  }
-  return lines.join('\n')
-}
-
 if (import.meta.main) {
-  const text = readFileSync(MANIFEST, 'utf8')
-  const manifest: ModelManifest = JSON.parse(text)
-  const outlines = new Map(manifest.models.map((e) => [e.id, outlineFor(e)]))
-  for (const [id, o] of outlines) console.log(`${id}: ${o.length} spheres, the largest ${Math.max(...o.map((s) => s[3]))} across its radius`)
-  if (process.argv.includes('--write')) {
-    const out = writeOutlines(text, outlines)
-    JSON.parse(out) // still JSON
-    writeFileSync(MANIFEST, out)
-    console.log(`wrote ${MANIFEST}`)
+  for (const e of asked(readManifest())) {
+    const o = outlineFor(e)
+    console.log(`${e.id}: ${o.length} spheres, the largest ${Math.max(...o.map((s) => s[3]))} across its radius`)
+    if (!process.argv.includes('--write')) continue
+    e.outline = o
+    writeModel(e)
   }
 }

@@ -8,9 +8,10 @@ import { DESIGNS } from './designs/index.ts'
 import { drawDesign, profileOf } from './kit.ts'
 import type { Op } from './kit.ts'
 import type { ModelManifest } from '../types.ts'
+import { readManifest } from '../../tools/models/packages.ts'
 
 const root = new URL('../../', import.meta.url)
-const manifest: ModelManifest = JSON.parse(readFileSync(new URL('public/models/manifest.json', root), 'utf8'))
+const manifest: ModelManifest = readManifest()
 const COLOUR = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\([\d.,\s%]+\))$/i
 
 const packages = new URL('liveries/', root)

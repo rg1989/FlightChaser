@@ -1,0 +1,19 @@
+{
+  "stations": {
+    "lengthM": 27.17,
+    "doors": [19.7],
+    "cockpit": 2.6,
+    "source": "https://skybrary.aero/sites/default/files/bookshelf/3696.pdf"
+  },
+  "gear": {
+    "noseAftM": 2.9,
+    "wheelbaseM": 10.77,
+    "trackM": 4.1,
+    "mains": 2,
+    "mainTyre": [0.86, 0.22],
+    "noseTyre": [0.6, 0.18],
+    "clearanceM": 0.55,
+    "mainsRetract": "forward"
+  },
+  "flags": ["finBeacon"]
+}

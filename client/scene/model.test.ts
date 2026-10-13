@@ -12,10 +12,11 @@ import { RETRACT_S } from './gear.ts'
 import { ChaseModel, GLTF_TO_CESIUM, fixMatrix, hprFor, loadGearModel, measureGlb, modelMatrixFor, noseAzimuthDeg } from './model.ts'
 import { placeholderShader } from './placeholder.ts'
 import { NO_DAMAGE, type Damage } from '../scenario/timeline.ts'
+import { readManifest } from '../../tools/models/packages.ts'
 const FIN: Damage = { fin: true, rudder: null }
 
 const root = new URL('../../', import.meta.url)
-const manifest: ModelManifest = JSON.parse(readFileSync(new URL('public/models/manifest.json', root), 'utf8'))
+const manifest: ModelManifest = readManifest()
 const m = manifest.models.find((x) => x.id === manifest.default)!
 const glbUrl = new URL(`public/${m.uri}`, root)
 const axes = measureGlb(readFileSync(glbUrl))
@@ -219,7 +220,7 @@ test('ChaseModel.load: the model does not follow terrain exaggeration (keeps its
 test('ChaseModel.use: loads another type once, keeps the current model until it is ready, then swaps (shown as before)', async () => {
   const f = fakes()
   const other = { modelMatrix: new Matrix4(), show: true }
-  const b738 = { ...m, id: 'b738', uri: 'models/b738.glb' }
+  const b738 = { ...m, id: 'b738', uri: 'models/b738/model.glb' }
   let loads = 0
   let done!: (v: Model) => void
   const cm = new ChaseModel(f.viewer, m, f.model as unknown as Model, () => (loads++, new Promise<Model>((r) => (done = r))))
@@ -469,7 +470,7 @@ test('ChaseModel.setGear: loads the gear once, draws it with the chase matrix; t
 
   cm.setGear(true)
   cm.setGear(true)
-  assert.deepEqual(asked, ['models/b744-gear.glb'], 'asked once')
+  assert.deepEqual(asked, ['models/b744/gear.glb'], 'asked once')
   cm.update(s, 0.016)
   near(heightOf(body.modelMatrix), b744.gearHeightM, 1e-3, 'on its wheels even before they have loaded: no jump when they do')
   assert.equal(cm.gearPos, 1, 'the first target at once')
@@ -529,9 +530,9 @@ test('ChaseModel.setGear on a model without gear: nothing loads, the placement s
 test("loadGearModel: a plain model (no minimum pixel size), true height, hidden; its sky map rebuilt every 20 km as the aircraft's", async (t) => {
   const g = fakeModel()
   const fromGltf = t.mock.method(Model, 'fromGltfAsync', async () => g as unknown as Model)
-  assert.equal(await loadGearModel('models/b744-gear.glb'), g)
+  assert.equal(await loadGearModel('models/b744/gear.glb'), g)
   assert.deepEqual(fromGltf.mock.calls[0].arguments, [{
-    url: '/models/b744-gear.glb', show: false, enableVerticalExaggeration: false, environmentMapOptions: { maximumPositionEpsilon: 20_000 },
+    url: '/models/b744/gear.glb', show: false, enableVerticalExaggeration: false, environmentMapOptions: { maximumPositionEpsilon: 20_000 },
   }])
 })
 

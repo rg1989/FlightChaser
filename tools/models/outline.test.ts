@@ -1,13 +1,11 @@
 // tools/models/outline.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
-import type { ModelManifest } from '../../client/types.ts'
-import { MANIFEST, loadBody, toModelFrame } from './light-anchors.ts'
-import { CELLS, outlineFor, outlineOf, writeOutlines, type Sphere } from './outline.ts'
+import { loadBody, toModelFrame } from './light-anchors.ts'
+import { CELLS, outlineFor, outlineOf, type Sphere } from './outline.ts'
+import { readManifest } from './packages.ts'
 
-const text = readFileSync(MANIFEST, 'utf8')
-const manifest: ModelManifest = JSON.parse(text)
+const manifest = readManifest()
 const inside = (o: Sphere[], x: number, y: number, z: number, tol = 0): boolean => o.some((s) => Math.hypot(x - s[0], y - s[1], z - s[2]) <= s[3] + tol)
 
 test('outlineOf: one large triangle (three vertices) is covered all over, by spheres no wider than a cell\'s diagonal', () => {
@@ -36,15 +34,5 @@ test('every model\'s outline in the manifest is the measured one, covers its mes
     const cell = (hi - lo) / CELLS
     for (const s of o) assert.ok(s[3] <= 1.02 * cell + 0.02, `${e.id}: r ${s[3]} about a cell's half diagonal at most (cell ${cell})`)
   }
-  assert.equal(writeOutlines(text, measured), text, 'the manifest lines are the writer\'s')
 })
 
-test('writeOutlines: a new line goes after the lights; after an entry\'s last line, that one gets the comma', () => {
-  const o = new Map<string, Sphere[]>([['x', [[1, 2, 3, 0.5]]]])
-  const entry = (rest: string): string => `{\n  "models": [\n    {\n      "id": "x",\n${rest}\n    }\n  ]\n}`
-  const mid = writeOutlines(entry('      "lights": {},\n      "paint": {}'), o)
-  assert.equal(mid, entry('      "lights": {},\n      "outline": [[1, 2, 3, 0.5]],\n      "paint": {}'))
-  const last = writeOutlines(entry('      "scale": 1'), o)
-  assert.equal(last, entry('      "scale": 1,\n      "outline": [[1, 2, 3, 0.5]]'))
-  assert.equal(writeOutlines(last, new Map([['x', [[0, 0, 0, 1]] as Sphere[]]])), entry('      "scale": 1,\n      "outline": [[0, 0, 0, 1]]'), 'replaced in place')
-})

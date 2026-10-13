@@ -1,5 +1,5 @@
 // tools/models/gear-glb.ts
-// Each airliner's landing gear: public/models/<id>-gear.glb and its manifest `gear` entry. The type models are joined
+// Each airliner's landing gear: public/models/<id>/gear.glb and its model.json `gear` entry. The type models are joined
 // meshes without gear (they sat on their engines). The gear is authored in the body frame (nose +X, left +Y, up +Z;
 // metres, the models' own unit: every manifest scale is 1), one node per leg hinged at the top of its strut, under a
 // root node that turns the body frame into the GLB's glTF frame (fixMatrix⁻¹ then GLTF_TO_CESIUM⁻¹, what Cesium and
@@ -9,18 +9,18 @@
 //   node tools/models/gear-glb.ts            print each model's `"gear": {…}` line
 //   node tools/models/gear-glb.ts --write    write the GLBs, each model's gear line and its gearHeightM (wheels down)
 //
-// Layout per type from published dimensions (GEAR, approximate; E175's wheelbase fitted to its model's wing; E190 from
+// Layout per type from published dimensions (the package's recipe.json: gear; approximate; E175's wheelbase fitted to its model's wing; E190 from
 // Embraer APM-1901 figures 2.1 and 7.1 and table 2.2, its gear 0.38 m forward of the published 4.13 m nose-gear station
 // because this model's wing-root trailing edge ends just ahead of the published main gear line), the nose gear noseAftM
 // behind the model's nose tip, the mains wheelbaseM behind it, trackM apart; each strut from inside the skin above it (a
 // ray from below: the wing or the belly) down to its axle; the wheels touch clearanceM below the model's lowest point
 // (its engines, or its belly).
-import { readFileSync, writeFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { writeFileSync } from 'node:fs'
 import { Matrix3, Matrix4 } from 'cesium'
 import { GLTF_TO_CESIUM, fixMatrix } from '../../client/scene/model.ts'
 import type { ModelManifest, ModelManifestEntry } from '../../client/types.ts'
-import { MANIFEST, loadBody, ray, type Mesh } from './light-anchors.ts'
+import { loadBody, ray, type Mesh } from './light-anchors.ts'
+import { asked, fileOf, readManifest, recipeOf, writeModel } from './packages.ts'
 
 type V = [number, number, number]
 
@@ -38,24 +38,6 @@ export interface GearSpec {
   body?: { aftM: number; trackM: number } // 747 body gear: this far behind the wing gear, this far apart
 }
 
-export const GEAR: Record<string, GearSpec> = {
-  a320: { noseAftM: 5.1, wheelbaseM: 12.64, trackM: 7.59, mains: 2, mainTyre: [1.17, 0.43], noseTyre: [0.76, 0.22], clearanceM: 0.55, mainsRetract: 'inboard' },
-  a321: { noseAftM: 5.1, wheelbaseM: 16.91, trackM: 7.59, mains: 2, mainTyre: [1.24, 0.48], noseTyre: [0.76, 0.22], clearanceM: 0.5, mainsRetract: 'inboard' },
-  b738: { noseAftM: 3.4, wheelbaseM: 15.6, trackM: 5.72, mains: 2, mainTyre: [1.13, 0.42], noseTyre: [0.69, 0.2], clearanceM: 0.46, mainsRetract: 'inboard' },
-  b773: { noseAftM: 5.6, wheelbaseM: 31.22, trackM: 10.97, mains: 6, mainTyre: [1.32, 0.53], noseTyre: [1.09, 0.44], clearanceM: 0.8, mainsRetract: 'inboard' },
-  b789: { noseAftM: 5.1, wheelbaseM: 25.6, trackM: 9.8, mains: 4, mainTyre: [1.37, 0.53], noseTyre: [1.02, 0.41], clearanceM: 0.9, mainsRetract: 'inboard' },
-  a333: { noseAftM: 5.0, wheelbaseM: 25.37, trackM: 10.68, mains: 4, mainTyre: [1.37, 0.53], noseTyre: [1.14, 0.46], clearanceM: 0.75, mainsRetract: 'inboard' },
-  a359: { noseAftM: 5.3, wheelbaseM: 28.67, trackM: 10.6, mains: 4, mainTyre: [1.27, 0.51], noseTyre: [1.02, 0.41], clearanceM: 0.9, mainsRetract: 'inboard' },
-  // E175: Embraer APM-2259 (general dimensions, footprint): wheelbase 11.40 m, track 5.20 m, H38x13-18 mains, 24x7.7 nose.
-  e75l: { noseAftM: 3.7, wheelbaseM: 11.4, trackM: 5.2, mains: 2, mainTyre: [0.97, 0.33], noseTyre: [0.61, 0.2], clearanceM: 0.6, mainsRetract: 'inboard' },
-  e190: { noseAftM: 3.75, wheelbaseM: 13.83, trackM: 5.94, mains: 2, mainTyre: [1.04, 0.41], noseTyre: [0.61, 0.2], clearanceM: 0.5, mainsRetract: 'inboard' },
-  crj9: { noseAftM: 2.8, wheelbaseM: 17.3, trackM: 4.0, mains: 2, mainTyre: [0.91, 0.3], noseTyre: [0.53, 0.14], clearanceM: 0.55, mainsRetract: 'inboard' },
-  at75: { noseAftM: 2.9, wheelbaseM: 10.77, trackM: 4.1, mains: 2, mainTyre: [0.86, 0.22], noseTyre: [0.6, 0.18], clearanceM: 0.55, mainsRetract: 'forward' },
-  c550: { noseAftM: 2.2, wheelbaseM: 5.4, trackM: 3.6, mains: 1, mainTyre: [0.56, 0.15], noseTyre: [0.46, 0.11], noseWheels: 1, clearanceM: 0.35, mainsRetract: 'inboard' },
-  b744: { noseAftM: 7.5, wheelbaseM: 26.9, trackM: 11.0, mains: 4, mainTyre: [1.24, 0.43], noseTyre: [1.18, 0.41], clearanceM: 1.89, mainsRetract: 'inboard', body: { aftM: 3.0, trackM: 3.8 } },
-}
-
-/** One primitive: a triangle soup (three vertices per triangle) and its material. */
 export interface Part {
   name: string
   color: V // linear RGB
@@ -274,7 +256,7 @@ export function glb(legs: Leg[], root: number[]): Uint8Array {
   return out
 }
 
-export const gearUri = (id: string): string => `models/${id}-gear.glb`
+export const gearUri = (id: string): string => `models/${id}/gear.glb`
 const cm = (x: number): number => Math.round(x * 100) / 100 + 0
 
 /** The manifest entry for a gear: where it is, how high it stands, how each leg retracts. */
@@ -285,7 +267,8 @@ export function gearEntry(id: string, g: Gear): NonNullable<ModelManifestEntry['
 /** Every geared model of the manifest: its GLB bytes and manifest entry. */
 export function allGear(manifest: ModelManifest): Array<{ e: ModelManifestEntry; bytes: Uint8Array; entry: NonNullable<ModelManifestEntry['gear']> }> {
   return manifest.models.flatMap((e) => {
-    const spec = GEAR[e.id]
+    const r = recipeOf(e.id)
+    const spec = r.base === undefined ? r.gear : undefined // a derived model's gear is variants.ts's work
     if (spec === undefined) return []
     const g = gearFor(e, spec, loadBody(e))
     return [{ e, bytes: glb(g.legs, rootMatrix(e)), entry: gearEntry(e.id, g) }]
@@ -299,26 +282,17 @@ export function gearLine(g: NonNullable<ModelManifestEntry['gear']>): string {
 }
 
 if (import.meta.main) {
-  const text = readFileSync(MANIFEST, 'utf8')
-  const manifest: ModelManifest = JSON.parse(text)
+  const manifest = readManifest()
   const write = process.argv.includes('--write')
-  const lines = text.split('\n')
+  const ids = new Set(asked(manifest).map((e) => e.id))
   for (const { e, bytes, entry } of allGear(manifest)) {
-    const line = gearLine(entry)
-    console.log(`${e.id}: ${line}`)
+    if (!ids.has(e.id)) continue
+    console.log(`${e.id}: ${gearLine(entry)}`)
     if (!write) continue
-    writeFileSync(fileURLToPath(new URL(`../../public/${entry.uri}`, import.meta.url)), bytes)
-    const at = lines.findIndex((l) => l.includes(`"id": "${e.id}"`))
-    const end = lines.findIndex((l, i) => i > at && /^ {4}\}/.test(l))
-    const h = lines.findIndex((l, i) => i > at && i < end && l.includes('"gearHeightM": '))
-    lines[h] = lines[h].replace(/"gearHeightM": [-\d.]+/, `"gearHeightM": ${entry.heightM}`) // the model stands on its wheels
-    const old = lines.findIndex((l, i) => i > at && i < end && l.trim().startsWith('"gear"'))
-    if (old >= 0) lines[old] = lines[old].replace(/"gear".*?(,?)$/, `${line}$1`)
-    else lines.splice(h + 1, 0, `      ${line},`)
-  }
-  if (write) {
-    writeFileSync(MANIFEST, lines.join('\n'))
-    JSON.parse(readFileSync(MANIFEST, 'utf8')) // still JSON
-    console.log(`wrote ${MANIFEST}`)
+    writeFileSync(fileOf(e.id, 'gear.glb'), bytes)
+    // gearHeightM: the model stands on its wheels. The fields keep their places (gear after scale in a new entry).
+    const { gear: _old, ...rest } = e
+    const at = Object.keys(rest).indexOf('scale') + 1
+    writeModel(Object.fromEntries([...Object.entries({ ...rest, gearHeightM: entry.heightM }).slice(0, at), ['gear', entry], ...Object.entries(rest).slice(at)]) as ModelManifestEntry)
   }
 }

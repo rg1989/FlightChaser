@@ -1,0 +1,20 @@
+{
+  "base": "b738",
+  "name": "Boeing 737 MAX 8",
+  "types": ["B38M", "B37M", "B39M", "B3XM"],
+  "date": "2026-09-29",
+  "wingtip": {
+    "kind": "at-winglet",
+    "blendStartM": 0.97,
+    "upper": { "blendSpanM": 0.2, "blendRiseM": 0.3, "heightM": 2.1, "cantDeg": 29, "teSweepDeg": 20, "chordsM": [1.2, 0.3], "thickness": 0.09 },
+    "lower": { "lengthM": 1.25, "cantDeg": 32, "leSweepDeg": 67, "chordsM": [1, 0.35], "rootLeAftM": 0.05, "thickness": 0.09 }
+  },
+  "nacelle": { "scale": [1.16, 1.17, 1.17], "forwardM": 0.36, "upM": 0.2 },
+  "stations": {
+    "lengthM": 39.52,
+    "doors": [5.03, 31.88],
+    "cockpit": 2.92,
+    "source": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737MAX_RevH.pdf"
+  },
+  "sources": ["[MAX] Boeing D6-38A004 Rev H https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737MAX_RevH.pdf: span 35.92 m; the AT winglet 2.92 m from the lower blade's tip to the upper's (fig 2-10); off the drawing: the upper blade 2.4 m long rising 2.1 m (29° outboard), leading edge 39° and trailing edge 18° in side view, chord 1.35 m to 0.3 m; the lower blade 1.25 m, 32° below horizontal, leading edge 65-70°, chord 1.0 m to 0.35 m; the junction about 16.8 m from the centre line. [NG] D6-58325-7 Rev C https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737NG_REV_C.pdf: 737-800 span 35.79 m with winglets, 34.32 m without.", "Nacelles [NG]/[MAX]: CFM56-7B fan 61 in, LEAP-1B 69.4 in (https://en.wikipedia.org/wiki/CFM_International_LEAP); nacelle about 3.2 m inlet to fan exhaust, 1.97 m tall (737-800) vs 3.76 m, inlet 2.19 m tall (MAX 8); inlet 13.36 m vs 13.00 m from the nose (0.36 m forward); engine axis about 0.2 m higher; clearance 0.48 m (800) vs 0.43 m (MAX 8) at MTOW. Width estimated 2.25 m vs 2.55 m. The 737-800 mesh's cowl measures 2.19 × 1.99 m."]
+}

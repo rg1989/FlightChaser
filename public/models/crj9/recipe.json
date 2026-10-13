@@ -1,0 +1,18 @@
+{
+  "stations": {
+    "lengthM": 36.24,
+    "doors": [4.71],
+    "cockpit": 3.84,
+    "source": "https://customer.aero.bombardier.com/webd/BAG/CustSite/BRAD/RACSDocument.nsf/51aae8b2b3bfdf6685256c300045ff31/ec63f8639ff3ab9d85257c1500635bd8/$FILE/ATTQF1EY.pdf/CRJ900APMR11.pdf"
+  },
+  "gear": {
+    "noseAftM": 2.8,
+    "wheelbaseM": 17.3,
+    "trackM": 4,
+    "mains": 2,
+    "mainTyre": [0.91, 0.3],
+    "noseTyre": [0.53, 0.14],
+    "clearanceM": 0.55,
+    "mainsRetract": "inboard"
+  }
+}

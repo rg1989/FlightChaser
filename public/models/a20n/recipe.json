@@ -1,0 +1,15 @@
+{
+  "base": "a320",
+  "name": "Airbus A320neo",
+  "types": ["A20N"],
+  "date": "2026-09-29",
+  "wingtip": { "kind": "sharklet", "blendStartM": 0.76, "upper": { "blendSpanM": 1.35, "blendRiseM": 0.8, "heightM": 2.4, "cantDeg": 6, "teSweepDeg": 27, "chordsM": [0.9, 0.45], "thickness": 0.1 } },
+  "nacelle": { "scale": [1.24, 1.11, 1.15], "forwardM": 0.05, "upM": 0 },
+  "stations": {
+    "lengthM": 37.57,
+    "doors": [5.04, 29.53],
+    "cockpit": 3.26,
+    "source": "https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-01/AC_A320_0624.pdf"
+  },
+  "sources": ["Sources. [A320] Airbus AC A320 (2025-01) https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-01/AC_A320_0624.pdf: span 34.10 m with fences, 35.80 m with sharklets (p.40, p.42); sharklet 2.43 m from its tip to the wing's lower-surface line extended, 2.64 m all in (p.42, p.50); the blend starts 16.29 m from the centre line, the tip 17.90 m (p.43); off the p.42 drawing: 6° cant, leading edge 40° and trailing edge 27° from vertical, chord 1.57 m at the wing, 0.9 m where the straight part starts, 0.45 m at the rounded tip, the blend about 1.3 m out and 0.8 m up.", "Nacelles [A320]: CFM56-5B 2.3 m tall, 2.07-2.1 m wide, 3.43 m to the fan exhaust (p.124); LEAP-1A 2.52 × 2.60 m, 4.1 m to the fan nozzle (p.135); PW1100G 2.60 × 2.67 m, 4.3 m (p.131); inlet 11.19 m (ceo) vs 11.14 m (neo) from the nose (p.41, p.45); engine clearance 0.577 m (ceo) vs 0.46 m (neo) at MTOW (p.48, p.51): the axis stays, the bigger nacelle takes the clearance. The A320 mesh's cowl measures 2.12 × 2.30 m. neo: the mean of LEAP-1A and PW1100G (Royal Jordanian flies LEAP-1A, Wizz Air PW1100G)."]
+}

@@ -17,7 +17,7 @@ survey ──► type model ──► reference photos ──► dossier ──�
 | Step | Tool | Output |
 |---|---|---|
 | 1. Find what to paint | `node tools/liveries/survey.ts` | type × operator ranking, airframes (hex, registration) |
-| 2. Make or pick the type model | `tools/models/variants.ts`, `tools/models/profile.ts` | `public/models/<id>.glb`, manifest entry with `profile` |
+| 2. Make or pick the type model | `tools/models/variants.ts`, `tools/models/profile.ts` | the folder `public/models/<id>/` |
 | 3. Get reference photos | `node tools/liveries/refs.ts` | `data/livery-refs/<CODE>/` + `refs.json` (git-ignored) |
 | 4. Describe the livery | research (by hand or by agent) | `liveries/<CODE>/README.md` (the dossier) |
 | 5. Draw the design | edit `liveries/<CODE>/design.ts` | the design; the app finds the folder by itself |
@@ -43,123 +43,114 @@ livery (one livery per airline). Choose reference photos of the operator's own a
 
 ## Part 2. The type model
 
-### 2.1 Is there a model already? Own models, stand-ins and placeholders
+A model is one folder, `public/models/<id>/`, and nothing else. `<id>` is short and in lower case, usually the ICAO type
+designator (`b763`). To add a model that someone made, put its folder in `public/models/` and reload. To share one, send
+the folder. There is no list to edit.
 
-`client/scene/modelFor.ts` picks the model for an ICAO type designator from `public/models/manifest.json`: an entry
-that lists the designator, then the longest `PREFIX*` entry, then the family fallback. The survey prints the model for
-each type. If the model is right for the type (same family, same wingtips, same engines), go to Part 3.
+| File | What it is |
+|---|---|
+| `model.json` | what the app reads: the name, the licence, the author, the source, the types, the calibration, the paint map, and what the tools measure (`box`, `lights`, `outline`, `profile`) |
+| `model.glb` | the mesh: one mesh, no textures, metres |
+| `gear.glb` | the landing gear (a tool builds it) |
+| `recipe.json` | what the tools build from: the door and cockpit stations, the gear's layout, flags; for a derived model, its base and the changes |
 
-Each model entry has two lists of designators. The picker (`ModelPicker.pick`) says which one matched:
+`public/models/defaults.json` names the model for an aircraft of unknown type and the model for each category.
+
+### 2.1 Own models, stand-ins and placeholders
+
+`client/scene/modelFor.ts` picks the model for an ICAO type designator from the two lists in each `model.json`:
 
 | The designator is in | The picker's `fit` | The aircraft is drawn |
 |---|---|---|
 | `types` | `own` | as the model, in its operator's livery |
 | `standIns` | `standIn` | as a placeholder, without a livery |
-| neither (or the type is unknown) | `generic` | as a placeholder, without a livery, on the model of its category (`fallback`) or on `default` |
+| neither (or the type is unknown) | `generic` | as a placeholder, without a livery, on the model of its category (`defaults.json`) |
 
-- **`types`** holds the designators that the model truly is: the aircraft itself and the other members of its
-  family. A family member has the same fuselage and the same layout. It can be shorter or longer (A318 and A319 on the
-  A320), or an earlier or later generation (the 737 Classic on the 737-800, the A330neo on the A330-300, the E2 on the
-  Embraer 190).
-- **`standIns`** holds the designators of other aircraft that have no model: the model is only the nearest shape.
-  Examples: the 757 on the A321, the 767 on the 787, the A380 on the 747, the Dash 8 on the ATR 72, a Piper on the
-  Cessna 182. A derivative with a different shape is also a stand-in (the Belugas on the A330, the E-7 on the 737).
-- If you are not sure, use `standIns`.
-- An exact designator has priority over a prefix from the other list. Thus `"types": ["A33*"]` with
-  `"standIns": ["A337"]` makes each A330 an own type, but not the BelugaXL.
-- Write each designator one time only in the manifest. `modelFor.test.ts` fails if a designator is in two lists. The
-  same test contains the table of what each model is and what it stands in for: change the table when you change a list.
+- **`types`** holds the designators that the model truly is. The first one is the aircraft that the model shows. The
+  others are members of its family that have no model of their own: the same fuselage section and layout, a different
+  length or generation (the 737 Classic on the 737-800, the A330neo on the A330-300).
+- **`standIns`** holds the designators of other aircraft that have no model: the model is only the nearest shape (the
+  A340 on the 747, a Piper on the Cessna 182). If you are not sure, use `standIns`.
+- `"B73*"` matches each designator that starts with `B73`. An exact designator has priority over a prefix.
+- Two models can list the same designator. Then the model that lists it in `types` has priority over a stand-in, and
+  after that the model that lists it earlier in its list. Thus a new package takes its types from the models that drew
+  them, and you do not edit the other packages. `variants.ts` removes the designator from the other lists when it
+  builds a derived model. For a model from a source file, remove it yourself when the work is merged.
+- `name` is the name of the aircraft that the model shows ("Boeing 787-9"). The flight card uses it.
 
-The lists at this time:
+An aircraft that is not on its own model is drawn as a placeholder (`client/scene/placeholder.ts`): a flat pale ghost
+with a dashed outline and no livery, because the paint of an airline on the shape of a different aircraft would be
+false. The flight card says it in words: "Shown as a Boeing 787-9: no B763 model yet". `?ghost=2,all` draws each
+aircraft as a placeholder and `?ghost=0` draws none as a placeholder.
 
-| Model | Own (`types`) | Stand-in for (`standIns`) |
-|---|---|---|
-| `a320` Airbus A320 | A320, A319, A318, A19N | |
-| `a20n` Airbus A320neo | A20N | |
-| `a321` Airbus A321 | A321 | 757 (B752, B753) |
-| `a21n` Airbus A321neo | A21N | |
-| `b738` Boeing 737-800 | each 737 that is not a MAX (B73*), P-8 | A220 (BCS1, BCS3), E-7 (E737) |
-| `b38m` Boeing 737 MAX 8 | B37M, B38M, B39M, B3XM | |
-| `b773` Boeing 777-300 | each 777 (B77*) | |
-| `b789` Boeing 787-9 | each 787 (B78*) | 767 (B76*), KC-46 (K46) |
-| `a333` Airbus A330-300 | each A330 (A33*) | BelugaXL (A337), Beluga (A3ST), A300 (A306, A30B), A310 |
-| `a359` Airbus A350-900 | A359, A35K | |
-| `e75l` Embraer 175 | E170, E175 (E17*, E75*) | ERJ 135/145 (E135, E145, E45X) |
-| `e190` Embraer 190 | E190, E195 and their E2 (E19*, E29*) | |
-| `crj9` Bombardier CRJ900 | each CRJ (CRJ*) | MD-80, MD-90, DC-9, 717 (B712), Fokker 100 and 70 |
-| `at75` ATR 72 | ATR 42 and 72 (AT4*, AT7*) | Dash 8 (DH8*), Saab 340 and 2000, Dornier 328, Jetstream 41 |
-| `b744` Boeing 747-400 | each 747 (B74*) | A340, A380, An-124, An-225, Il-96, Il-86, 707 and its military types, DC-8 |
-| `c550` Cessna Citation II | Citation I, II and V (C50*, C55*, C560) | each other business jet in the list (other Citations, Phenom, Challenger, Global, Gulfstream, Falcon, Learjet, Hawker and so on) |
-| `c182` Cessna 182 | C182 | Cessna 172, 152 and 150, Piper PA-28 (P28*), Cirrus SR20 and SR22 (SR2*) |
-| `ec135` Eurocopter EC135 | EC35 | |
+### 2.2 A derived model (recipe)
 
-`name` in the entry is the name of the aircraft that the model shows ("Boeing 787-9"). The flight card uses it.
+Most new types are a model we have with a different fuselage length, wingtip or engine (A320 → A319, A320neo;
+737-800 → 737-700, 737 MAX 8). Write `public/models/<id>/recipe.json` and build the package from it:
 
-#### The placeholder
-
-An aircraft that is not on its own model must not look like a real aircraft. `client/scene/placeholder.ts` draws it as
-a placeholder, in the chase view and in the chase traffic:
-
-- It is a flat ghost: one pale colour laid on as a fine hatch, with a dashed outline in light blue
-  (`--fh-placeholder`) round its shape. You can see the scene through the hatch.
-- The colour does not change with the sun. By night the ghost shows as bright as by day.
-- It has no livery. The paint of an airline on the shape of a different aircraft would be false.
-- The landing gear, the lights, the brackets, the smallest size on screen and the click area are the same as for a
-  real model.
-- The ghost is drawn with holes, not with transparency. Each pixel it draws has a depth, so the ground, the
-  buildings and the clouds of the weather hide it and are hidden by it as with a real model.
-- The flight card and the traffic card tell it in words below the header: "Shown as a Boeing 787-9: no B763 model yet"
-  for a stand-in, "Placeholder model: no J328 model yet" for the generic model, and "Placeholder model: type unknown"
-  if the aircraft sends no type.
-
-To see the other two looks that were made for comparison, add `?ghost=1` (a hologram: scan lines and a bright outline)
-or `?ghost=2` (a wire frame: rings round the fuselage, ribs on the wings) to the address. `?ghost=3` is the flat ghost.
-`?ghost=2,all` draws each aircraft as a placeholder and `?ghost=0` draws none as a placeholder. Use these two only to
-compare the cost.
-
-#### Promote a stand-in
-
-A stand-in becomes an own type when a model of it is in the manifest:
-
-1. Make the model: a variant of a model that we have (2.2) or a new model from a source file (2.3).
-2. Write the designator in the `types` of the new entry. For a variant, write it in the recipe: `variants.ts` then
-   removes it from the `types` and the `standIns` of each other entry. For a new model, remove it from the other
-   entry's `standIns` yourself.
-3. Give the entry a `name`.
-4. Move the designator in the table of `modelFor.test.ts` and in the table above, then run the tests.
-
-The aircraft then flies on its own model, in its operator's livery, and the card does not show the line.
-
-### 2.2 A variant of an existing model (recipe)
-
-Most new types differ from a model we have only in wingtips and engines (A320 → A320neo, 737-800 → 737 MAX 8). Add a
-recipe to `tools/models/variants.json` and build it:
-
-```bash
-node tools/models/variants.ts            # builds every recipe: public/models/<id>.glb + the manifest entry
-node tools/models/profile.ts --write     # measures the side profile of every model into the manifest
-node tools/models/light-anchors.ts --write
-node tools/models/outline.ts --write        # the spheres over each mesh: what the place names keep off
+```json
+{
+  "base": "a320",
+  "name": "Airbus A319",
+  "types": ["A319", "A19N"],
+  "date": "2026-10-13",
+  "fuselage": { "foreM": -1.6, "aftM": -2.13 },
+  "sources": ["Airbus AC A319 (2025-01) https://…: overall length 33.84 m; 3 frames less ahead of the wing, 4 behind"]
+}
 ```
 
-A recipe names the base model, the wingtip device (`sharklet`, `at-winglet`, `blended`, `none`, with sizes), the
-nacelle change (scale, forward and up shift) and the ICAO types the new model takes over. See the existing recipes and
-their sources. A derived model is GPL like its base: add it to `third_party/aircraft-models/README.md` ("Modified") and
-`licences.json`.
+```bash
+node tools/models/variants.ts <id>        # model.glb, gear.glb and model.json, all measured on the new mesh
+node tools/models/variants.ts --png <dir> <id>   # and a sheet of views to look at
+```
+
+| Field | What it does |
+|---|---|
+| `base` | the package the model is made from |
+| `fuselage` | `foreM`, `aftM`: the change of the fuselage's length ahead of the wing and behind it, metres (negative: shorter). The constant section is made longer or shorter; the nose, the wing and the tail keep their shapes. The doors and the gear follow. |
+| `wingtip` | a new wingtip device: `kind` (`sharklet`, `blended`, `at-winglet`, `none`) and its sizes |
+| `nacelle` | bigger or smaller engine nacelles: `scale` (across, up, along), `forwardM`, `upM` |
+| `stations`, `gear` | only if the derived values are wrong: see 2.3 |
+| `sources` | where each number comes from (the manufacturer's airport-planning document, with the page) |
+
+Use the real aircraft's sizes. The existing recipes show each field (`a20n`, `a21n`, `b38m`). A derived model has the
+licence of its base, and the tool writes that into `model.json` and into the GLB.
 
 ### 2.3 A new model from a source file
 
-Use a GPL model from FlightAirMap-3dmodels or Flightradar24's fr24-3d-models, as in
-`.planning/reports/aircraft-models-research.md`. Convert and simplify it with the scripts in
-`third_party/aircraft-models/scripts/` (Blender: `/opt/homebrew/bin/blender -b`), then:
+Use a GPL model from FlightAirMap-3dmodels, Flightradar24's fr24-3d-models or FlightGear's FGAddon, as in
+`.planning/reports/aircraft-model-sources.md` (which model, where, which licence, how much work). Read the licence
+file of the model yourself before you use it.
 
-1. Put the GLB in `public/models/` and the unchanged source in `third_party/aircraft-models/source/`.
-2. Add a manifest entry (copy a similar one): `name`, `uri`, `license`, `author`, `source`, `forwardAxisFix`,
-   `lengthM`, `gearHeightM`, `scale`, `types` (and `standIns`, see 2.1), `box`, `paint` (the region map), and a `gear`
-   model if there is one.
-3. Run `profile.ts --write`, `light-anchors.ts --write` and `outline.ts --write`.
-4. Run `npm test`: `model.test.ts` checks the length and the nose direction from the geometry.
-5. Look at the profile overlay (`profile.ts --png <dir>`): every outline must sit on the mesh.
+1. Keep the unchanged source file in `third_party/aircraft-models/source/<collection>/`. Convert and simplify it with
+   the scripts in `third_party/aircraft-models/scripts/` (`third_party/aircraft-models/README.md` gives the commands;
+   Blender: `/opt/homebrew/bin/blender -b`). The result is `public/models/<id>/model.glb`: one mesh, no textures, in
+   metres, at the real aircraft's size, 1 MB at most.
+2. Write `public/models/<id>/model.json`. Copy a similar package's and change: `id`, `name`, `uri`
+   (`models/<id>/model.glb`), `license`, `author`, `source` (the address of the source file at a fixed commit),
+   `forwardAxisFix`, `lengthM` (the real length), `scale`, `types`, and `paint` (the region map: `Paint` in
+   `client/types.ts` says what each number is; measure each one on the mesh). Remove `gear`, `box`, `lights`, `outline`
+   and `profile`: the tools write them.
+3. Write `public/models/<id>/recipe.json`:
+   - `stations`: the left doors' centre lines and the aft edge of the cockpit side windows, in metres aft of the nose,
+     with the overall length of the document they come from, and its address.
+   - `gear`: the gear's layout (`GearSpec` in `tools/models/gear-glb.ts`): the nose gear's distance aft of the nose, the
+     wheelbase, the track, the wheels per main leg, the tyre sizes, how the mains retract. No `gear`: no gear is drawn
+     (a light aircraft with fixed gear in its mesh, a helicopter).
+   - `flags` if they apply: `rotor` (a helicopter), `finBeacon` (the upper beacon is on the fin tip), `noBellyBeacon`,
+     `noWindows` (no cabin window row). `windowPitchM` if the cabin windows are not 0.51 m apart.
+4. Let the tools measure the package, in this order:
+
+```bash
+node tools/models/gear-glb.ts --write <id>        # gear.glb, the gear entry, gearHeightM
+node tools/models/light-anchors.ts --write <id>   # the lights, the window row
+node tools/models/profile.ts --write <id>         # the side profile that the liveries are drawn on
+node tools/models/outline.ts --write <id>         # the spheres over the mesh: what the place names keep off
+node tools/models/profile.ts --png <dir> <id>     # the profile drawn on the mesh: each outline must sit on it
+```
+
+5. Run the tests (`client/scene/model.test.ts` checks the size, the wheels and the nose direction from the geometry).
+6. Look at it in the lab, plain and in a livery (3.5): `…/tools/livery-lab/?model=<id>` and `?model=<id>&livery=RYR`.
 
 ### 2.4 The profile
 

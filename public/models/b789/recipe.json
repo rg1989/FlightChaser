@@ -1,0 +1,18 @@
+{
+  "stations": {
+    "lengthM": 62.81,
+    "doors": [6.3, 18.36, 35.43, 49.66],
+    "cockpit": 3.46,
+    "source": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/787.pdf"
+  },
+  "gear": {
+    "noseAftM": 5.1,
+    "wheelbaseM": 25.6,
+    "trackM": 9.8,
+    "mains": 4,
+    "mainTyre": [1.37, 0.53],
+    "noseTyre": [1.02, 0.41],
+    "clearanceM": 0.9,
+    "mainsRetract": "inboard"
+  }
+}

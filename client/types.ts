@@ -62,10 +62,10 @@ export interface ClientConfig {
   apiBase: string
 }
 
-/** public/models/manifest.json entry. Calibration makes the model's nose point along RenderState.headingDeg. */
+/** A model package's model.json (public/models/<id>/; models/manifest.json is all of them). Calibration makes the model's nose point along RenderState.headingDeg. */
 export interface ModelManifestEntry {
   id: string
-  uri: string                                   // relative to public/, e.g. "models/airliner.glb"
+  uri: string                                   // relative to public/: "models/<id>/model.glb"
   license: string
   author: string
   source: string                                // where it was downloaded from
