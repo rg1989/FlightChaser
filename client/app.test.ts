@@ -14,8 +14,9 @@ import type { FleetEntry } from './types.ts'
 registerHooks({
   load: (url, context, nextLoad) => (url.endsWith('.css') ? { format: 'module', source: '', shortCircuit: true } : nextLoad(url, context)),
 })
-const { browseCircle, entriesIn, flagOf, largestClear, lookupFor, placedHeightM, readParams, relHFor, safeArea, scenarioBaseFor, sceneKey, statusShown, viewRadiusNm, weatherButton, weatherView } =
+const { browseCircle, entriesIn, flagOf, largestClear, lookupFor, placedHeightM, readParams, relHFor, safeArea, scenarioBaseFor, sceneKey, sceneKeyActs, statusShown, viewRadiusNm, weatherButton, weatherView } =
   await import('./app.ts')
+const { DEFAULT_PREFS } = await import('./ui/scenePrefs.ts')
 
 const entry = (hex: string, lat: number, lon: number): FleetEntry => ({
   hex, lat, lon, hM: 0, altFt: null, onGround: false, trackDeg: null, gsKt: null, vsFpm: null, ageS: 0, staleS: 60, gapS: 1, quality: 'adsb2', info: null,
@@ -113,6 +114,17 @@ test('status shown: 3 failed polls in a row read as "upstream-down"; fewer chang
   assert.equal(statusShown(ok, 2), ok)
   assert.deepEqual(statusShown(ok, 3), { ...ok, degraded: 'upstream-down' })
   assert.deepEqual(statusShown({ ...ok, degraded: 'blocked' }, 0), { ...ok, degraded: 'blocked' })
+})
+
+test('a scene key acts only while what it hangs under is on: X with the buildings, R and P over the satellite of the view on screen', () => {
+  const p = { ...DEFAULT_PREFS, buildings: true, mapTop: true, mapChase: false }
+  assert.equal(sceneKeyActs('glass', p, true), true)
+  assert.equal(sceneKeyActs('glass', { ...p, buildings: false }, true), false)
+  for (const k of ['roads', 'places'] as const) {
+    assert.equal(sceneKeyActs(k, p, false), false, 'top-down shows the map')
+    assert.equal(sceneKeyActs(k, p, true), true, 'the chase shows the satellite')
+  }
+  for (const k of ['topo', 'light', 'buildings', 'wx', 'mapTop', 'dark'] as const) assert.equal(sceneKeyActs(k, { ...p, buildings: false }, false), true, k)
 })
 
 const press = (key: string, more: object = {}) => ({ key, metaKey: false, ctrlKey: false, altKey: false, repeat: false, target: null, ...more })

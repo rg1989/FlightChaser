@@ -324,15 +324,15 @@ test('mountFlightCard: text updates at most every 250 ms, and the newest state a
   c.destroy()
 }))
 
-test('mountFlightCard: the pill says Chase on the map and Map in the chase, at once, and asks for the other', () => withClock(() => {
+test('mountFlightCard: the pill says Chase on the map and 2-D map in the chase, in the accent colour both ways, at once, and asks for the other', () => withClock(() => {
   const { card, c, chases } = setup()
   c.update('4691c4', S, RAW, INFO, LIVE, false)
   assert.equal(pillText(card), 'Chase in 3-D')
   byClass(card, 'fh-pill').fire('click')
   assert.deepEqual(chases, [true])
   c.update('4691c4', S, RAW, INFO, LIVE, true) // no throttle wait for a mode change
-  assert.equal(pillText(card), 'Map')
-  assert.equal(byClass(card, 'fh-pill').classList.contains('fh-pill-secondary'), true)
+  assert.equal(pillText(card), '2-D map')
+  assert.equal(byClass(card, 'fh-pill').classList.contains('fh-pill-secondary'), false)
   byClass(card, 'fh-pill').fire('click')
   assert.deepEqual(chases, [true, false])
   c.destroy()
@@ -627,7 +627,7 @@ test('cardView in History never speaks live: no "Locating…", no "No recent pos
   }
 })
 
-test('cardView: Chase is off in History unless the replay has a sample that was heard; "Map" and the live card never are', () => {
+test('cardView: Chase is off in History unless the replay has a sample that was heard; "2-D map" and the live card never are', () => {
   const heard = { ...S, ageS: 4 }
   const cases: [string, ReplayStatus | null, RenderState | null, boolean][] = [
     ['live, no sample', null, null, false],
@@ -671,8 +671,8 @@ test('mountFlightCard in History: the dot and the line follow the replay; Chase 
   // In the chase the button reads Map and takes the person back: never off.
   c.update('4691c4', { ...S, ageS: 4 }, RAW, INFO, LIVE, true)
   c.setReplay(replay('quiet', 'Last heard 10:20'))
-  assert.deepEqual([pillText(card), pill.disabled, pill.title], ['Map', false, 'Back to the top-down map (Esc)'])
-  assert.deepEqual(pillAs(card), ['Map', 'Map', false], 'never off, so never short of its text')
+  assert.deepEqual([pillText(card), pill.disabled, pill.title], ['2-D map', false, 'Back to the top-down map (Esc)'])
+  assert.deepEqual(pillAs(card), ['2-D map', '2-D map', false], 'never off, so never short of its text')
   pill.fire('click')
   assert.deepEqual(chases, [true, false])
   // Live again: the live card, as it was.

@@ -44,11 +44,16 @@
   padding: 0 14px 10px;
 }
 
+/* Under the Weather switch they are set in, as the rows are (sceneToggles.css .fh-scene-sub). */
+.fh-scene-sub .fh-wxm-opacity,
+.fh-scene-sub .fh-wxm-legend {
+  padding-left: 10px;
+}
+
 /* A part that is out of use (the switch is off, the view is top-down, the clouds have failed): the stored choice still shows, dimmed, and the pointer goes
-   through it. The buttons inside are disabled as well (native), so the keys skip them. */
+   through it. The buttons inside are disabled as well (native), so the keys skip them. A switch row: sceneToggles.css. */
 .fh-wxm-seg[aria-disabled='true'],
-.fh-wxm-opacity[aria-disabled='true'],
-.fh-scene-row[aria-disabled='true'] {
+.fh-wxm-opacity[aria-disabled='true'] {
   opacity: 0.4;
   pointer-events: none;
 }

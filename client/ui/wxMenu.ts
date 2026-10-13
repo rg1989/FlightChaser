@@ -7,7 +7,7 @@
 // level slice is not drawn in the Sculpted look: there its switch is disabled, keeps its choice, and its hint says so). The
 // looks, styles and aids are the chase's: top-down they show disabled, with one line, "In the chase view". With the master switch off
 // every other control keeps the choice stored but is disabled (native `disabled` on the buttons and the slider, aria-disabled on the row or the
-// group, which wxMenu.css dims); nothing in WxPrefs changes with the switch. After a drawing error the Clouds segment and slider are disabled; in
+// group, which sceneToggles.css and wxMenu.css dim); nothing in WxPrefs changes with the switch. After a drawing error the Clouds segment and slider are disabled; in
 // History and a scenario ("Live only") the master switch is. It is the Layers panel's look (sceneToggles.css: its segments, rows and
 // switches). A click asks the app for the changed prefs through onChange (or onMaster, for the switch) and changes nothing itself;
 // update() and setView() only re-render, so the app is the one place the choices are applied and stored (wxPrefs.ts).
@@ -217,7 +217,11 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     return { ...a, part: r.part, hintEl: r.hint }
   })
   ahead.append(...aids.map((a) => a.part.box))
-  root.append(master, clouds, hazards, ahead)
+  // What the switch turns on hangs under it, set in, in its box (as See-through under 3-D buildings in the Layers panel).
+  const under = h('div', 'fh-scene-sub')
+  under.append(clouds, hazards, ahead)
+  master.append(under)
+  root.append(master)
 
   /** Everything the view decides: what is in use, what shows, the hint, the switch, the scale's colours. */
   const fit = (): void => {
@@ -272,9 +276,6 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     },
     destroy() {
       master.remove()
-      clouds.remove()
-      hazards.remove()
-      ahead.remove()
     },
   }
 }

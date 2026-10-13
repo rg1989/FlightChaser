@@ -900,6 +900,23 @@ test('mountAlerts: the switch asks the server, waits disabled, then shows its an
   assert.equal(one(m.body, 'fh-alerts-line').textContent, 'Could not change it. Try again.')
 })
 
+test('mountAlerts: Follow and Notifications hang under the watch: out of use while it is off or the server has none, their choices kept', (t) => {
+  const m = mount(t)
+  const rows = ['follow', 'notify'].map((r) => rowNamed(m.body, r))
+  const state = (): unknown[] => rows.map((r) => [one(r, 'fh-switch').disabled, r.getAttribute('aria-disabled')])
+  assert.ok(rows.every((r) => r.parent?.className === 'fh-scene-sub' && r.parent.parent === rowNamed(m.body, 'watch').parent), 'set in, in the watch\'s box')
+  assert.deepEqual(state(), [[false, 'false'], [false, 'false']], 'before the first answer: not dimmed for a moment')
+  sw(m.body, 'follow').click()
+  m.handle.update(reply(1, [], false))
+  assert.deepEqual(state(), [[true, 'true'], [true, 'true']])
+  sw(m.body, 'follow').click() // a disabled switch takes no click
+  assert.equal(sw(m.body, 'follow').getAttribute('aria-checked'), 'true', 'the choice is kept')
+  m.handle.update(reply(2, [], true))
+  assert.deepEqual(state(), [[false, 'false'], [false, 'false']])
+  m.handle.update(null)
+  assert.deepEqual(state(), [[true, 'true'], [true, 'true']])
+})
+
 test('mountAlerts: a server without alerts: the switch is off and disabled, the line says why, no list', (t) => {
   const m = mount(t)
   m.handle.update(null)
@@ -1009,7 +1026,7 @@ test('mountAlerts: the browser options are kept in the store; notifications ask 
   assert.equal(one(rowNamed(m.body, 'notify'), 'fh-scene-label').textContent, 'Notifications', 'a phone’s are not desktop ones')
   assert.equal(notify.getAttribute('aria-label'), 'Notifications')
   const hint = one(rowNamed(m.body, 'notify'), 'fh-alerts-hint')
-  assert.equal(hint.textContent, 'A notification for each new event')
+  assert.equal(hint.textContent, 'For each new event, while this tab is not in front')
   notify.click()
   assert.equal(FakeNotification.asked, 1, 'asked in the click itself')
   await settle()
@@ -1020,7 +1037,7 @@ test('mountAlerts: the browser options are kept in the store; notifications ask 
   notify.click()
   await settle()
   assert.equal(notify.getAttribute('aria-checked'), 'true')
-  assert.equal(hint.textContent, 'A notification for each new event')
+  assert.equal(hint.textContent, 'For each new event, while this tab is not in front')
   assert.equal(store.m.get('fh.alerts.notify'), '1')
   notify.click()
   assert.equal(notify.getAttribute('aria-checked'), 'false')

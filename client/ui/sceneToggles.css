@@ -28,8 +28,32 @@
 }
 
 /* A hairline between the rows that show (a hidden one before a row draws none). */
-.fh-scene-row:not([hidden]) ~ .fh-scene-row {
+.fh-scene-row:not([hidden]) ~ .fh-scene-row,
+.fh-scene-row:not([hidden]) ~ .fh-scene-group {
   border-top: 1px solid var(--fh-hairline);
+}
+
+/* What hangs under a switch or a choice, in one box with it (See-through under 3-D buildings, the overlays under Satellite, the
+   weather's parts under its switch, the Events options under the watch): set in from it, on a line that runs down from it. */
+.fh-scene-sub {
+  margin: 0 0 6px 20px;
+  border-left: 1px solid var(--fh-hairline);
+}
+
+.fh-scene-sub .fh-scene-row,
+.fh-scene-sub .fh-scene-head {
+  padding-left: 10px;
+}
+
+.fh-scene-sub .fh-seg {
+  margin-left: 10px;
+}
+
+/* A row out of use (the one it hangs under is off): the stored choice still shows, dimmed, and the pointer goes through it. Its
+   switch is disabled as well (native), so the keys skip it. */
+.fh-scene-row[aria-disabled='true'] {
+  opacity: 0.4;
+  pointer-events: none;
 }
 
 .fh-scene-icon {

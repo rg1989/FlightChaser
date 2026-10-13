@@ -110,14 +110,14 @@ const screen = (root: El): string[] => visible(root).flatMap((e) => {
   return []
 })
 const MAP = ['Map', 'Base map']
-const SCENE = ['3-D scene', '3-D terrain', 'Sun', '3-D buildings', 'See-through buildings']
+const SCENE = ['3-D scene', '3-D terrain', 'Sun', '3-D buildings', 'See-through']
 
 function mount(prefs: ScenePrefs) {
   const root = new El('div')
   const changes: ScenePrefs[] = []
   const t = mountSceneToggles(root as unknown as HTMLElement, { prefs, onChange: (next) => changes.push(next) })
   const sw = (label: string): El => all(root).find((e) => e.attrs.role === 'switch' && e.attrs['aria-label'] === label)!
-  const [topo, light, glass] = ['3-D terrain', 'Sun', 'See-through buildings'].map(sw)
+  const [topo, light, glass] = ['3-D terrain', 'Sun', 'See-through'].map(sw)
   const checked = (): [string, string, string] => [topo.attrs['aria-checked'], light.attrs['aria-checked'], glass.attrs['aria-checked']]
   const spinner = all(root).find((e) => e.className === 'fh-spin')!
   const [roads, places] = ['Roads', 'Borders & places'].map(sw)
@@ -127,7 +127,7 @@ function mount(prefs: ScenePrefs) {
   return { root, topo, light, glass, roads, places, mapB, satB, lightB, darkB, theme, view, t, changes, checked, spinner }
 }
 
-test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), 3-D buildings (B), See-through buildings (X), real buttons with a label each; no Weather row (its switch is the Weather panel\'s)', () => {
+test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), 3-D buildings (B), See-through (X), real buttons with a label each; no Weather row (its switch is the Weather panel\'s)', () => {
   const { root, topo, light, glass, roads, places } = mount({ ...DEFAULT_PREFS, topo: true, light: true, glass: false })
   const rows = all(root).filter((e) => e.className === 'fh-scene-row')
   assert.deepEqual(rows.map((r) => text(r.children[1])), [
@@ -136,14 +136,14 @@ test('switch rows: Roads (R), Borders & places (P), 3-D terrain (T), Sun (L), 3-
     '3-D terrainTMountains and valleys in relief',
     'SunLReal sun and moon light, day and night',
     '3-D buildingsBBuildings in relief round the aircraft',
-    'See-through buildingsXBuildings glassy, so they never hide the aircraft',
+    'See-throughXGlassy, so they never hide the aircraft',
   ])
   for (const b of [roads, places, topo, light, glass]) {
     assert.equal(b.tag, 'button')
     assert.equal(b.type, 'button') // never a form submit; Enter and Space work as on any button
     assert.equal(b.className, 'fh-switch')
   }
-  assert.deepEqual([topo, light, glass].map((b) => b.attrs['aria-label']), ['3-D terrain', 'Sun', 'See-through buildings'])
+  assert.deepEqual([topo, light, glass].map((b) => b.attrs['aria-label']), ['3-D terrain', 'Sun', 'See-through'])
 })
 
 test('only what applies to the view on screen: top-down or chase, on the map or the satellite', () => {
@@ -194,6 +194,19 @@ test('Roads and Borders & places: each switch shows and asks for its own pref', 
 test('a hidden part of the panel really goes: there, [hidden] wins over the display of its rows and button groups', () => {
   const css = readFileSync(new URL('./sceneToggles.css', import.meta.url), 'utf8')
   assert.match(css, /\.fh-scene\[hidden\],\s*\.fh-scene \[hidden\] \{\s*display: none !important;\s*\}/)
+})
+
+test('what hangs under a choice is set in under it, in its box: See-through under 3-D buildings; the theme and the overlays under the base', () => {
+  const { root, glass, roads, places, theme } = mount(DEFAULT_PREFS)
+  const buildings = all(root).find((e) => e.attrs['aria-label'] === '3-D buildings')!
+  const box = buildings.parent!.parent!
+  assert.equal(box.className, 'fh-scene-group')
+  assert.deepEqual(box.children.map((c) => c.className), ['fh-scene-row', 'fh-scene-sub'])
+  assert.equal(glass.parent!.parent, box.children[1])
+  const base = all(root).find((e) => e.attrs['aria-label'] === 'Base map')!
+  const under = base.parent!.children[base.parent!.children.indexOf(base) + 1]
+  assert.equal(under.className, 'fh-scene-sub')
+  assert.deepEqual(under.children, [theme, roads.parent, places.parent])
 })
 
 test('3-D buildings off: the See-through row keeps its choice but is out of use; on again, it is back', () => {

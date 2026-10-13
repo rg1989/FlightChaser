@@ -27,6 +27,11 @@
   cursor: default;
 }
 
+/* An option under the watch, out of use while it is off: the row dims as a whole (sceneToggles.css), not its switch again. */
+.fh-alerts-row[aria-disabled='true'] .fh-switch:disabled {
+  opacity: 1;
+}
+
 .fh-alerts-row:has(> .fh-switch:disabled):hover {
   background: transparent;
 }

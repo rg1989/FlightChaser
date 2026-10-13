@@ -155,8 +155,11 @@ test('it is the Layers panel\'s look: its classes for the section heads, button 
   for (const c of ['fh-scene', 'fh-scene-head', 'fh-scene-title', 'fh-seg', 'fh-seg-b', 'fh-scene-row', 'fh-scene-icon', 'fh-scene-text', 'fh-scene-label', 'fh-scene-hint', 'fh-switch']) {
     assert.ok([...classes].some((k) => k.split(' ').includes(c)), c)
   }
-  assert.equal(root.children.length, 4) // the master switch's section, Clouds, Hazard areas, Looking ahead
-  assert.ok(root.children.every((s) => s.className === 'fh-scene'))
+  // One box: the master switch, and under it, set in, Clouds, Hazard areas and Looking ahead.
+  assert.deepEqual(root.children.map((s) => s.className), ['fh-scene'])
+  const under = root.children[0].children.at(-1)!
+  assert.equal(under.className, 'fh-scene-sub')
+  assert.deepEqual(under.children.map((s) => [s.className, text(s.children[0])]), [['fh-scene', 'Clouds'], ['fh-scene', 'Hazard areas'], ['fh-scene', 'Looking ahead']])
 })
 
 test('mounted with the prefs it is given: the pressed buttons and the switches show them', () => {
@@ -246,7 +249,7 @@ test('update() writes only what changed (it runs for every choice made)', () => 
 
 test('destroy() takes the panel\'s parts out of its root', () => {
   const { root, menu } = mount()
-  assert.equal(root.children.length, 4)
+  assert.equal(root.children.length, 1)
   menu.destroy()
   assert.equal(root.children.length, 0)
 })
@@ -443,7 +446,8 @@ test('the credit link looks like the rest of the line (its colour, underlined on
   assert.match(layers, /\.fh-wx-credit \{\s*color: inherit;\s*text-decoration: none;\s*\}/)
   assert.match(layers, /\.fh-wx-credit:hover \{\s*text-decoration: underline;\s*\}/)
   const css = readFileSync(new URL('./wxMenu.css', import.meta.url), 'utf8')
-  assert.match(css, /\.fh-wxm-seg\[aria-disabled='true'\],\s*\.fh-wxm-opacity\[aria-disabled='true'\],\s*\.fh-scene-row\[aria-disabled='true'\] \{[^}]*opacity: 0\.4;[^}]*pointer-events: none;[^}]*\}/)
+  assert.match(css, /\.fh-wxm-seg\[aria-disabled='true'\],\s*\.fh-wxm-opacity\[aria-disabled='true'\] \{[^}]*opacity: 0\.4;[^}]*pointer-events: none;[^}]*\}/)
+  assert.match(layers, /\.fh-scene-row\[aria-disabled='true'\] \{[^}]*opacity: 0\.4;[^}]*pointer-events: none;[^}]*\}/) // the rows: every panel's
   assert.match(css, /\.fh-seg-b:disabled \{[^}]*cursor: default;[^}]*\}/)
 })
 
@@ -486,7 +490,7 @@ test('the clouds\' opacity: a slider from none to solid under the looks, with it
   const [name, slider, amount] = row.children
   assert.deepEqual([text(name), slider.tag, slider.type, slider.attrs['aria-label']], ['Opacity', 'input', 'range', 'Cloud opacity'])
   assert.deepEqual([slider.value, text(amount)], ['58', '58 %'])
-  const clouds = root.children[1]
+  const clouds = row.parent!
   assert.deepEqual(clouds.children.map((c) => c.className.split(' ')[0]), ['fh-scene-head', 'fh-seg', 'fh-wxm-opacity', 'fh-wx-legend'], 'under the looks, over the legend')
   slider.slide('20')
   assert.deepEqual(changes, [{ ...p, opacity: 0.2 }])

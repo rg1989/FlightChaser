@@ -317,6 +317,16 @@ export function sceneKey(e: { key: string; metaKey: boolean; ctrlKey: boolean; a
   return ({ t: 'topo', l: 'light', b: 'buildings', x: 'glass', m: 'base', r: 'roads', p: 'places', w: 'wx' } as const)[k as 't'] ?? null
 }
 
+/**
+ * Whether a scene key acts now. A choice that hangs under another acts only while that one is on, as its row in the Layers
+ * panel: X with the buildings on, R and P over the satellite (the base of the view on screen).
+ */
+export function sceneKeyActs(key: keyof ScenePrefs, prefs: ScenePrefs, chasing: boolean): boolean {
+  if (key === 'glass') return prefs.buildings
+  if (key === 'roads' || key === 'places') return !prefs[baseKey(chasing)]
+  return true
+}
+
 /** Which weather the prefs, the view and the time ask for: the top-down map's, the chase's, or none (the weather is today's: History and a scenario draw none). */
 export function weatherView(o: { wx: boolean; chasing: boolean; history: boolean; scenario: boolean }): { topDown: boolean; chase: boolean } {
   const live = !o.history && !o.scenario
@@ -2643,11 +2653,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     else if ((e.key === 'b' || e.key === 'B') && bench) bench.download()
     else {
       // T, L, B, X: they apply in the chase view (D9, D11), and can be set beforehand (X: only with the buildings on).
-      // M: map or satellite, for the view on screen. R: roads, P: borders and places, each over the satellite. W: weather.
+      // M: map or satellite, for the view on screen. R: roads, P: borders and places, each only over the satellite. W: weather.
       // With ?bench=1, B is the report's (above).
       const k = sceneKey(e)
       const key = k === 'base' ? (run === null ? baseKey(chasing) : null) : k // in a scenario M mutes (run.ts)
-      if (key !== null && (key !== 'glass' || prefs.buildings)) setPrefs({ ...prefs, [key]: !prefs[key] })
+      if (key !== null && sceneKeyActs(key, prefs, chasing)) setPrefs({ ...prefs, [key]: !prefs[key] })
     }
   }
   window.addEventListener('keydown', onKey)

@@ -339,7 +339,8 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
   model.append(icon('plane', 14), modelText)
   model.hidden = true
 
-  // The primary action: Chase (into the 3-D view) while focused; Map (back to top-down) while chasing, in the same place.
+  // The primary action, in the accent colour either way: Chase (into the 3-D view) while focused; 2-D map (back to top-down)
+  // while chasing, in the same place.
   // A traffic aircraft's: Chase (it instead of the chased one).
   const chaseBtn = h('button', 'fh-pill')
   chaseBtn.type = 'button'
@@ -355,13 +356,12 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
     if (chaseShown === key) return
     chaseShown = key
     chaseIcon.replaceChildren(icon(chasing ? 'map' : 'plane', 16))
-    const label = chasing ? 'Map' : traffic ? 'Chase' : 'Chase in 3-D' // short: the status line and the toggle share the row
+    const label = chasing ? '2-D map' : traffic ? 'Chase' : 'Chase in 3-D' // short: the status line and the toggle share the row
     chaseText.textContent = label
     chaseText.hidden = off
     chaseBtn.setAttribute('aria-label', label)
     chaseBtn.title = off ? 'No position at this time' : chasing ? 'Back to the top-down map (Esc)' : traffic ? 'Fly behind this aircraft instead' : 'Fly behind this aircraft in 3-D'
     chaseBtn.disabled = off
-    chaseBtn.classList.toggle('fh-pill-secondary', chasing)
   }
 
   const stats = h('div', 'fh-card-stats')

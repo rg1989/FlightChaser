@@ -1,8 +1,8 @@
 // client/ui/alerts.ts
 // The Events panel (the rail's bell) and its toasts: the emergencies and steep descents the server finds worldwide
-// (server/alerts.ts; shared/alerts.ts words them). The panel, top to bottom: the server's switch, Watch the world, with a
-// line on what it watches; two options kept in this browser, Follow automatically and Notifications (where the browser
-// has them); then the last 7 days of events, newest first. A row follows its aircraft live while its event is ongoing, else
+// (server/alerts.ts; shared/alerts.ts words them). The panel, top to bottom: the server's switch, Watch events, with a
+// line on what it watches; under it, set in, two options kept in this browser, Follow automatically and Notifications (where the
+// browser has them), out of use while the watch is off; then the last 7 days of events, newest first. A row follows its aircraft live while its event is ongoing, else
 // replays it in History once History has it (until then it goes to where the aircraft was last heard, and says when Replay
 // opens); a small text button beside a followed row replays it. No row offers Live for an aircraft that is not heard with
 // its cause now: it has most often landed. Quiet events (a light aircraft's radio failure) are listed, dimmed,
@@ -64,7 +64,7 @@ const ASK_EVERY_MS = 30_000 // with no live polls, the events are asked for this
 const AUTO_MAP_QUIET_MS = 60_000 // Follow automatically waits this long after the person last moved the map…
 const AUTO_PICK_QUIET_MS = 2 * 60_000 // …and this long after they last picked an aircraft by hand
 const NOTIFY_LABEL = 'Notifications' // a phone's too: not "desktop" ones
-const NOTIFY_HINT = 'A notification for each new event'
+const NOTIFY_HINT = 'For each new event, while this tab is not in front' // in front, the toast says it
 const BLOCKED_HINT = 'Blocked in this browser’s settings'
 const NONE: ReadonlySet<string> = new Set()
 
@@ -403,7 +403,7 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
   root.dataset.state = 'loading'
 
   // The server's switch, then what it watches.
-  const watch = switchRow('watch', 'radar', 'Watch the world', 'Emergency squawks and steep descents, anywhere', () => {
+  const watch = switchRow('watch', 'radar', 'Watch events', 'Emergency squawks and steep descents, worldwide', () => {
     if (reply == null || switching) return
     switching = true
     failed = false
@@ -478,7 +478,10 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
   showNotify()
 
   const options = h('div', 'fh-scene fh-alerts-options')
-  options.append(watch.row, line, followRow.row, notifyRow.row)
+  // The two act on the events the watch finds: they hang under it, set in (as See-through under 3-D buildings in the Layers panel).
+  const under = h('div', 'fh-scene-sub')
+  under.append(followRow.row, notifyRow.row)
+  options.append(watch.row, line, under)
 
   // The week's events.
   const section = h('h3', 'fh-alerts-section', 'Last 7 days')
@@ -527,6 +530,12 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
     watch.sw.disabled = reply == null || switching
     setAttr(watch.sw, 'aria-busy', String(switching))
     spin.hidden = !switching
+    // With the watch off (or none here) there are no new events to follow or to notify of: the two keep their choice, out of use.
+    const idle = reply !== undefined && !on
+    for (const r of [followRow, notifyRow]) {
+      if (r.sw.disabled !== idle) r.sw.disabled = idle
+      setAttr(r.row, 'aria-disabled', String(idle))
+    }
     line.hidden = reply === undefined && !failed
     line.dataset.state = failed ? 'error' : reply === undefined ? 'loading' : reply === null ? 'none' : on ? 'on' : 'off'
     setText(line, failed ? 'Could not change it. Try again.' : reply === undefined ? '' : watchText(reply))
