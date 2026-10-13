@@ -30,7 +30,7 @@ export function mountSplash(): SplashHandle {
   el.setAttribute('role', 'status')
   const mark = h('div', 'fh-splash-mark')
   mark.append(icon('plane', 30))
-  const name = h('div', 'fh-splash-name', 'FlightHopper')
+  const name = h('div', 'fh-splash-name', 'Flight Chaser')
   const spin = h('span', 'fh-spin fh-lg')
   const text = h('div', 'fh-splash-text', 'Loading the globe…')
   const slow = h('div', 'fh-splash-slow')
@@ -63,10 +63,10 @@ export function mountSplash(): SplashHandle {
       setTimeout(() => el.remove(), 450)
     },
     offline() {
-      screen('wifiOff', 'You’re offline', 'FlightHopper needs the internet for live traffic, maps and weather. It starts by itself as soon as the network is back.', null)
+      screen('wifiOff', 'You’re offline', 'Flight Chaser needs the internet for live traffic, maps and weather. It starts by itself as soon as the network is back.', null)
     },
     fail(message) {
-      screen('alert', 'FlightHopper couldn’t start', message, 'Try again')
+      screen('alert', 'Flight Chaser couldn’t start', message, 'Try again')
     },
   }
   skip.addEventListener('click', () => api.done())

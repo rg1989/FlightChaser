@@ -50,7 +50,7 @@ export function builder<J, M>(start: (() => WorkerLike<J, M>) | null, here: (job
   /** The worker has failed: it is ended, and what was asked of it last is done here. */
   const fall = (why: unknown): void => {
     if (worker === null) return
-    console.warn(`FlightHopper: ${who} failed; its work is done on the main thread from now on:`, why)
+    console.warn(`Flight Chaser: ${who} failed; its work is done on the main thread from now on:`, why)
     worker.terminate()
     worker = null
     const last = next ?? busy
@@ -81,7 +81,7 @@ export function builder<J, M>(start: (() => WorkerLike<J, M>) | null, here: (job
       worker.onerror = fall
       worker.onmessageerror = fall
     } catch (e) {
-      console.warn(`FlightHopper: ${who} did not start; its work is done on the main thread:`, e)
+      console.warn(`Flight Chaser: ${who} did not start; its work is done on the main thread:`, e)
       worker = null
     }
   }

@@ -105,7 +105,7 @@ test("the app's own recording: its header, its last name and route, its samples 
     JSON.stringify({ end: { why: 'landed', endedMs: T0 + 9000, samples: 3 } }),
   ].join('\n')
   const { format, flights } = parseFlightFile(text)
-  assert.equal(format, 'FlightHopper')
+  assert.equal(format, 'Flight Chaser')
   const [{ meta, samples }] = flights
   assert.deepEqual(meta, { hex: '4cae1d', callsign: 'ITY810', reg: 'EI-HXG', typeCode: 'A21N', category: 'A3', operator: null, name: 'Go-around', route: 'LIRF-LLBG' })
   assert.deepEqual(samples.map((x) => x.tMs - T0), [0, 4000])

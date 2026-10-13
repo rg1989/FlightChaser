@@ -40,11 +40,11 @@ test('adsblol: area source at ≤ 1 req/s whose User-Agent carries CONTACT (fetc
   const r = await src.circle(37.6188, -122.3758, 40)
   assert.equal(r.status, 200)
   assert.deepEqual(r.snapshot, { nowMs: 1_790_081_710_501, aircraft: [] })
-  assert.deepEqual(seen, [{ url: 'https://api.adsb.lol/v2/point/37.6188/-122.3758/40', ua: 'FlightHopper/0.1 (+me@example.invalid)' }])
+  assert.deepEqual(seen, [{ url: 'https://api.adsb.lol/v2/point/37.6188/-122.3758/40', ua: 'FlightChaser/0.1 (+me@example.invalid)' }])
 })
 
-test('userAgent: FlightHopper/0.1 (+contact)', () => {
-  assert.equal(userAgent('https://example.invalid/me'), 'FlightHopper/0.1 (+https://example.invalid/me)')
+test('userAgent: FlightChaser/0.1 (+contact)', () => {
+  assert.equal(userAgent('https://example.invalid/me'), 'FlightChaser/0.1 (+https://example.invalid/me)')
 })
 
 test('a hand-built config that lacks what its source needs throws', () => {

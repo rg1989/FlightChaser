@@ -244,7 +244,7 @@ test('static: dist/ files with content types, index.html for client routes, 404 
   const dir = tmp()
   const dist = join(dir, 'dist')
   mkdirSync(join(dist, 'assets'), { recursive: true })
-  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>FlightHopper</title>')
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>Flight Chaser</title>')
   writeFileSync(join(dist, 'assets', 'app.js'), 'console.log(1)')
   writeFileSync(join(dist, 'assets', 'app.css'), 'body{}')
   writeFileSync(join(dist, 'assets', 'data.bin'), 'x')
@@ -256,14 +256,14 @@ test('static: dist/ files with content types, index.html for client routes, 404 
   const home = await getText(`${base}/`)
   assert.equal(home.status, 200)
   assert.equal(home.type, 'text/html; charset=utf-8')
-  assert.match(home.body, /FlightHopper/)
+  assert.match(home.body, /Flight Chaser/)
   assert.deepEqual(await getText(`${base}/assets/app.js`), { status: 200, type: 'text/javascript; charset=utf-8', body: 'console.log(1)' })
   assert.equal((await getText(`${base}/assets/app.css`)).type, 'text/css; charset=utf-8')
   assert.equal((await getText(`${base}/assets/data.bin`)).type, 'application/octet-stream')
   for (const route of ['/?hex=a067ec&bench=1', '/chase/a067ec', '/assets/']) {
     const r = await getText(base + route)
     assert.equal(r.status, 200, route)
-    assert.match(r.body, /FlightHopper/, route)
+    assert.match(r.body, /Flight Chaser/, route)
   }
   assert.equal((await getText(`${base}/assets/missing.js`)).status, 404)
   const api = await getText(`${base}/api/nope`)
@@ -291,7 +291,7 @@ test('static: dist/ files with content types, index.html for client routes, 404 
 test('static: new MIME types for scenario audio/captions/data files', async (t) => {
   const dist = join(tmp(), 'dist')
   mkdirSync(dist, { recursive: true })
-  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>FlightHopper</title>')
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>Flight Chaser</title>')
   const files: [string, string][] = [
     ['track.csv', 'text/csv; charset=utf-8'],
     ['cvr.m4a', 'audio/mp4'],
@@ -316,7 +316,7 @@ test('static: new MIME types for scenario audio/captions/data files', async (t) 
 test('static: HTTP Range on a 1000-byte file — 206 slices (a-b, a-, -n), 416 unsatisfiable, 200 always advertises accept-ranges', async (t) => {
   const dist = join(tmp(), 'dist')
   mkdirSync(dist, { recursive: true })
-  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>FlightHopper</title>')
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>Flight Chaser</title>')
   const bytes = Buffer.from(Array.from({ length: 1000 }, (_, i) => i % 256))
   writeFileSync(join(dist, 'data.bin'), bytes)
   const app = createServer({ ...readServerConfig({ REPLAY_FILES: FILE }), staticDir: dist })

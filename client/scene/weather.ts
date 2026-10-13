@@ -419,7 +419,7 @@ export class Weather {
       if (!r.ok) throw new Error(`HTTP ${r.status}`)
       return (await r.json()) as T
     } catch (e) {
-      console.warn(`FlightHopper: weather ${url}:`, e)
+      console.warn(`Flight Chaser: weather ${url}:`, e)
       this.note = 'some weather unavailable'
       return null
     }

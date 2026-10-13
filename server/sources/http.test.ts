@@ -69,9 +69,9 @@ test('gzip: body is decoded, bytes are the compressed wire bytes', async () => {
 })
 
 test('sends User-Agent and Accept-Encoding: gzip', async () => {
-  await timedFetch(`${base}/ok?ua`, { userAgent: 'FlightHopper/0.1 (+test@example.com)' })
+  await timedFetch(`${base}/ok?ua`, { userAgent: 'FlightChaser/0.1 (+test@example.com)' })
   const req = seen.find((s) => s.url === '/ok?ua')!
-  assert.equal(req.ua, 'FlightHopper/0.1 (+test@example.com)')
+  assert.equal(req.ua, 'FlightChaser/0.1 (+test@example.com)')
   assert.equal(req.ae, 'gzip')
 })
 

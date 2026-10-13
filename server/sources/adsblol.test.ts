@@ -11,7 +11,7 @@ import type { Source } from './types.ts'
 const golden = (f: string): string => readFileSync(new URL(`../../data/fixtures/golden/${f}`, import.meta.url), 'utf8')
 const POINT = golden('adsblol-point-ksfo.json')
 const HEX = golden('adsblol-hex.json')
-const UA = 'FlightHopper/0.1 (+test@example.com)'
+const UA = 'FlightChaser/0.1 (+test@example.com)'
 
 // The mock answers by path prefix; `mode` switches the next responses to a failure.
 let mode: 'ok' | '429' | '403' | '500' | 'bad' | 'readsb' = 'ok'

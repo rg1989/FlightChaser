@@ -188,7 +188,7 @@ export class BordersProvider extends UrlTemplateImageryProvider {
     if (this.#lines === null || (this.#failedAt !== null && this.#now() - this.#failedAt >= RETRY_MS)) {
       this.#failedAt = null
       this.#lines = this.#get(this.#url).then(decodeBorders).catch((e: unknown) => {
-        console.warn('FlightHopper: no borders (asked again in a minute):', e)
+        console.warn('Flight Chaser: no borders (asked again in a minute):', e)
         this.#failedAt = this.#now()
         return []
       })

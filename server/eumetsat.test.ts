@@ -185,7 +185,7 @@ test('makeEumetsat: the first ask searches both collections, takes a token with 
   assert.deepEqual(asked.map((x) => x.method), ['GET', 'GET', 'POST', 'GET', 'GET'])
   assert.deepEqual(asked.map((x) => x.auth), [null, null, `Basic ${Buffer.from(`${KEY}:${SECRET}`).toString('base64')}`, 'Bearer token-1', 'Bearer token-1'], 'the key and the secret go to the token\'s address only, the token to the downloads only')
   assert.equal(asked[2].body, 'grant_type=client_credentials')
-  assert.ok(asked.every((x) => x.agent === 'FlightHopper/0.1'), 'no contact of the user\'s in the requests: the key says who asks')
+  assert.ok(asked.every((x) => x.agent === 'FlightChaser/0.1'), 'no contact of the user\'s in the requests: the key says who asks')
   for (const x of asked) for (const secret of [KEY, SECRET, 'token-1']) assert.ok(!x.url.includes(secret), 'no credential in a URL')
   const f = frameOf(a)
   assert.deepEqual([f.timeMs, f.n, f.box], [T, 400, [27.7533, 29.4534, 36.7467, 40.0466]])

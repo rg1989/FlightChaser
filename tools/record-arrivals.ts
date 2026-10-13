@@ -167,7 +167,7 @@ async function main(): Promise<void> {
   })
   const bucket = new TokenBucket(maxRps)
   const loop = arrivalLoop({
-    source: makeAdsblol({ userAgent: `FlightHopper/0.1 (+${contact})`, baseUrl: values['base-url'] }),
+    source: makeAdsblol({ userAgent: `FlightChaser/0.1 (+${contact})`, baseUrl: values['base-url'] }),
     bucket,
     store: new SampleStore(),
     recorder: new Recorder(values.out),

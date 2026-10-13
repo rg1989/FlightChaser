@@ -38,7 +38,7 @@ export class LandingEstimate {
     if (this.#runways === null) {
       if (!this.#asked) {
         this.#asked = true
-        this.#load().then((t) => (this.#runways = new Runways(t)), (e: unknown) => console.warn('FlightHopper: no runways for landings:', e))
+        this.#load().then((t) => (this.#runways = new Runways(t)), (e: unknown) => console.warn('Flight Chaser: no runways for landings:', e))
       }
       return s
     }

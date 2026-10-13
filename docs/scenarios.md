@@ -1,7 +1,7 @@
 <!-- docs/scenarios.md -->
 # Scenarios: the package format and what to send
 
-A scenario is a recorded flight that FlightHopper plays back. The app reads it from static files in
+A scenario is a recorded flight that Flight Chaser plays back. The app reads it from static files in
 `public/scenarios/`. Only that aircraft is drawn, in chase view or on the top-down map: there the whole route is drawn
 in the altitude colours, with the timeline's marks as dots on it. A pill at the top of the screen says the scenario's
 day and time, switches between 3-D and Map (or V), and has Exit. A timeline plays, pauses and drags the flight. The
@@ -363,8 +363,8 @@ These rules are fixed. They apply to every accident or serious-incident scenario
 Copy the text below. Replace the parts in angle brackets.
 
 ```text
-Research a FlightHopper scenario package for <flight, date, aircraft registration>.
-Read docs/scenarios.md in the FlightHopper repository first. It defines every file and column.
+Research a Flight Chaser scenario package for <flight, date, aircraft registration>.
+Read docs/scenarios.md in the Flight Chaser repository first. It defines every file and column.
 
 Use primary sources first, in this order:
 1. The final report of the investigating authority, with all attachments: flight data recorder charts and

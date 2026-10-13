@@ -264,7 +264,7 @@ function host(first: Answer) {
     return answer
   }) as unknown as typeof fetch
   const clock = { t: Date.UTC(2026, 9, 2, 12) }
-  const db = new TypeDb({ userAgent: 'FlightHopper-test', fetchFn, nowMs: () => clock.t })
+  const db = new TypeDb({ userAgent: 'Flight Chaser-test', fetchFn, nowMs: () => clock.t })
   return { db, calls, clock, next: (a: Answer) => void (answer = a) }
 }
 const zipResponse = (aircraft: unknown, etag = '"v1"', types: unknown = TYPES): Response => new Response(zipOf(aircraft, types), { status: 200, headers: { etag } })
@@ -273,7 +273,7 @@ test('load: from Mictronics on GitHub, with the user agent and a time limit; the
   const { db, calls } = host(zipResponse(AIRCRAFT))
   assert.equal(await db.load(), true)
   assert.deepEqual(calls.map((c) => c.url), ['https://raw.githubusercontent.com/Mictronics/aircraft-database/main/indexedDB_old.zip'])
-  assert.equal(calls[0].headers.get('user-agent'), 'FlightHopper-test')
+  assert.equal(calls[0].headers.get('user-agent'), 'Flight Chaser-test')
   assert.equal(calls[0].headers.get('if-none-match'), null, 'the first is not conditional')
   assert.ok(calls[0].signal instanceof AbortSignal && !calls[0].signal.aborted, 'a stuck download ends by itself')
   assert.deepEqual([db.lookup('4a0481').type, db.lookup('00830b').category], ['A320', 'A7'])

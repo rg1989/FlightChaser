@@ -516,11 +516,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const [[viewer, topo], airports, manifest] = await Promise.all([
     viewerWithTopography(),
     getJson<Airport[]>(`${base}airports/heroes.json`).catch((e: unknown): Airport[] => {
-      console.warn('FlightHopper: no runways:', e)
+      console.warn('Flight Chaser: no runways:', e)
       return []
     }),
     getJson<ModelManifest>(`${base}models/manifest.json`).catch((e: unknown): null => {
-      console.warn('FlightHopper: no model manifest:', e)
+      console.warn('Flight Chaser: no model manifest:', e)
       return null
     }),
   ])
@@ -529,7 +529,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const entry = manifest?.models.find((m) => m.id === manifest.default) ?? null
   const model = entry
     ? await ChaseModel.load(viewer, entry).catch((e: unknown): null => {
-        console.warn('FlightHopper: chase model not loaded:', e)
+        console.warn('Flight Chaser: chase model not loaded:', e)
         return null
       })
     : null
@@ -1202,7 +1202,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       selTrace = tr
       chaseOrigin = tr.origin ?? null
       rebuildPath()
-    }, (e: unknown) => console.warn('FlightHopper: no trace:', e))
+    }, (e: unknown) => console.warn('Flight Chaser: no trace:', e))
   }
 
   /**
@@ -1346,7 +1346,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         legs: old !== null && old.hex === hex && old.startMs === startMs ? keepLegs(old.legs, legs) : legs,
       }
     }, (e: unknown) => {
-      if (settle()) console.warn('FlightHopper: no day of flights:', e)
+      if (settle()) console.warn('Flight Chaser: no day of flights:', e)
     })
   }
 
@@ -1724,7 +1724,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         h.bar.setBounds(minMs, maxMs)
       }
       showMissing(h)
-    }, (e: unknown) => console.warn('FlightHopper: no history status:', e))
+    }, (e: unknown) => console.warn('Flight Chaser: no history status:', e))
   }
 
   /** Fetches one half hour for circle c into the feed. None at adsb.lol: not asked for a while; a failure: retried soon. */
@@ -1750,7 +1750,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         h.block.failed(slot, Date.now()) // the server busy or unreachable: again in a few seconds
         h.failure.failed(slot) // the bar's note, if it is the half hour under the clock
       }
-      console.warn('FlightHopper: the past not loaded:', e)
+      console.warn('Flight Chaser: the past not loaded:', e)
     } finally {
       h.loading.delete(slot)
     }
@@ -1983,7 +1983,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         recLivery = liveryOf(liveryCode(rec.info.callsign, rec.info.reg, rec.info.military, rec.info.operator ?? operatorOf(rec.info.callsign)))
       } else scn = await loadScenario(scenarioBase, id)
     } catch (e) {
-      console.error(`FlightHopper: scenario "${id}" not loaded:`, e)
+      console.error(`Flight Chaser: scenario "${id}" not loaded:`, e)
       if (loadingScenario === id) loadingScenario = null
       return
     }
@@ -2369,7 +2369,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       const wx = !weather3d.show ? 'off'
         : bodies !== undefined ? `${weather3d.look}, ${bodies.triangles} triangles in ${bodies.bodies} bodies, their mesh built in ${bodies.meshMs.toFixed(0)} ms, last draw ${weather3d.drawMs.toFixed(0)} ms, its field and mesh made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms, its own work held a frame ${bodies.heldMs.toFixed(1)} ms at most (all the weather's: ${bench.report().wxMsMax.toFixed(1)} ms, ${bench.report().wxOver} frames over 8 ms), ${from}`
         : `${weather3d.look}, march at tier ${weather3d.tier} (size ${weather3d.sky.clouds.scale ?? '?'}), the pass ${Number.isFinite(pass) ? `${pass.toFixed(1)} ms on the GPU` : 'not timed'}, last draw ${weather3d.drawMs.toFixed(0)} ms, its field made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms, ${from}`
-      console.warn(`FlightHopper bench: frame p50 ${(1000 / b.fpsP50).toFixed(1)} ms, p95 ${b.frameMsP95.toFixed(1)} ms · weather ${wx}`)
+      console.warn(`Flight Chaser bench: frame p50 ${(1000 / b.fpsP50).toFixed(1)} ms, p95 ${b.frameMsP95.toFixed(1)} ms · weather ${wx}`)
     }
     measure?.('fh:frame', now)
   }
@@ -2536,7 +2536,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       failedPolls = 0
       lastOkMs = Date.now()
     }
-    else if (failedPolls++ === 0) console.warn('FlightHopper: poll failed:', (view as PromiseRejectedResult).reason)
+    else if (failedPolls++ === 0) console.warn('Flight Chaser: poll failed:', (view as PromiseRejectedResult).reason)
     if (api.ready) {
       const t = api.serverNowMs()
       fleet.prune(t, PRUNE_AGE_S)
@@ -2561,11 +2561,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         continue
       }
       if (hist !== null) { // History asks the past, not live
-        await historyTick(hist).catch((e: unknown) => console.error('FlightHopper: history tick crashed:', e))
+        await historyTick(hist).catch((e: unknown) => console.error('Flight Chaser: history tick crashed:', e))
         await sleep(Math.max(0, POLL_MS - (performance.now() - t0)))
         continue
       }
-      await poll().catch((e: unknown) => console.error('FlightHopper: poll crashed:', e))
+      await poll().catch((e: unknown) => console.error('Flight Chaser: poll crashed:', e))
       await sleep(Math.max(0, POLL_MS - (performance.now() - t0)))
     }
   })()

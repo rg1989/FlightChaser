@@ -1,5 +1,5 @@
 // client/api.ts
-// Browser client for the FlightHopper server: GET /view and /chase with a per-key `since`, plus the server clock; the
+// Browser client for the Flight Chaser server: GET /view and /chase with a per-key `since`, plus the server clock; the
 // past (/history, /trace) for the flown path and the History mode; the alerts' switch and events (/events); a flight by
 // its number (/flights).
 import type { EventsReply } from '../shared/alerts.ts'

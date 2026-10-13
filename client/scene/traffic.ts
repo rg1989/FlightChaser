@@ -559,13 +559,13 @@ export class Traffic {
                 this.#viewer.scene.primitives.add(g)
                 slot.gear = g
               },
-              (err: unknown) => console.warn(`FlightHopper: traffic gear ${m.gear!.uri} not loaded; flying without it:`, err),
+              (err: unknown) => console.warn(`Flight Chaser: traffic gear ${m.gear!.uri} not loaded; flying without it:`, err),
             )
           }
         },
         (err: unknown) => {
           this.#loading.set(m.id, this.#loading.get(m.id)! - 1)
-          if (!this.#failed.has(m.id)) console.warn(`FlightHopper: traffic model ${m.id} not loaded; its aircraft are not drawn:`, err)
+          if (!this.#failed.has(m.id)) console.warn(`Flight Chaser: traffic model ${m.id} not loaded; its aircraft are not drawn:`, err)
           this.#failed.add(m.id)
         },
       )

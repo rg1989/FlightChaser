@@ -1,6 +1,6 @@
 // client/scene/altitudeColor.ts
 /**
- * Altitude → colour for the browse view. FlightHopper's own palette (not tar1090's): a smooth HSL gradient over seven
+ * Altitude → colour for the browse view. Flight Chaser's own palette (not tar1090's): a smooth HSL gradient over seven
  * stops, orange at the surface → yellow → green → cyan → blue → violet → magenta at 40,000 ft and above.
  * On the ground → mid grey; altitude unknown → light grey.
  * Every colour is precomputed once in 100 ft buckets (403 entries), so a lookup allocates nothing.

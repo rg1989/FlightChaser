@@ -192,7 +192,7 @@ and An-124 (tactical descents). A type that is not on the list keeps the strict 
 - **OpenSky alerts page** (`opensky-network.org/network/alerts`, cited in [14]). It refused automated access: status unverified.
 - **Streams.** This search found no free emergency stream or websocket (unverified).
 
-## 7. Design for FlightHopper
+## 7. Design for Flight Chaser
 
 This section is the proposal from before the design. Where they differ, [the design](superpowers/specs/2026-10-03-alerts-design.md) is what was built.
 

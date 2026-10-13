@@ -48,7 +48,7 @@ function setup(opts: Partial<HistoryStoreOpts> = {}) {
     if (r instanceof Error) throw r
     return new Response((r.body ?? null) as BodyInit | null, { status: r.status })
   }) as typeof fetch
-  const store = new HistoryStore({ userAgent: 'FlightHopper-test', fetchFn, nowMs: () => clock.t, ...opts })
+  const store = new HistoryStore({ userAgent: 'Flight Chaser-test', fetchFn, nowMs: () => clock.t, ...opts })
   const serve = (slotMs: number, reply: Reply | Promise<Reply>): void => void replies.set(heatmapUrl(opts.base ?? BASE, slotMs), reply)
   return { store, clock, calls, serve }
 }
@@ -69,7 +69,7 @@ test('file: asks with the user agent and gzip, from adsb.lol unless told otherwi
   assert.deepEqual(await store.file(AGO(1)), heat(AGO(1)))
   assert.deepEqual(calls.map((c) => c.url), [heatmapUrl(BASE, NEWEST), heatmapUrl(BASE, AGO(1))])
   assert.ok(calls[0].url.startsWith('https://adsb.lol/globe_history/'))
-  assert.equal(calls[0].headers.get('user-agent'), 'FlightHopper-test')
+  assert.equal(calls[0].headers.get('user-agent'), 'Flight Chaser-test')
   assert.equal(calls[0].headers.get('accept-encoding'), 'gzip')
   assert.ok(calls[0].signal instanceof AbortSignal && !calls[0].signal.aborted, 'a stuck download ends by itself')
 
@@ -239,7 +239,7 @@ function daysHost(oldest: number | null, fail?: (url: string) => Response | Erro
     const day = Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
     return new Response(null, { status: oldest !== null && day >= oldest && !gone.has(url) ? 200 : 404 })
   }) as typeof fetch
-  const store = new HistoryStore({ userAgent: 'FlightHopper-test', fetchFn, nowMs: () => clock.t })
+  const store = new HistoryStore({ userAgent: 'Flight Chaser-test', fetchFn, nowMs: () => clock.t })
   return { store, clock, heads }
 }
 
@@ -255,7 +255,7 @@ test('findOldest: a binary search with HEAD over the days from 60 back to yester
   for (const h of heads) {
     assert.equal(h.method, 'HEAD')
     assert.match(h.url, /^https:\/\/adsb\.lol\/globe_history\/2026\/(07|08|09)\/\d\d\/heatmap\/(00|47)\.bin\.ttf$/)
-    assert.equal(h.headers.get('user-agent'), 'FlightHopper-test')
+    assert.equal(h.headers.get('user-agent'), 'Flight Chaser-test')
     assert.ok(h.signal instanceof AbortSignal && !h.signal.aborted, 'a stuck request ends by itself')
   }
   for (let back = 1; back <= 60; back++) {
@@ -434,7 +434,7 @@ test('close: the downloads under way are aborted and end as unavailable, and no 
       signals.push(signal)
       signal.addEventListener('abort', () => reject(signal.reason))
     })) as unknown as typeof fetch
-  const store = new HistoryStore({ userAgent: 'FlightHopper-test', fetchFn, nowMs: () => NOW })
+  const store = new HistoryStore({ userAgent: 'Flight Chaser-test', fetchFn, nowMs: () => NOW })
   const pending = store.file(NEWEST)
   assert.equal(signals.length, 1)
   assert.equal(signals[0].aborted, false)

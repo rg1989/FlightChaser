@@ -504,7 +504,7 @@ export class CloudVolume {
   #fail(error: unknown): void {
     if (this.#pass === null) return
     this.#failed = true
-    console.warn('FlightHopper: the cloud pass is taken out of the scene after a render error; the 3-D clouds are off until the page is loaded again:', error)
+    console.warn('Flight Chaser: the cloud pass is taken out of the scene after a render error; the 3-D clouds are off until the page is loaded again:', error)
     this.#away()
     this.#onFailed()
   }

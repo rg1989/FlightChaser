@@ -1,6 +1,6 @@
 export const meta = {
   name: 'livery',
-  description: 'Paint airlines on FlightHopper models from reference photos: research, design, lab shots, independent critique until it matches',
+  description: 'Paint airlines on Flight Chaser models from reference photos: research, design, lab shots, independent critique until it matches',
   whenToUse: 'Adding or improving an airline livery (docs/liveries.md Part 5). args: { repo, host?, rounds?, airlines: [{ code, airline, types, pairs, hexes?, commons?, note? }] }',
   phases: [
     { title: 'Setup', detail: 'register every design in client/livery/designs/index.ts' },
@@ -31,7 +31,7 @@ Rules for every agent in this workflow:
 - Never commit, never touch git; never edit files other than the ones your task names. Other agents work in the same checkout at the same time on other airlines.
 - Photos are copyrighted: they stay in data/livery-refs/ (git-ignored); never copy one into public/ or client/.
 - Logos: only public-domain or freely licensed files from Wikimedia Commons, into public/liveries/<CODE>/ with the source and licence of each file in public/liveries/<CODE>/sources.json. A wordmark with no free file is typeset in an OFL font (public/fonts/, licence file beside it). A graphic emblem with no free file is left out or replaced by plain shapes that are not a copy.
-- Downloads needed for the task are approved. Be polite to APIs (planespotters: 1 request/s, UA "FlightHopper livery research (+https://github.com/rg1989/FlightHopper)").
+- Downloads needed for the task are approved. Be polite to APIs (planespotters: 1 request/s, UA "Flight Chaser livery research (+https://github.com/rg1989/FlightChaser)").
 - Look at images with the Read tool; base every claim on what you see.`
 
 const DOSSIER = (a) => `${REPO}/.planning/liveries/${a.code}.md`
@@ -73,7 +73,7 @@ Otherwise research it: get reference photos into ${REFS(a)}/ (use \`node tools/l
   (r, a) => (r && r.skipped ? r : agent(`${RULES}
 Independently check the livery dossier ${DOSSIER(a)} for ${a.airline} against the photos in ${REFS(a)}/ (refs.json). Assume it has mistakes. Check the current scheme, every colour (re-sample hex values from sunlit areas), the belly line and every stripe's geometry, the titles (text, size, place, left/right), the fin, engines and wingtips on both faces, and the logo licences (open each Commons file page). Get missing views. Fix the dossier in place, marking changes "(verified)" or "(corrected: was …)". Return the structured summary with skipped=false.`, { label: `verify:${a.code}`, phase: 'Verify', schema: RESEARCH_SCHEMA })),
   (r, a, i) => agent(`${RULES}
-Task: draw ${a.airline}'s livery (${a.code}) as a FlightHopper design, so that the 3-D models (${a.pairs.join(', ')}) look like the aircraft in the reference photos. ${a.note ?? ''}
+Task: draw ${a.airline}'s livery (${a.code}) as a Flight Chaser design, so that the 3-D models (${a.pairs.join(', ')}) look like the aircraft in the reference photos. ${a.note ?? ''}
 Inputs: the dossier ${DOSSIER(a)}; the photos ${REFS(a)}/ (refs.json says each one's view); the kit API in docs/liveries.md §3.4 and client/livery/kit.ts; examples: the other designs in client/livery/designs/ (read at least one finished one if there is one); the model profiles in public/models/manifest.json ("profile").
 Your files: client/livery/designs/${a.code}.ts (already registered in designs/index.ts), public/liveries/${a.code}/ (logos + sources.json), new files in public/fonts/ if you need a font. Nothing else.
 Loop until it matches: edit the design → run \`${shotsCmd(a, 9360 + 2 * i, 'all')}\` → open the PNGs in ${SHOTS(a)}/<model>-${a.code}/ (sheet.png shows each photo beside the same view; the per-view PNGs are larger) → compare with the photos view by view (colours in similar light, belly line, every stripe/swoosh and where it starts and ends, the titles' text/size/position on BOTH sides, fin art, engines, wingtips, nose) → fix. Do at least 4 iterations and stop when a careful observer would say it is the same livery. Check the right side too (the text must read correctly). Use k.side / k.model only where the real aircraft differ.
@@ -82,7 +82,7 @@ Finally run \`cd ${REPO} && npx tsc --noEmit -p . && node --test client/livery/*
     let last = null
     for (let round = 1; round <= ROUNDS; round++) {
       const c = await agent(`${RULES}
-You are an independent, demanding critic. Compare FlightHopper's 3-D model of ${a.airline} (${a.code}) with real photos. Do not trust anyone's summary.
+You are an independent, demanding critic. Compare Flight Chaser's 3-D model of ${a.airline} (${a.code}) with real photos. Do not trust anyone's summary.
 Run \`${shotsCmd(a, 9361 + 2 * i, 'all')}\` to get fresh renders into ${SHOTS(a)}/<model>-${a.code}/, then look at every reference photo in ${REFS(a)}/ (refs.json gives each view) and the matching render, and the dossier ${DOSSIER(a)}.
 List every visible difference a spotter would notice: colours, belly line, stripes and swooshes (shape, width, where they start/end), titles (text, font weight, size, position, both sides reading correctly), fin art (extent, logo size/position), tail cone, engines, wingtips (both faces), nose/radome, anything missing or extra. Ignore what the model geometry or the renderer cannot do (window shapes, panel lines, reflections, lighting differences, the photo's background). For each difference: severity (major = a spotter would call it a different or wrong livery at first glance; minor = detail), the view, what is wrong, and a concrete fix in kit terms (docs/liveries.md §3.4). Verdict "pass" only when there is no major issue. Score 0-10.`, { label: `critic:${a.code}:r${round}`, phase: 'Critique', schema: CRITIC_SCHEMA })
       last = c

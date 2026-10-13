@@ -8,7 +8,7 @@ import { InfoStore } from './infoStore.ts'
 import { MAX_PLANES, parseRouteset, ROUTESET_URL, RouteFetcher } from './routes.ts'
 
 const T0 = 2_000_000_000_000
-const UA = 'FlightHopper/0.1 (+me@example.invalid)'
+const UA = 'FlightChaser/0.1 (+me@example.invalid)'
 
 /** One routeset item shaped like adsb.lol's (api_routes.py api_routeset → provider.py _route; orjson, sorted keys). */
 function known(callsign: string, icao: string, iata: string, plausible = true) {

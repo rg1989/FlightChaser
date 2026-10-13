@@ -59,7 +59,7 @@ async function main(): Promise<void> {
     let retryAfterS: number | null = null
     try {
       const res = await fetch(url, {
-        headers: { 'User-Agent': `FlightHopper/0.1 (+${contact})`, 'Accept-Encoding': 'gzip' },
+        headers: { 'User-Agent': `FlightChaser/0.1 (+${contact})`, 'Accept-Encoding': 'gzip' },
         signal: AbortSignal.timeout(10_000),
       })
       status = res.status

@@ -33,7 +33,7 @@ export async function makeTerrain(cfg: ClientConfig, onFallback?: (why: string) 
       return await createWorldTerrainAsync({ requestVertexNormals: true }) // ion requests extensions in the URL query itself
     } catch (e) {
       const why = ionWhy(e)
-      console.warn(`FlightHopper: Cesium World Terrain unavailable (${why}); using Re:Earth terrain`)
+      console.warn(`Flight Chaser: Cesium World Terrain unavailable (${why}); using Re:Earth terrain`)
       onFallback?.(why)
       return reearthTerrain()
     }

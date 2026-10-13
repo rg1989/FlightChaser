@@ -208,7 +208,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
         src.state = 'ok'
       },
       (e: unknown) => {
-        console.warn(`FlightHopper: search: no ${src.what}:`, e)
+        console.warn(`Flight Chaser: search: no ${src.what}:`, e)
         src.state = 'error' // what loaded before stays searchable
       },
     ).finally(() => {
@@ -292,7 +292,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
       },
       (e: unknown) => {
         if (look !== l || destroyed) return
-        console.warn('FlightHopper: search: the flight was not looked up:', e)
+        console.warn('Flight Chaser: search: the flight was not looked up:', e)
         l.state = 'error'
       },
     ).finally(() => {
@@ -424,7 +424,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
         schedule()
       })
       const msg = h('span', 'fh-search-notice-t')
-      msg.append(h('b', '', offline ? 'You are offline. ' : `Could not load ${what}. `), offline ? `No ${what} until the connection is back.` : 'The FlightHopper server did not answer.')
+      msg.append(h('b', '', offline ? 'You are offline. ' : `Could not load ${what}. `), offline ? `No ${what} until the connection is back.` : 'The Flight Chaser server did not answer.')
       notice.replaceChildren(icon('alert', 16), msg, retry)
     }
 

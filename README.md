@@ -1,6 +1,6 @@
 <img src="public/logo.png" alt="" width="84" align="right">
 
-# FlightHopper
+# Flight Chaser
 
 Live air traffic on a 3-D globe. Pick an aircraft and fly behind it over real terrain, down to the runway.
 
@@ -62,8 +62,8 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
 You need Node 24.2 or newer, npm and make.
 
 ```bash
-git clone https://github.com/rg1989/FlightHopper.git
-cd FlightHopper
+git clone https://github.com/rg1989/FlightChaser.git
+cd FlightChaser
 make
 ```
 
@@ -169,7 +169,7 @@ No framework: TypeScript run by Node directly, Vite for the client, `node --test
   [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), free for non-commercial use.
 - **Cloud positions and cloud tops:** Meteosat's cloud mask and cloud top height, © [EUMETSAT](https://www.eumetsat.int/)
   2026, read from [EUMETView](https://view.eumetsat.int/), or with your own EUMETSAT key from EUMETSAT's Data Store, and
-  changed by FlightHopper (moved for parallax and wind).
+  changed by Flight Chaser (moved for parallax and wind).
   Two conditions apply: no commercial or operational use, and no redistribution of the original data.
 - **Places:** OurAirports and [GeoNames](https://www.geonames.org/)
   ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
@@ -182,7 +182,7 @@ No framework: TypeScript run by Node directly, Vite for the client, `node --test
 - **Aircraft models:** from FlightGear aircraft, GPL. See [third_party/aircraft-models](third_party/aircraft-models/README.md).
 
 Each source has its own terms: see [docs/data-sources.md](docs/data-sources.md). Read them before you use
-FlightHopper for anything but personal use.
+Flight Chaser for anything but personal use.
 
 ## Licence
 
@@ -196,4 +196,4 @@ The code is under the [MIT licence](LICENSE). That does not cover what the repos
 
 ## Questions and bugs
 
-Open an [issue](https://github.com/rg1989/FlightHopper/issues).
+Open an [issue](https://github.com/rg1989/FlightChaser/issues).

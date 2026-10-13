@@ -1,7 +1,7 @@
 # tools/scenarios/jal123/digitize.py
 # Digitizes the JAL 123 DFDR strip charts (AAIC 1987 report, part 11, DFDR図-1…4) into a 1 Hz table.
 """
-    /usr/bin/python3 tools/scenarios/jal123/digitize.py [--work <FlightHopper>/.work/jal123] [--pages 2,3]
+    /usr/bin/python3 tools/scenarios/jal123/digitize.py [--work <FlightChaser>/.work/jal123] [--pages 2,3]
 
 Input  <work>/sources/62-2-JA8119-11.pdf (git-ignored). The chart pages are 400 ppi 1-bit scans; they are
        extracted losslessly with `pdfimages -png` to <work>/pages/dfdr/p-NN.png (NN = PDF page).

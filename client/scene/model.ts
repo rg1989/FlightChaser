@@ -252,7 +252,7 @@ export class ChaseModel {
           this.viewer.scene.primitives.add(model)
           this.ready.set(entry.id, model)
         },
-        (err: unknown) => console.warn(`FlightHopper: chase model ${entry.id} not loaded; keeping ${this.m.id}:`, err),
+        (err: unknown) => console.warn(`Flight Chaser: chase model ${entry.id} not loaded; keeping ${this.m.id}:`, err),
       )
     }
     const next = this.ready.get(entry.id)
@@ -464,7 +464,7 @@ export class ChaseModel {
         this.gears.set(g.uri, model)
         this.legsAt = -1
       },
-      (err: unknown) => console.warn(`FlightHopper: landing gear ${g.uri} not loaded; flying without it:`, err),
+      (err: unknown) => console.warn(`Flight Chaser: landing gear ${g.uri} not loaded; flying without it:`, err),
     )
   }
 

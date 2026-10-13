@@ -1,6 +1,6 @@
 // client/scene/icons.ts
 /**
- * Top-down aircraft silhouettes for the fleet layer, drawn here on a canvas (FlightHopper's own shapes, no third-party
+ * Top-down aircraft silhouettes for the fleet layer, drawn here on a canvas (Flight Chaser's own shapes, no third-party
  * icon set). White fill + thin dark outline: a Cesium billboard's `color` multiplies the texture, so the fill takes the
  * altitude tint and the outline stays dark on light and dark maps. Nose points up (north before rotation).
  */

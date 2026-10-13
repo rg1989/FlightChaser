@@ -35,9 +35,9 @@ replay:
 
 # vite.config.ts proxies /api to API_PORT.
 run:
-	@node -e 'const [a, b] = process.versions.node.split(".").map(Number); if (a < 24 || (a === 24 && b < 2)) { console.error("FlightHopper needs Node 24.2 or newer; this is " + process.version); process.exit(1) }'
+	@node -e 'const [a, b] = process.versions.node.split(".").map(Number); if (a < 24 || (a === 24 && b < 2)) { console.error("Flight Chaser needs Node 24.2 or newer; this is " + process.version); process.exit(1) }'
 	@[ -e node_modules ] || npm ci
 	@if lsof -nP -iTCP:$(API_PORT) -sTCP:LISTEN >/dev/null 2>&1; then echo "Port $(API_PORT) is busy: stop the other API server first (two live servers would double the upstream rate from this IP)."; exit 1; fi
 	@env $(SRC) PORT=$(API_PORT) npm run --silent server & trap 'kill $$! 2>/dev/null' EXIT INT TERM; \
-	echo ""; echo "  FlightHopper → http://localhost:$(FE_PORT)/"; echo ""; \
+	echo ""; echo "  Flight Chaser → http://localhost:$(FE_PORT)/"; echo ""; \
 	API_PORT=$(API_PORT) npx vite --port $(FE_PORT) --strictPort --clearScreen false

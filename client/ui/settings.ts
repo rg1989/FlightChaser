@@ -1,5 +1,5 @@
 // client/ui/settings.ts
-// The Settings dialog, opened by the rail's gear: the API keys FlightHopper can use. Each is optional: without them it
+// The Settings dialog, opened by the rail's gear: the API keys Flight Chaser can use. Each is optional: without them it
 // runs on keyless Re:Earth terrain and EOX imagery. A key is checked with a cheap request to its own provider, then
 // saved in this browser (config.ts KEYS_KEY), where it wins over the build's .env.local from the next load: terrain and
 // imagery are built with the viewer, so a reload applies it. A key goes to its own provider only: the check sends it in
@@ -175,7 +175,7 @@ export function mountSettings(root: HTMLElement, opts: SettingsOpts): SettingsHa
   guide.type = 'button'
   guide.append(icon('chevronRight', 13))
   section.append(
-    h('p', 'fh-settings-intro', 'FlightHopper runs without keys, on Re:Earth terrain and EOX 10 m imagery. A key saved here stays in this browser, goes only to its own provider, and takes over from .env.local when the page reloads.'),
+    h('p', 'fh-settings-intro', 'Flight Chaser runs without keys, on Re:Earth terrain and EOX 10 m imagery. A key saved here stays in this browser, goes only to its own provider, and takes over from .env.local when the page reloads.'),
     guide,
   )
   const controls = h('section', 'fh-settings-section fh-settings-controls')

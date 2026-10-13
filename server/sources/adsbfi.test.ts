@@ -14,7 +14,7 @@ const HEX = golden('adsbfi-hex.json')
 const SQK = '{"ac":[{"hex":"89645a","squawk":"7700","lat":29.9,"lon":38.1,"seen_pos":1,"alt_baro":30000}],"msg":"No error","now":1790995674001,"total":1}'
 // A callsign answer for two callsigns, cut to the fields read (the real one, 2026-10-11, had both aircraft: /v2/callsign/DLH452,BAW491).
 const CALLS = '{"ac":[{"hex":"3c65a2","flight":"DLH452  ","r":"D-AIMB","t":"A388","lat":56.434719,"lon":-1.431055,"alt_baro":36000,"gs":423.6,"seen_pos":0.5},{"hex":"407537","flight":"BAW491  ","r":"G-TTNG","t":"A20N","lat":51.442737,"lon":-0.047302,"alt_baro":5200,"gs":181.4,"seen_pos":0.2}],"msg":"No error","now":1791721790000,"total":2}'
-const UA = 'FlightHopper/0.1 (+test@example.com)'
+const UA = 'FlightChaser/0.1 (+test@example.com)'
 
 const seen: { url: string; ua: string | undefined }[] = []
 let server: Server

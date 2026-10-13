@@ -456,7 +456,7 @@ export class SatelliteSource {
     } catch (e) {
       why = (e as Error).message
     }
-    if (!this.#rawDown) console.warn(`FlightHopper: the weather satellite's raw products (this app's server): ${why}. EUMETView's pictures are used meanwhile.`)
+    if (!this.#rawDown) console.warn(`Flight Chaser: the weather satellite's raw products (this app's server): ${why}. EUMETView's pictures are used meanwhile.`)
     this.#rawDown = true
     this.#rawDue = this.#checkDue // asked again at the next check
     return false
@@ -501,7 +501,7 @@ export class SatelliteSource {
   }
 
   #fail(why: unknown): void {
-    if (!this.#down) console.warn('FlightHopper: the weather satellite\'s pictures (EUMETView):', why)
+    if (!this.#down) console.warn('Flight Chaser: the weather satellite\'s pictures (EUMETView):', why)
     this.#down = true
   }
 

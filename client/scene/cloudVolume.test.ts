@@ -717,7 +717,7 @@ test('CloudVolume: a render error while its pass is in the scene takes the pass 
     assert.deepEqual([r.vol.failed, told, r.live().length], [true, 1, 0])
     assert.deepEqual(r.removed, r.added, 'removed (Cesium destroys it)')
     assert.equal(warned.length, 1)
-    assert.match(String(warned[0][0]), /FlightHopper: .*cloud pass/)
+    assert.match(String(warned[0][0]), /Flight Chaser: .*cloud pass/)
     r.vol.draw([CU, RAIN], HERE)
     r.vol.show = false
     r.vol.show = true

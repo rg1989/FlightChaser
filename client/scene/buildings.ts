@@ -403,7 +403,7 @@ export class Buildings {
     } catch (e) {
       t.state = 'failed'
       t.failedAtMs = performance.now()
-      if (!this.#warned) console.warn('FlightHopper: building tile failed (retried later):', e)
+      if (!this.#warned) console.warn('Flight Chaser: building tile failed (retried later):', e)
       this.#warned = true
     } finally {
       this.#inFlight--

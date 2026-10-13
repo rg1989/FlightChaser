@@ -272,7 +272,7 @@ let nightNow = 0
 /** Atlases are drawn one at a time, a task apart, so a burst of new traffic does not stall a frame. */
 let queue: Promise<unknown> = Promise.resolve()
 const later = (job: () => Promise<void>): void => {
-  queue = queue.then(job).catch((err: unknown) => console.warn('FlightHopper: livery not drawn:', err)).then(() => new Promise((r) => setTimeout(r, 0)))
+  queue = queue.then(job).catch((err: unknown) => console.warn('Flight Chaser: livery not drawn:', err)).then(() => new Promise((r) => setTimeout(r, 0)))
 }
 
 /**

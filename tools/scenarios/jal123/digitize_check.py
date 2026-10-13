@@ -1,7 +1,7 @@
 # tools/scenarios/jal123/digitize_check.py
 # Checks the digitized JAL 123 DFDR table (dfdr_1hz.csv) against the official observations of the report.
 """
-    /usr/bin/python3 tools/scenarios/jal123/digitize_check.py --csv <FlightHopper>/.work/jal123/dfdr_1hz.csv
+    /usr/bin/python3 tools/scenarios/jal123/digitize_check.py --csv <FlightChaser>/.work/jal123/dfdr_1hz.csv
 
 The observations are the AAIC report's DFDR reading (付録 5 / 別添5 "DFDR記録より認められる飛行状況", report part 10,
 R10 pp.290-294, 62-2-JA8119-10.pdf PDF pp.33-37). Exit 0 when every check passes, 1 otherwise.

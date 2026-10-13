@@ -12,7 +12,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
-const UA = 'FlightHopper livery research (+https://github.com/rg1989/FlightHopper)'
+const UA = 'Flight Chaser livery research (+https://github.com/rg1989/FlightChaser)'
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 export interface Ref {

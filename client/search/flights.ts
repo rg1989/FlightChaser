@@ -164,7 +164,7 @@ export function flightView(look: FlightLookup | null, env: FlightEnv, otherRows:
   let doing: string | null = null
   if (look.state === 'error') {
     // The server stopped answering after it had: what it found stays, and the search does not go on by itself.
-    notes.push('The FlightHopper server did not answer.')
+    notes.push('The Flight Chaser server did not answer.')
     rows.push(more('Try again', back === null ? 'Look the flight up once more' : `Searched back to ${back} so far`, look.days, look.deep))
   } else if (scan.state === 'failed') {
     notes.push('The past days could not be read from adsb.lol.')

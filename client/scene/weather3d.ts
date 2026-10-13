@@ -879,7 +879,7 @@ export class Weather3D {
       got = read(await this.#getJson(url))
     } catch (e) {
       why = e
-      if (current() && !this.#down.has(feed)) console.warn(`FlightHopper: 3-D weather ${url}:`, e)
+      if (current() && !this.#down.has(feed)) console.warn(`Flight Chaser: 3-D weather ${url}:`, e)
     }
     if (!current()) return
     if (got === null) this.#down.add(feed)

@@ -93,7 +93,7 @@ export async function makeImagery(cfg: ClientConfig, onFallback?: (why: string) 
       return await createWorldImageryAsync()
     } catch (e) {
       const why = ionWhy(e)
-      console.warn(`FlightHopper: ion imagery unavailable (${why}); using EOX imagery`)
+      console.warn(`Flight Chaser: ion imagery unavailable (${why}); using EOX imagery`)
       onFallback?.(why)
       return eoxProvider()
     }

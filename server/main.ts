@@ -1,5 +1,5 @@
 // server/main.ts
-// The FlightHopper server: one Source → Poller → SampleStore + InfoStore, served as plain HTTP polling, plus the built client.
+// The Flight Chaser server: one Source → Poller → SampleStore + InfoStore, served as plain HTTP polling, plus the built client.
 //   npm run server                      (settings: .env.local, see .env.example)
 //   GET /api/view?lat&lon&nm&since      samples in a circle received after `since` (server-clock rxMs), + the info the client lacks
 //   GET /api/chase?hex&since            one aircraft's samples received after `since`, + its newest full object and info
@@ -842,7 +842,7 @@ if (import.meta.main) {
     const routes = cfg.contact === null || cfg.source === 'replay' ? '' : cfg.routes && cfg.source === 'adsblol' ? ', routes on' : ', routes of selected flights'
     const rec = cfg.flightsDir === null ? '' : `, recording flights to ${cfg.flightsDir}`
     const sat = cfg.eumetsat === null ? '' : ', the satellite\'s products with the EUMETSAT key'
-    console.log(`FlightHopper server on ${url} (source ${cfg.source}${routes}${rec}${sat})`)
+    console.log(`Flight Chaser server on ${url} (source ${cfg.source}${routes}${rec}${sat})`)
   } catch (e) {
     console.error(`server: ${(e as Error).message}`)
     process.exit(1)

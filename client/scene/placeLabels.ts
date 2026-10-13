@@ -368,7 +368,7 @@ export class PlaceLabels {
         this.#dirty = true
       })
       .catch((e: unknown) => {
-        console.warn('FlightHopper: no place names:', e)
+        console.warn('Flight Chaser: no place names:', e)
         this.#failed = true
       })
       .finally(() => (this.#loading = false))

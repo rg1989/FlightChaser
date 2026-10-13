@@ -227,10 +227,10 @@ export function eventsFeed(get: () => Promise<EventsReply | null>, apply: (reply
         if (!dead) apply(r)
       }, (e: unknown) => {
         if (dead) return
-        console.warn('FlightHopper: events failed:', e)
+        console.warn('Flight Chaser: events failed:', e)
         if (!isRetry && retry === null) retry = setTimeout(() => ask(true), RETRY_MS)
       })
-      .catch((e: unknown) => console.error('FlightHopper: events crashed:', e))
+      .catch((e: unknown) => console.error('Flight Chaser: events crashed:', e))
       .finally(() => {
         busy = false
         if (dead || !again) return
@@ -417,7 +417,7 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
       },
       (err: unknown) => {
         if (dead) return
-        console.warn('FlightHopper: the alerts switch failed:', err)
+        console.warn('Flight Chaser: the alerts switch failed:', err)
         switching = false
         failed = true
         showWatch()
@@ -769,7 +769,7 @@ export function mountAlerts(body: HTMLElement, toastRoot: HTMLElement, opts: Ale
         n.close()
       }
     } catch (err) {
-      console.warn('FlightHopper: no notification:', err)
+      console.warn('Flight Chaser: no notification:', err)
     }
   }
 

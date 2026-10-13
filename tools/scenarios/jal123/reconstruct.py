@@ -2,7 +2,7 @@
 # Reconstructs the JAL 123 track, public/scenarios/jal123/track.csv, from the digitized DFDR (dfdr_1hz.csv), the
 # 1985-08-12 soundings and declination (winds.json) and the position anchors (anchors.csv). Design §6.1 step 3.
 """
-    /usr/bin/python3 tools/scenarios/jal123/reconstruct.py [--work <FlightHopper>/.work/jal123] [--out <track.csv>]
+    /usr/bin/python3 tools/scenarios/jal123/reconstruct.py [--work <FlightChaser>/.work/jal123] [--out <track.csv>]
 
 Attitude, speed, altitude, g and EPR come from the DFDR (R11 charts, digitized by digitize.py). The position is
 always reconstructed: dead reckoning of the DFDR true airspeed and true heading with the sounding wind, from the

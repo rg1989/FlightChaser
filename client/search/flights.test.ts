@@ -108,7 +108,7 @@ test('flightView: in the air now; flown under other callsigns; adsb.lol could no
   assert.equal(down.rows[0].label, 'Try again')
   // …or stopped answering while the past was searched: what it found stays, nothing spins, the search is offered again.
   const lost = flightView(look({ state: 'error', past: true, reply: reply({ past: [flown(10, 6, 92)], scan: { state: 'running', fromMs: at(9, 15), oldestMs: at(1, 0), more: true } }) }), env, 0)!
-  assert.deepEqual([lost.notes.at(-1), lost.busy, lost.rows.map((r) => r.kind)], ['The FlightHopper server did not answer.', false, ['flown', 'more']])
+  assert.deepEqual([lost.notes.at(-1), lost.busy, lost.rows.map((r) => r.kind)], ['The Flight Chaser server did not answer.', false, ['flown', 'more']])
 })
 
 test('flightView: nothing known under the id: the flights like it, marked; alone, a line to search anyway; among other rows, nothing', () => {

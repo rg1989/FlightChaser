@@ -1,7 +1,7 @@
 <!-- docs/liveries.md -->
 # Liveries and type models: how to add an aircraft
 
-FlightHopper draws each aircraft on a 3-D model of its type, painted in its operator's livery. This document tells you
+Flight Chaser draws each aircraft on a 3-D model of its type, painted in its operator's livery. This document tells you
 how to add a new type model and a new airline livery. The same steps made the first five combinations (El Al 737,
 Wizz Air A321neo, Israir A320, flydubai 737 MAX 8, Royal Jordanian A320neo).
 

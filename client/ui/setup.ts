@@ -119,7 +119,7 @@ export function mountSetup(root: HTMLElement, host: SetupHost): SetupHandle {
   const box = h('div', 'fh-settings-box')
   const head = h('header', 'fh-settings-head')
   const headIcon = h('span', 'fh-settings-icon fh-settings-mark') // the app's mark (settings.css)
-  const title = h('h2', 'fh-settings-title', 'Set up FlightHopper')
+  const title = h('h2', 'fh-settings-title', 'Set up Flight Chaser')
   title.id = 'fh-setup-title'
   const close = h('button', 'fh-ibtn fh-sm')
   close.type = 'button'
@@ -133,7 +133,7 @@ export function mountSetup(root: HTMLElement, host: SetupHost): SetupHandle {
   const welcome = h('section', 'fh-setup-step')
   welcome.append(
     h('h3', 'fh-setup-h', 'Welcome'),
-    h('p', 'fh-settings-intro', 'FlightHopper works as it is: no account, no keys. Two free keys make the globe look better. Each takes a few minutes, and you can add them later in Settings.'),
+    h('p', 'fh-settings-intro', 'Flight Chaser works as it is: no account, no keys. Two free keys make the globe look better. Each takes a few minutes, and you can add them later in Settings.'),
   )
   const marks = new Map<KeyId, HTMLElement>()
   for (const id of ORDER) {

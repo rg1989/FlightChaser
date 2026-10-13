@@ -243,7 +243,7 @@ test('CLI: polls a local fake adsb.lol with our User-Agent, records it, exits 1 
   assert.equal(code, 1, stderr)
   assert.match(stderr, /blocked/)
   assert.deepEqual(seen.map((x) => x.url), ['/v2/point/37.6198/-122.3748/40', '/v2/point/32.0114/34.8867/40'])
-  assert.ok(seen.every((x) => x.ua === 'FlightHopper/0.1 (+test@example.invalid)'))
+  assert.ok(seen.every((x) => x.ua === 'FlightChaser/0.1 (+test@example.invalid)'))
   const lines = readRecording(join(dir, readdirSync(dir)[0]))
   assert.deepEqual(lines.map((l) => [l.status, l.url]), [[200, `${base}/v2/point/37.6198/-122.3748/40`], [403, `${base}/v2/point/32.0114/34.8867/40`]])
 })

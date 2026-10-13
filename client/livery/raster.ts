@@ -41,7 +41,7 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
     p = img.decode().then(
       () => img,
       () => {
-        console.warn(`FlightHopper: livery image ${src} did not load; drawn without it`)
+        console.warn(`Flight Chaser: livery image ${src} did not load; drawn without it`)
         return null
       },
     )
@@ -60,7 +60,7 @@ function loadFonts(d: Design): Promise<unknown> {
       const face = new FontFace(f.family, `url(${f.src})`, { weight: f.weight ?? 'normal', style: f.style ?? 'normal' })
       p = face.load().then(
         (ff) => void document.fonts.add(ff),
-        () => console.warn(`FlightHopper: livery font ${f.src} did not load`),
+        () => console.warn(`Flight Chaser: livery font ${f.src} did not load`),
       )
       fonts.set(key, p)
     }

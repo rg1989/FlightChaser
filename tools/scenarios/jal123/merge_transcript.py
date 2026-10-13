@@ -2,7 +2,7 @@
 # Merges the JAL 123 transcript fragments into public/scenarios/jal123/transcript.csv, checks every row against the
 # package contract, and cross-checks the key lines against the JTSB 2011 commentary times (cvr.md §2).
 """
-    /usr/bin/python3 tools/scenarios/jal123/merge_transcript.py [--work <FlightHopper>/.work/jal123] [--check]
+    /usr/bin/python3 tools/scenarios/jal123/merge_transcript.py [--work <FlightChaser>/.work/jal123] [--check]
 
 Input: every `transcript/*.csv` in the work folder (git-ignored; `--work`, `$JAL123_WORK` or `<repo>/.work/jal123`),
 read in file-name order. Each fragment has the columns of spec §3.5 and may add `x_` columns. The speaker codes and

@@ -546,10 +546,10 @@ export class RadarSource {
       const r = await fetch(url)
       if (r.status === 429 || r.status >= 500) throw new Error(`HTTP ${r.status}`)
       blob = r.ok ? await r.blob() : null
-      if (blob === null) console.warn(`FlightHopper: radar tile ${url}: HTTP ${r.status}`) // RainViewer has no such tile (a frame gone by: 404, 410): an answer
+      if (blob === null) console.warn(`Flight Chaser: radar tile ${url}: HTTP ${r.status}`) // RainViewer has no such tile (a frame gone by: 404, 410): an answer
     } catch (e) {
       // Refused, or out of reach: no answer.
-      if (this.budget.failed()) console.warn(`FlightHopper: radar tile ${url} (asked for again later):`, e)
+      if (this.budget.failed()) console.warn(`Flight Chaser: radar tile ${url} (asked for again later):`, e)
       throw e
     }
     this.budget.answered()
@@ -563,7 +563,7 @@ export class RadarSource {
       const tile = decodeTile(px)
       return tile.dbz.some((v) => v >= FIRST_DBZ) ? tile : null
     } catch (e) {
-      console.warn(`FlightHopper: radar tile ${url}:`, e)
+      console.warn(`Flight Chaser: radar tile ${url}:`, e)
       return null // not a picture: not asked again for this frame
     }
   }

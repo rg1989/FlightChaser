@@ -7,7 +7,7 @@ work folder `.work/jal123/` of the main checkout. The scripts find it through `-
 at `<repo>/.work/jal123`. From a worktree, give the path of the main checkout:
 
 ```sh
-export JAL123_WORK=/path/to/FlightHopper/.work/jal123
+export JAL123_WORK=/path/to/FlightChaser/.work/jal123
 ```
 
 The scripts need Python 3.9 with numpy, Pillow and opencv-python, and `pdfimages` (poppler).

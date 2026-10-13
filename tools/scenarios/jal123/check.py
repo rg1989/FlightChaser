@@ -2,7 +2,7 @@
 # Checks the reconstructed JAL 123 track (public/scenarios/jal123/track.csv) against the anchors, the terrain, its own
 # kinematics and the official DFDR observations (design §6.1 step 4). Exit 1 on any failure.
 """
-    /usr/bin/python3 tools/scenarios/jal123/check.py [--work <FlightHopper>/.work/jal123] [--track <track.csv>]
+    /usr/bin/python3 tools/scenarios/jal123/check.py [--work <FlightChaser>/.work/jal123] [--track <track.csv>]
                                                      [--offline] [--plots <dir>] [--anchors <anchors.csv>]
 
 Checks (README §3.7):

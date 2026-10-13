@@ -1,7 +1,7 @@
 # tools/scenarios/jal123/inputs/liftoff.py
 # The take-off roll from dfdr_1hz.csv (R11 DFDR charts, digitized by digitize.py) and the lift-off second: sets the
 # anchors.csv lift-off row (D3; moved here from .work/jal123/d3 in D4). verify.py imports roll_distance().
-# usage: /usr/bin/python3 tools/scenarios/jal123/inputs/liftoff.py [--work <FlightHopper>/.work/jal123]
+# usage: /usr/bin/python3 tools/scenarios/jal123/inputs/liftoff.py [--work <FlightChaser>/.work/jal123]
 #   the work folder: --work, else $JAL123_WORK, else <repo>/.work/jal123 (as digitize.py)
 import csv, math, os, sys
 from pathlib import Path

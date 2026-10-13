@@ -31,12 +31,12 @@ export const OUTAGE_COPY: Record<OutageKind, Copy> = {
   offline: {
     icon: 'wifiOff', tone: 'red',
     title: () => 'You’re offline',
-    body: () => 'FlightHopper needs the internet for live traffic, maps and weather. What’s on screen stays, and it reconnects by itself as soon as the network is back.',
+    body: () => 'Flight Chaser needs the internet for live traffic, maps and weather. What’s on screen stays, and it reconnects by itself as soon as the network is back.',
     pill: () => 'Offline · reconnecting when the network is back',
   },
   server: {
     icon: 'server', tone: 'red',
-    title: () => 'The FlightHopper server isn’t answering',
+    title: () => 'The Flight Chaser server isn’t answering',
     body: () => 'No new positions are arriving because the app’s own server stopped responding. If you started it with make, check that it is still running.',
     pill: () => 'Server not answering · retrying',
   },

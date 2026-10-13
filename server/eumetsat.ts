@@ -39,7 +39,7 @@ import { WxError } from './wx.ts'
 
 const API = 'https://api.eumetsat.int'
 const HOST = new URL(API).hostname
-const USER_AGENT = 'FlightHopper/0.1' // (no contact of the user's: the key says who asks)
+const USER_AGENT = 'FlightChaser/0.1' // (no contact of the user's: the key says who asks)
 /** The Data Store's collections of the two products. */
 export const SAT_PRODUCTS = { mask: 'EO:EUM:DAT:MSG:CLM', top: 'EO:EUM:DAT:MSG:CTH' } as const
 /** What is kept, and what EUMETSAT may be asked: see the header. */

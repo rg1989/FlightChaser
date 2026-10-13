@@ -1,7 +1,7 @@
 // shared/flightFile.ts
 // A flown flight as a file. No one format is the standard; these are the ones a past flight is found in, and each is read
 // into the samples a recording holds (server/flightLog.ts), so an imported flight replays as a recorded one does:
-//   FlightHopper    a recording's own .jsonl (flightLog.ts): everything kept
+//   Flight Chaser    a recording's own .jsonl (flightLog.ts): everything kept
 //   ADS-B trace     readsb / tar1090 "trace_full_<hex>.json" (ADS-B Exchange, adsb.lol, adsb.fi, airplanes.live …): one
 //                   aircraft's day, so often several flights; speed, track, rates, bank and airspeed where they were sent
 //   OpenSky track   /api/tracks/all: {icao24, callsign, path: [[s, lat, lon, baro m, track, on ground], …]}
@@ -169,7 +169,7 @@ function needHeights(pts: readonly Pt[]): void {
   if (!pts.some((p) => (p.altBaroFt ?? 0) > 0)) throw new FlightFileError(NO_HEIGHTS)
 }
 
-// --- FlightHopper's own recording ---
+// --- Flight Chaser's own recording ---
 
 function fromJsonl(lines: readonly string[]): (FileFlight | null)[] {
   let head: Record<string, unknown> = {}
@@ -378,7 +378,7 @@ export function parseFlightFile(text: string): FlightFile {
     } catch {
       // not one JSON value: a recording, one a line
     }
-    if (o === null || 'flight' in o) [format, flights] = ['FlightHopper', fromJsonl(t.split('\n'))]
+    if (o === null || 'flight' in o) [format, flights] = ['Flight Chaser', fromJsonl(t.split('\n'))]
     else if (Array.isArray(o.trace)) [format, flights] = ['ADS-B trace', fromTrace(o)]
     else if (Array.isArray(o.path)) [format, flights] = ['OpenSky track', fromOpenSky(o)]
     else throw new FlightFileError(NOT_A_FLIGHT)
