@@ -4,8 +4,9 @@
 // with the terrain exaggeration like the runways. One "clay" colour, lit by the app's sun; the see-through toggle swaps
 // every tile to a translucent twin of the same shader (no geometry rebuild).
 // Textures (setPhoto, with a picture source: opts.photo, roofPhoto.ts): a tile's roofs carry the satellite picture of the ground
-// under them and its walls are drawn, tinted with the roof's colour, with rows of windows that light up at night. Until its
-// picture is in, with the switch off and without a source, a tile is clay.
+// under them and its walls are drawn, tinted with the roof's colour, with rows of windows that light up at night; a tower
+// is masonry or has glass fronts that mirror the sky. Until its picture is in, with the switch off and without a source, a
+// tile is clay.
 import {
   Appearance,
   Cartesian3,
@@ -263,21 +264,29 @@ void main() {
   float night = m.alpha;
   // Walls: the clay tinted with the hue of the roof's mean colour (most of its lightness is the photograph's shade, not the
   // wall's), and a window to each bay (2.4–3.6 m, by building) of each 3 m storey above the ground: a hole in the wall on a
-  // house, most of the bay in sky-coloured glass on a tower. Where a bay is smaller than a pixel the windows give way to their
-  // mean cover (no moiré).
+  // house and on a masonry tower, most of the bay in glass on a tower with glass fronts. Where a bay is smaller than a pixel
+  // the windows give way to their mean cover (no moiré).
   float meanL = dot(m.emission, vec3(0.30, 0.59, 0.11));
   vec3 tint = m.emission / max(meanL, 0.05) * clamp(mix(0.84, meanL * 1.5, 0.4), 0.5, 0.95);
   vec3 wall = mix(v_color.rgb, min(tint, vec3(1.0)), WALL_TINT);
   vec2 g = vec2(v_wall.x / mix(2.4, 3.6, fract(v_color.a * 3.7)), v_wall.y / 3.0);
   vec2 fw = fwidth(g);
   vec2 cell = fract(g);
-  vec2 lo = mix(vec2(0.24, 0.32), vec2(0.06, 0.10), v_tall);
-  vec2 hi = mix(vec2(0.76, 0.74), vec2(0.94, 0.90), v_tall);
+  // One tower in four is masonry, with a house's windows; the others have glass fronts, in one of four glass colours.
+  float kind = fract(v_color.a * 11.3);
+  float tall = v_tall * step(0.25, kind);
+  vec2 lo = mix(vec2(0.24, 0.32), vec2(0.06, 0.10), tall);
+  vec2 hi = mix(vec2(0.76, 0.74), vec2(0.94, 0.90), tall);
   vec2 w2 = smoothstep(lo - fw, lo + fw, cell) - smoothstep(hi - fw, hi + fw, cell);
   float far = smoothstep(0.25, 0.7, max(fw.x, fw.y));
   float win = mix(w2.x * w2.y, (hi.x - lo.x) * (hi.y - lo.y), far) * step(0.0, v_wall.y) * (1.0 - roof);
   float lamp = mix(step(0.7, fhHash(floor(g) + v_color.a * 91.0)), 0.3, far); // three windows in ten are lit at night
-  vec3 base = mix(wall, mix(vec3(0.16, 0.19, 0.24), vec3(0.34, 0.44, 0.54), v_tall), mix(0.75, 0.9, v_tall) * win);
+  // A glass front's pane: dark glass of the tower's colour (blue, green, smoke or bronze), each pane a little lighter or darker
+  // than the next; the sky it mirrors is added below.
+  vec3 glassHue = kind < 0.68 ? vec3(0.07, 0.15, 0.27) : kind < 0.86 ? vec3(0.06, 0.17, 0.19) : kind < 0.95 ? vec3(0.10, 0.12, 0.15) : vec3(0.17, 0.12, 0.08);
+  float pane = mix(mix(0.72, 1.18, fhHash(floor(g) + v_color.a * 17.0)), 0.95, far);
+  float glazed = mix(0.75, 0.9, tall) * win;
+  vec3 base = mix(wall, mix(vec3(0.16, 0.19, 0.24), glassHue * pane, tall), glazed);
 #else
   vec3 base = mix(v_color.rgb, v_color.rgb * vec3(0.80, 0.79, 0.78), roof);
   float night = czm_getMaterial(mi).alpha;
@@ -288,8 +297,18 @@ void main() {
   float contact = mix(0.62, 1.0, smoothstep(0.0, 9.0, v_h)) * mix(0.94, 1.06, smoothstep(10.0, 160.0, v_h));
   c *= mix(1.0, contact, v_exact);
 #ifdef PHOTO
+  // The mirror in a glass front: the sky from the horizon's haze up to its blue where the mirrored view ray goes up, the
+  // streets' shade where it goes down; strongest at a glancing view (Fresnel), and the sun itself where the ray meets it.
+  vec3 toEye = normalize(-v_positionEC);
+  vec3 ray = reflect(-toEye, n);
+  float rayUp = dot(ray, upEC);
+  float fresnel = 0.10 + 0.90 * pow(1.0 - max(dot(n, toEye), 0.0), 4.0);
+  vec3 skyTone = mix(vec3(0.78, 0.86, 0.94), vec3(0.30, 0.52, 0.88), smoothstep(0.0, 0.75, rayUp));
+  vec3 mirror = mix(vec3(0.16, 0.20, 0.26), skyTone, smoothstep(-0.30, 0.10, rayUp));
+  float glint = pow(max(dot(ray, czm_lightDirectionEC), 0.0), 220.0);
+  c += tall * glazed * pane * mix(1.0, 0.05, night) * (mirror * mix(0.40, 1.0, fresnel) * 0.9 + glint * czm_lightColor * 0.9);
   // a tower's bay is nearly all glass: less light a window, or it glows as a slab; far away, where the windows merge, buildings differ
-  c += night * win * lamp * vec3(1.0, 0.74, 0.42) * mix(0.9, 0.3, v_tall) * mix(1.0, 0.35 + 1.3 * fract(v_color.a * 5.3), far);
+  c += night * win * lamp * vec3(1.0, 0.74, 0.42) * mix(0.9, 0.3, tall) * mix(1.0, 0.35 + 1.3 * fract(v_color.a * 5.3), far);
   // Roofs: the picture, lit as the globe lights the ground beside it (GlobeFS, ENABLE_VERTEX_LIGHTING), so a roof and the
   // street under it are one photograph.
   vec3 lit = mix(vec3(1.0), czm_lightColor * clamp(sun * m.normal.z + m.normal.y, 0.0, 1.0), m.shininess);
