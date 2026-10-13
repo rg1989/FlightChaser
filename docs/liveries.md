@@ -19,8 +19,8 @@ survey ──► type model ──► reference photos ──► dossier ──�
 | 1. Find what to paint | `node tools/liveries/survey.ts` | type × operator ranking, airframes (hex, registration) |
 | 2. Make or pick the type model | `tools/models/variants.ts`, `tools/models/profile.ts` | `public/models/<id>.glb`, manifest entry with `profile` |
 | 3. Get reference photos | `node tools/liveries/refs.ts` | `data/livery-refs/<CODE>/` + `refs.json` (git-ignored) |
-| 4. Describe the livery | research (by hand or by agent) | `.planning/liveries/<CODE>.md` (the dossier) |
-| 5. Draw the design | edit `client/livery/designs/<CODE>.ts` | the design, registered in `designs/index.ts` |
+| 4. Describe the livery | research (by hand or by agent) | `liveries/<CODE>/README.md` (the dossier) |
+| 5. Draw the design | edit `liveries/<CODE>/design.ts` | the design; the app finds the folder by itself |
 | 6. Look at it | `/tools/livery-lab/?model=<id>&livery=<CODE>` | the model beside the photos |
 | 7. Capture sheets | `node tools/livery-shots.ts <id>:<CODE> …` | `data/livery-refs/shots/<id>-<CODE>/*.png` |
 | 8. Repeat 5–7 | until the model looks like the photos | |
@@ -169,6 +169,19 @@ the paint frame (metres; +z to the nose, +y up, +x to the left wing). The profil
 
 ## Part 3. The airline design
 
+A livery is one folder, `liveries/<CODE>/`, and nothing else. `<CODE>` is the airline's ICAO code (the first three
+letters of its callsigns). To add a livery that someone made, put its folder in `liveries/` and reload. To share one,
+send the folder. There is no list to edit.
+
+| File | What it is |
+|---|---|
+| `design.ts` | the design (its default export) |
+| `README.md` | the dossier: how the livery looks, with the evidence |
+| logos, fonts | the files the design draws with (SVG preferred) |
+| `sources.json` | the source and the licence of each logo and font file |
+
+A design has priority over a colours-only entry of the same code in `client/scene/liveries.json`.
+
 ### 3.1 Reference photos
 
 ```bash
@@ -185,7 +198,7 @@ Get at least: one clean photo of each side, a 3/4 front view, the tail, an engin
 
 ### 3.2 The dossier
 
-Write down how the livery looks before you draw it: `.planning/liveries/<CODE>.md`. The existing dossiers show the
+Write down how the livery looks before you draw it: `liveries/<CODE>/README.md`. The existing dossiers show the
 format: which aircraft wear the scheme, every colour as a hex with its evidence, every element in side elevation
 (belly line, cheatlines, titles and their size and place, fin art, engines, wingtips, left/right differences), the
 logos and their licences, and the fonts.
@@ -193,27 +206,28 @@ logos and their licences, and the fonts.
 ### 3.3 Logos and fonts: licences
 
 - Logos: only public-domain or freely licensed files from Wikimedia Commons (for example `PD-textlogo`). Put them in
-  `public/liveries/<CODE>/` (SVG preferred, with `width` and `height` set) and record each file's source and licence in
+  `liveries/<CODE>/` (SVG preferred, with `width` and `height` set) and record each file's source and licence in
   that folder's `sources.json`: `{ "wordmark.svg": { "source": "https://commons.wikimedia.org/wiki/File:…", "licence": "PD-textlogo" } }`.
-- A wordmark with no free file: typeset it in an OFL font that looks like it (Google Fonts), in `public/fonts/` with its
-  licence file.
+- A wordmark with no free file: typeset it in an OFL font that looks like it (Google Fonts). Put the font file and its
+  licence file in `liveries/<CODE>/`, and both in `sources.json`.
 - A graphic emblem with no free file: leave it out, or use plain colour shapes that are not a copy of it.
 - Photos: never.
 
 ### 3.4 Write the design
 
-A design is a TypeScript module, `client/livery/designs/<CODE>.ts`, registered in `client/livery/designs/index.ts`.
-It draws one side of the aircraft at a time. The kit (`client/livery/kit.ts`) gives you the model's landmarks and
+A design is a TypeScript module, `liveries/<CODE>/design.ts`. Its default export is the design. It draws one side of
+the aircraft at a time. The kit (`client/livery/kit.ts`) gives you the model's landmarks and
 drawing calls in metres. The same design paints every model the airline flies.
 
 ```ts
-import { asset } from '../kit.ts'
-import type { Design } from '../kit.ts'
+import { asset } from '../../client/livery/kit.ts'
+import type { Design } from '../../client/livery/kit.ts'
 
 const BLUE = '#0b2e6b'
 
-export const ELY: Design = {
-  code: 'ELY',
+const ELY: Design = {
+  code: 'ELY',                                          // the folder's name
+  aliases: ['ELB'],                                     // other callsign codes that fly in this paint (optional)
   name: 'El Al (2023 scheme)',
   sources: ['https://commons.wikimedia.org/wiki/File:…'],
   base: '#ffffff', wing: '#c9ced6', engineColor: '#ffffff',
@@ -227,7 +241,12 @@ export const ELY: Design = {
   },
   engine(k) { k.fill('#ffffff') },
 }
+
+export default ELY
 ```
+
+The design imports only from `client/livery/kit.ts`. It reads files only from its own folder
+(`asset('liveries/<CODE>/…')`), fonts also: `fonts: [{ family: 'Montserrat', src: asset('liveries/<CODE>/Montserrat-Bold.woff2'), weight: '700' }]`.
 
 The frame: `z` is metres along the fuselage (larger is further forward), `y` is metres up. Draw in painter's order:
 later calls paint over earlier ones. Shapes may run past the aircraft (only the surface is sampled); let them overshoot
@@ -262,7 +281,7 @@ Drawing. A colour is a CSS string (sRGB); where a call takes a colour it also ta
 | `k.finFill(color, {down})` | the fin, from its measured outline, reaching `down` m into the fuselage |
 | `k.finPoly([[u, h], …], color)` | a polygon in fin coordinates |
 | `k.text(str, {z, y, capM, color, font, weight, italic, align, tracking, mirror})` | text; `y` is the baseline, `capM` the cap height; `align` says which end sits at `z` (`fore`, `centre`, `aft`) |
-| `k.image(src, {z, y, w, h, mirror, opacity})` | an image centred at `z`, `y`; give `w` or `h` (the image's aspect gives the other); `src` = `asset('liveries/<CODE>/x.svg')` |
+| `k.image(src, {z, y, w, h, mirror, opacity})` | an image centred at `z`, `y`; give `w` or `h` (the image's aspect gives the other); `src` = `asset('liveries/<CODE>/x.svg')`, a file in the design's folder |
 
 Text and images read correctly on both sides: on the right side the kit flips them, so a title covers the same span
 of the fuselage on both sides. Set `mirror: true` for a directional logo that must face forward on both sides.
@@ -308,7 +327,7 @@ node tools/livery-shots.ts --views refs a21n:WZZ b738:ELY
 - Every photo view matches: the colours (in the same light), the belly line, every stripe and swoosh, the title's text,
   size and place on each side, the fin art, the engines and the wingtips.
 - `npm test` passes (`client/livery/designs.test.ts` draws every design on every model).
-- The design names its sources, and every file in `public/liveries/<CODE>/` has its source and licence in `sources.json`.
+- The design names its sources, and every logo and font file in `liveries/<CODE>/` has its source and licence in `sources.json`.
 
 ## Part 4. How it works
 

@@ -7,7 +7,7 @@
 // and cut away a damaged fin and tail cone (u_cut) or a torn-off rudder (u_rudder) on models whose paint map measures them.
 import { Cartesian2, Cartesian3, Cartesian4, Color, CustomShader, CustomShaderMode, TextureMinificationFilter, TextureUniform, UniformType, VaryingType } from 'cesium'
 import { operatorOf } from '../../shared/airlines.ts'
-import { DESIGNS } from '../livery/designs/index.ts'
+import { DESIGNS, DESIGN_ALIASES } from '../livery/designs/index.ts'
 import { WHITE as WHITE_HEX, WING, bellyHalf, profileOf, variantOf } from '../livery/kit.ts'
 import type { Design, Target } from '../livery/kit.ts'
 import { specDesign, tableDesign } from '../livery/legacy.ts'
@@ -46,7 +46,7 @@ export const MILITARY = '_MIL'
 export function liveryCode(callsign: string | null, reg: string | null = null, military = false, op: string | null = operatorOf(callsign)): string | null {
   const none = military ? MILITARY : null
   if (op === null) return none
-  const code = TABLE.aliases[op] ?? op
+  const code = DESIGN_ALIASES[op] ?? TABLE.aliases[op] ?? op
   if (!known(code)) return none
   const d = DESIGNS[code]
   const v = d?.variants ? variantOf(d, reg) : null

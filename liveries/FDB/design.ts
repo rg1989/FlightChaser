@@ -1,14 +1,14 @@
-// client/livery/designs/FDB.ts
+// liveries/FDB/design.ts
 // flydubai, the standard scheme (since 2009; the same art on the 737-800, 737-8 and 737-9): a white aircraft, the
 // "flydubai" title, an orange stripe that rises from the belly and runs aft over the rear door, blue swoosh bands and a
 // navy lower tail, and fin art of blue bands and white arcs that differs between the two sides (left: an orange
-// trailing-edge wedge; right: a near-vertical orange band and a navy tip corner). Dossier: .planning/liveries/FDB.md.
+// trailing-edge wedge; right: a near-vertical orange band and a navy tip corner). Dossier: liveries/FDB/README.md.
 //
 // Measured on the reference photos (data/livery-refs/FDB/, git-ignored): the fuselage in "real" side-elevation metres
 // (z aft of the nose tip, h above the keel; A6-FML, 28 px/m), the fin art in each photo's fin coordinates (u 0 leading
 // edge … 1 trailing edge, v 0 root … 1 tip), traced on A6-FML (left) and A6-FMH (right).
-import { asset } from '../kit.ts'
-import type { Design, Fill, Kit, Pt } from '../kit.ts'
+import { asset } from '../../client/livery/kit.ts'
+import type { Design, Fill, Kit, Pt } from '../../client/livery/kit.ts'
 
 // Paint colours (sRGB), from sunlit and evenly lit photo samples (dossier §3).
 const WHITE = '#f4f5f6'
@@ -453,3 +453,5 @@ export const FDB: Design = {
     }
   },
 }
+
+export default FDB

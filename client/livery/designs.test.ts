@@ -13,9 +13,14 @@ const root = new URL('../../', import.meta.url)
 const manifest: ModelManifest = JSON.parse(readFileSync(new URL('public/models/manifest.json', root), 'utf8'))
 const COLOUR = /^(#[0-9a-f]{3}|#[0-9a-f]{6}|#[0-9a-f]{8}|rgba?\([\d.,\s%]+\))$/i
 
-test('every design is registered under its own code and names its sources', () => {
+const packages = new URL('liveries/', root)
+const folders = readdirSync(packages).filter((f) => existsSync(new URL(`${f}/design.ts`, packages))) // a folder without a design is one being researched
+
+test('every folder in liveries/ is a design whose code is the folder\'s name, and it names its sources', () => {
+  assert.deepEqual(Object.keys(DESIGNS).sort(), folders.sort())
   for (const [code, d] of Object.entries(DESIGNS)) {
-    assert.equal(d.code, code)
+    assert.match(code, /^[A-Z0-9]{3}$/)
+    for (const a of d.aliases ?? []) assert.ok(!(a in DESIGNS), `${code}: alias ${a} is a design of its own`)
     assert.ok(d.sources && d.sources.length > 0, `${code}: sources`)
     for (const c of [d.base, d.wing, d.stab, d.engineColor, d.wingletColor]) if (c !== undefined) assert.match(c, COLOUR, code)
   }
@@ -32,8 +37,8 @@ test('every design draws on every painted model with finite coordinates, valid c
           for (const n of nums(op)) assert.ok(Number.isFinite(n), `${code} on ${m.id}: ${JSON.stringify(op).slice(0, 120)}`)
           if ('color' in op) for (const c of typeof op.color === 'string' ? [op.color] : op.color.stops.map((st) => st[1])) assert.match(c, COLOUR, `${code} on ${m.id}`)
           if (op.k === 'image' || op.k === 'wrap') {
-            assert.ok(op.src.startsWith('/'), `${code}: ${op.src} is a public path`)
-            assert.ok(existsSync(new URL(`public${op.src}`, root)), `${code}: ${op.src} exists`)
+            assert.ok(op.src.startsWith(`/liveries/${code}/`), `${code}: ${op.src} is a file in its own folder`)
+            assert.ok(existsSync(new URL(op.src.slice(1), root)), `${code}: ${op.src} exists`)
           }
         }
       }
@@ -42,11 +47,12 @@ test('every design draws on every painted model with finite coordinates, valid c
 })
 
 test('every file in a design folder has its source and licence in the folder\'s sources.json', () => {
-  const dir = new URL('public/liveries/', root)
-  for (const code of readdirSync(dir).filter((f) => statSync(new URL(f, dir)).isDirectory())) {
-    const src: Record<string, { source: string; licence: string }> = JSON.parse(readFileSync(new URL(`${code}/sources.json`, dir), 'utf8'))
-    for (const f of readdirSync(new URL(`${code}/`, dir)).filter((n) => n !== 'sources.json')) {
-      assert.ok(src[f]?.source && src[f]?.licence, `public/liveries/${code}/sources.json: "${f}" needs source and licence`)
-    }
+  for (const code of folders) {
+    const own = new Set(['design.ts', 'README.md', 'sources.json']) // the package's own text: all else came from somewhere
+    const files = readdirSync(new URL(`${code}/`, packages)).filter((n) => !own.has(n))
+    if (files.length === 0) continue
+    const src: Record<string, { source: string; licence: string }> = JSON.parse(readFileSync(new URL(`${code}/sources.json`, packages), 'utf8'))
+    for (const f of files) assert.ok(src[f]?.source && src[f]?.licence, `liveries/${code}/sources.json: "${f}" needs source and licence`)
+    for (const font of DESIGNS[code].fonts ?? []) assert.ok(font.src.startsWith(`/liveries/${code}/`) && existsSync(new URL(font.src.slice(1), root)), `${code}: font ${font.src}`)
   }
 })

@@ -51,9 +51,10 @@ export type Op =
   | ({ k: 'image'; src: string } & ImageOpts)
   | { k: 'wrap'; src: string; box: [zNose: number, zTail: number, yBottom: number, yTop: number] }
 
-/** An airline's paint, drawn by the kit on any model (client/livery/designs/). */
+/** An airline's paint, drawn by the kit on any model: the default export of liveries/<CODE>/design.ts. */
 export interface Design {
-  code: string // airline ICAO code (liveries.json key)
+  code: string // airline ICAO code: the callsign's first three letters, and the folder's name
+  aliases?: string[] // other callsign codes that fly in this paint (subsidiaries, a single-brand regional)
   name: string // e.g. "Wizz Air, 2015 livery"
   sources?: string[] // reference photos and brand pages the design was drawn from
   /** The fuselage and fin, one side at a time (k.side); shapes should be the same on both sides. */
@@ -73,7 +74,7 @@ export interface Design {
   wingletColor?: Color
   wing?: Color // wings (default: light grey)
   stab?: Color // horizontal tailplane (default: wing)
-  fonts?: Array<{ family: string; src: string; weight?: string; style?: string }> // web fonts to load (public/ paths)
+  fonts?: Array<{ family: string; src: string; weight?: string; style?: string }> // web fonts to load (asset('liveries/<CODE>/x.woff2'))
   /**
    * Schemes in service at once (an old and a new livery, a sub-fleet in other colours): scheme name → registrations.
    * The design draws the one in k.variant. An aircraft in no list gets defaultVariant (else k.variant is null).
@@ -89,7 +90,7 @@ export function variantOf(d: Design, reg: string | null): string | null {
   return d.defaultVariant ?? null
 }
 
-/** A public/ file's URL (logos, fonts), under the app's base path. */
+/** The URL of a file in a design's folder (asset('liveries/<CODE>/logo.svg')) or in public/, under the app's base path. */
 export const asset = (path: string): string => `${import.meta.env?.BASE_URL ?? '/'}${path}`
 
 export const WING = '#dbe0e6' // the old shader's wing grey (0.86, 0.88, 0.9)

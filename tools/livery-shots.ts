@@ -13,7 +13,9 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
-const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+// Linux (a headless QA machine): no display, so the GPU is reached through Vulkan.
+const GPU = process.platform === 'darwin' ? ['--use-angle=metal'] : ['--no-sandbox', '--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan']
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 /** "a21n:WZZ" → [model, livery]; the livery may be empty ("a21n:") for plain white. */
@@ -45,7 +47,7 @@ async function chrome(port: number): Promise<Cdp> {
   rmSync(profile, { recursive: true, force: true })
   // Frame-capped (no --disable-frame-rate-limit): an uncapped Cesium page takes the whole GPU.
   const proc = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profile}`, '--window-size=1400,1000',
-    '--use-angle=metal', '--ignore-gpu-blocklist', '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' })
+    ...GPU, '--ignore-gpu-blocklist', '--no-first-run', '--no-default-browser-check', 'about:blank'], { stdio: 'ignore' })
   const kill = (): void => {
     try { proc.kill('SIGKILL') } catch { /* gone */ }
     rmSync(profile, { recursive: true, force: true })

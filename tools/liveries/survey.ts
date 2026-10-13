@@ -11,7 +11,7 @@ import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { ModelPicker } from '../../client/scene/modelFor.ts'
 import type { ModelManifest } from '../../client/types.ts'
-import { DESIGNS } from '../../client/livery/designs/index.ts'
+import { DESIGNS, DESIGN_ALIASES } from '../../client/livery/designs/index.ts'
 import table from '../../client/scene/liveries.json' with { type: 'json' }
 
 export interface Seen {
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
   console.log(`${seen.size} airframes`)
   console.log('type  operator  airframes  flights  model     livery')
   for (const c of all.slice(0, Number(values.top))) {
-    const code = c.op === null ? null : (t.aliases[c.op] ?? c.op)
+    const code = c.op === null ? null : (DESIGN_ALIASES[c.op] ?? t.aliases[c.op] ?? c.op)
     const livery = code === null ? '-' : code in DESIGNS ? `${code} design` : code in t.liveries ? `${code} colours` : 'none'
     console.log(`${c.type.padEnd(5)} ${(c.op ?? '-').padEnd(9)} ${String(c.airframes).padStart(9)} ${String(c.flights).padStart(8)}  ${pick.for(c.type, null).id.padEnd(9)} ${livery}`)
   }

@@ -1,12 +1,12 @@
-// client/livery/designs/WZZ.ts
+// liveries/WZZ/design.ts
 // Wizz Air (WZZ; Wizz Air Malta WMT and Wizz Air UK WUK wear the same paint), the 2015 livery as on the A321neo fleet:
 // a white nose with the outline "WIZZ" logo, a straight diagonal cut (L1) near the wing to all-round magenta, a second,
 // flatter diagonal (L2) to royal blue that runs on across the fin and leaves a magenta triangle at the fin's tip, a white
 // "wizzair.com" above the windows, a white belly title, magenta engines with titles, magenta Sharklets.
-// Measurements: .planning/liveries/WZZ.md (the dossier: d metres aft of the nose, h above the keel, on a 44.51 m
+// Measurements: liveries/WZZ/README.md (the dossier: d metres aft of the nose, h above the keel, on a 44.51 m
 // A321neo), checked by pixel scans of the side-on photos 9H-WDX (left) and HA-LZW (right).
-import { asset } from '../kit.ts'
-import type { Design, Kit, Pt, Seg } from '../kit.ts'
+import { asset } from '../../client/livery/kit.ts'
+import type { Design, Kit, Pt, Seg } from '../../client/livery/kit.ts'
 
 // The magenta: Wizz Air's press-office #d40f8c made a little lighter (#d93a93, hue 326°), as the paint photographs
 // (in sun #e8469a, overcast #b04478 under a #d4d1cf white; hue 319–334°); the blue: the photos' royal blue (median of
@@ -57,6 +57,7 @@ function roundRect(z0: number, z1: number, y0: number, y1: number, r: number): S
 
 export const WZZ: Design = {
   code: 'WZZ',
+  aliases: ['WMT', 'WUK', 'WAZ'],
   name: 'Wizz Air, 2015 livery (A321neo)',
   sources: [
     'https://commons.wikimedia.org/wiki/File:GDN_9H-WDX_2.jpg',
@@ -74,7 +75,7 @@ export const WZZ: Design = {
   wingletColor: MAGENTA,
   wing: GREY,
   stab: GREY,
-  fonts: [{ family: 'Montserrat', src: asset('fonts/Montserrat-Bold.woff2'), weight: '700' }],
+  fonts: [{ family: 'Montserrat', src: asset('liveries/WZZ/Montserrat-Bold.woff2'), weight: '700' }],
 
   side(k) {
     const { Z, Y, s, hs } = frame(k)
@@ -163,3 +164,5 @@ export const WZZ: Design = {
     k.text('wizzair.com', { z: Z(17.1), y: -0.36, capM: title(0.72) * hs, color: WHITE, font: FONT, weight: 700, align: 'fore' })
   },
 }
+
+export default WZZ

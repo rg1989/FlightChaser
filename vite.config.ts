@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import { viteStaticCopy } from 'vite-plugin-static-copy'
@@ -29,15 +30,34 @@ function scenarioIndex(): Plugin {
   }
 }
 
+/**
+ * A livery is the folder liveries/<CODE>/: design.ts (bundled: client/livery/designs/index.ts finds it) and the logos and
+ * fonts it draws with. The dev server serves those from the folder; a build copies them to the same address.
+ */
+function liveryFiles(): Plugin {
+  return {
+    name: 'fh-livery-files',
+    generateBundle() {
+      for (const code of readdirSync('liveries')) {
+        const dir = path.join('liveries', code)
+        if (!statSync(dir).isDirectory()) continue
+        for (const f of readdirSync(dir)) if (!/\.(ts|md)$/.test(f)) this.emitFile({ type: 'asset', fileName: `liveries/${code}/${f}`, source: readFileSync(path.join(dir, f)) })
+      }
+    },
+  }
+}
+
 export default defineConfig({
   define: { CESIUM_BASE_URL: JSON.stringify(`/${cesiumBaseUrl}`) },
   plugins: [
     scenarioIndex(),
+    liveryFiles(),
     viteStaticCopy({
       targets: ['ThirdParty', 'Workers', 'Assets', 'Widgets'].map((d) => ({ src: `${cesiumSource}/${d}`, dest: cesiumBaseUrl, rename: { stripBase: 4 } })),
     }),
   ],
   server: {
+    hmr: process.env.FH_HMR !== '0', // 0: pages do not reload when a file changes (a shared QA server that many runs load from)
     proxy: { '/api': `http://127.0.0.1:${process.env.API_PORT ?? 8787}` }, // the Makefile's API_PORT
     // `tailscale serve` hands the tailnet's requests on with this Mac's *.ts.net name as the host (Vite blocks unknown hosts).
     allowedHosts: ['.ts.net'],

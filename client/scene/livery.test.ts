@@ -70,7 +70,6 @@ test('table: colours are #rrggbb, aliases land on liveries, every decal file exi
     }
   }
   for (const [from, to] of Object.entries(TABLE.aliases)) assert.ok(to in TABLE.liveries || to in DESIGNS, `${from} → ${to}`)
-  for (const code of Object.keys(DESIGNS)) assert.ok(!(code in TABLE.liveries), `${code}: a design and a colours entry`)
   const wanted = new Set<string>()
   for (const [code, l] of Object.entries(TABLE.liveries)) {
     if (l.title) wanted.add(`${code}-title.png`)

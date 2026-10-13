@@ -1,4 +1,4 @@
-// client/livery/designs/ELY.ts
+// liveries/ELY/design.ts
 // El Al (ELY), on the 737-800 / 737-900ER (model b738) and the 787-8 / 787-9 (model b789). Two schemes fly at once:
 //   A, the 1999 "blue and silver ribbons": a white aircraft, one diagonal band from the belly behind door 1 up to the crown
 //      above the wing with a metallic ribbon along its lower edge, the swept-flag fin (two stripes with ribbons and a Star
@@ -10,11 +10,11 @@
 // The Sun d'Or frames (El Al's charter arm, flying as ELY) wear their own paint; with no free Sun d'Or logo they are
 // drawn plain white (SUNDOR). The special liveries (4X-EDF retro, 4X-EDM "Jerusalem of Gold") are drawn in their base
 // scheme.
-// Measurements: .planning/liveries/ELY.md (the dossier: x metres aft of the nose on the real type, h fractions of the
+// Measurements: liveries/ELY/README.md (the dossier: x metres aft of the nose on the real type, h fractions of the
 // fuselage height above the keel of the constant section), checked against the reference photos in
 // data/livery-refs/ELY/.
-import { asset } from '../kit.ts'
-import type { Design, Fill, Kit, Pt } from '../kit.ts'
+import { asset } from '../../client/livery/kit.ts'
+import type { Design, Fill, Kit, Pt } from '../../client/livery/kit.ts'
 
 const WHITE = '#f4f5f7'
 const NAVY = '#262d70' // A1: the 1999 paint (violet navy)
@@ -355,3 +355,5 @@ export const ELY: Design = {
     if (s === 'A2') band(0.72, 0.75, CHAMPAGNE)
   },
 }
+
+export default ELY

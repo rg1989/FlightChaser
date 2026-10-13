@@ -1,13 +1,13 @@
-// client/livery/designs/RJA.ts
+// liveries/RJA/design.ts
 // Royal Jordanian, the 2024 scheme (A320neo fleet JY-RAA … JY-RAQ): a dark charcoal-green aircraft, a light grey belly
 // under a straight gold line that sweeps down at the nose over a red crescent and a thin green line, gold Roman and
 // Arabic titles above the windows, a gold crown and two gold root lines on the fin with a red tip cap, red sharklets
-// and red-lipped charcoal nacelles with a gold crown over "RJ". Dossier: .planning/liveries/RJA.md (all positions below
+// and red-lipped charcoal nacelles with a gold crown over "RJ". Dossier: liveries/RJA/README.md (all positions below
 // are the dossier's, in metres aft of the nose and above the keel, mapped onto the model by its doors and height).
 // The crowns are our own plain drawing (RJ's crown has no free file); the titles are typeset in OFL fonts.
 // Scheme OW (JY-RAK, dossier §1): the same paint with "member of oneworld" titles on the forward fuselage.
-import { asset } from '../kit.ts'
-import type { Design, Kit, Pt, Seg } from '../kit.ts'
+import { asset } from '../../client/livery/kit.ts'
+import type { Design, Kit, Pt, Seg } from '../../client/livery/kit.ts'
 
 // The paint photographs #2a3a44 (noon) … #3a403d (evening); the renderer's lighting darkens it, so the paint colour is
 // set lighter to land the lit side near the photos
@@ -162,13 +162,13 @@ export const RJA: Design = {
     'https://commons.wikimedia.org/wiki/File:JY-RAB_A320neo_Royal_Jordanian_ARN_01.jpg',
     'https://commons.wikimedia.org/wiki/File:JY-RAC_STN_140825.jpg',
     'https://commons.wikimedia.org/wiki/File:Airbus_A320-271N_(c-n_12523,_JY-RAH)_2025-09-24_Andre_Gerwing_Collection_ID_025617.jpg',
-    '.planning/liveries/RJA.md',
+    'liveries/RJA/README.md',
   ],
   base: CHARCOAL,
   engineColor: CHARCOAL,
   wing: WING,
   stab: WING,
-  fonts: [{ family: 'Cinzel', src: asset('fonts/Cinzel-wght.ttf'), weight: '400 900' }],
+  fonts: [{ family: 'Cinzel', src: asset('liveries/RJA/Cinzel-wght.ttf'), weight: '400 900' }],
   // JY-RAK wears "member of oneworld" titles (dossier §1; checked 2026-09-29 on photos of 2026-01 and 2026-02). Every
   // other A320neo (JY-RAA … JY-RAQ) wears the standard titles.
   variants: { OW: ['JY-RAK'] },
@@ -208,7 +208,7 @@ export const RJA: Design = {
     }
     for (const x of [14.25, 15.05]) doorOutline(k, X(x), Y(2.55), 0.6 * s, 1.08 * hs, 0.045, WHITE)
 
-    // The Arabic title (Aref Ruqaa outlines: public/liveries/RJA/sources.json) is 9455 units wide; its baseline lies
+    // The Arabic title (Aref Ruqaa outlines: liveries/RJA/sources.json) is 9455 units wide; its baseline lies
     // 323 units below the image's centre. titleAr(x0, x1, baseline) sets it over x0 … x1 m.
     const titleAr = (x0: number, x1: number, base: number): void => {
       const w = (x1 - x0) * s
@@ -315,3 +315,5 @@ export const RJA: Design = {
     k.poly([...ts.map((t): Pt => [le(t) + 1, H(t)]), ...ts.slice().reverse().map((t): Pt => [le(t) - 0.38 * (le(t) - te(t)), H(t)])], METAL)
   },
 }
+
+export default RJA

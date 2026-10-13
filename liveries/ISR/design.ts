@@ -1,11 +1,11 @@
-// client/livery/designs/ISR.ts
+// liveries/ISR/design.ts
 // Israir, the 2010 scheme (unchanged since; every own A320-232, 4X-AB*): a white fuselage with the bilingual title
 // lock-up "ישראייר ★ ISRAIR" forward, an azure keel band, and a rear built from overlapping azure, sky and navy
 // fields that run up into a navy fin with the orange Israir star and a sky top-aft corner; navy engines. Measured from
-// the photos in the dossier (.planning/liveries/ISR.md): positions are d metres aft of the nose on the real A320
+// the photos in the dossier (liveries/ISR/README.md): positions are d metres aft of the nose on the real A320
 // (37.57 m), scaled to the model, and f fractions of the local fuselage height; fin art is placed in fin (u, h).
-import { asset } from '../kit.ts'
-import type { Design, Kit, Pt, Seg } from '../kit.ts'
+import { asset } from '../../client/livery/kit.ts'
+import type { Design, Kit, Pt, Seg } from '../../client/livery/kit.ts'
 
 const WHITE = '#f4f5f7'
 const NAVY = '#102a78' // the photo mean (ABG, ABW22, ABT, SZG, checker: #102777)
@@ -207,3 +207,5 @@ export const ISR: Design = {
     k.image(asset('liveries/ISR/star.svg'), { z: (zMin + zMax) / 2, y: yMin + 0.47 * h, h: 0.28 * h })
   },
 }
+
+export default ISR
