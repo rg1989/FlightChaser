@@ -150,27 +150,35 @@ export function offsetAt(
   return { x: (p.x + (b.ax ?? b.w / 2) - sq.x) / sq.side, y: (p.y + (b.ay ?? b.h / 2) - sq.y) / sq.side, v: m.v }
 }
 
-/** The position nearest pref of a segment len long in [lo, hi], clear of every blocked (open) interval; null: none. */
-function slide(pref: number, len: number, lo: number, hi: number, blocked: ReadonlyArray<readonly [number, number]>): number | null {
+/**
+ * The position nearest pref of a segment len long in [lo, hi], clear of every blocked (open) interval; null: none. Of two
+ * equally near, the first: rounding must not choose. keep: where the block was last frame, along this side (a block away
+ * from home): the position nearest that is kept unless another is more than STAY_PX nearer to pref. Without it a block
+ * with the same room on both sides of another (the heading beside a centred attitude) jumps from one side to the other
+ * frame by frame, as the aircraft moves on screen and the figures change width.
+ */
+function slide(pref: number, len: number, lo: number, hi: number, blocked: ReadonlyArray<readonly [number, number]>, keep?: number): number | null {
   if (hi - lo < len - EPS) return null
   const cands = [Math.min(Math.max(pref, lo), hi - len), lo, hi - len]
   for (const [a, b] of blocked) cands.push(a - len, b)
   let best: number | null = null
+  let kept: number | null = null
   for (const p of cands) {
     if (p < lo - EPS || p + len > hi + EPS) continue
     if (blocked.some(([a, b]) => p + len > a + EPS && p < b - EPS)) continue
-    if (best === null || Math.abs(p - pref) < Math.abs(best - pref)) best = p
+    if (best === null || Math.abs(p - pref) < Math.abs(best - pref) - EPS) best = p
+    if (keep !== undefined && (kept === null || Math.abs(p - keep) < Math.abs(kept - keep) - EPS)) kept = p
   }
-  return best
+  return kept !== null && best !== null && Math.abs(kept - pref) <= Math.abs(best - pref) + STAY_PX ? kept : best
 }
 
 /**
  * The best place for a block of size b on one side of the square S: against it at the gap, or out beyond a block already
  * there (each such level is tried), slid along the side to its anchor's line as near as the safe area and the other
  * blocks allow. Cost: how far out, plus SLIDE_COST × how far along (out of line with the aircraft). extra: room to spare
- * it needs at the safe area's far edge.
+ * it needs at the safe area's far edge. keep: where it was along this side last frame (slide).
  */
-function onSide(side: BlockId, b: BlockSize, sq: Square, S: Box, taken: readonly Box[], safe: Rect, gap: number, extra: number): Cand | null {
+function onSide(side: BlockId, b: BlockSize, sq: Square, S: Box, taken: readonly Box[], safe: Rect, gap: number, extra: number, keep?: number): Cand | null {
   const alongX = side === 'top' || side === 'bottom' // above or below the square it slides along x
   const len = alongX ? b.w : b.h
   const dep = alongX ? b.h : b.w
@@ -199,7 +207,7 @@ function onSide(side: BlockId, b: BlockSize, sq: Square, S: Box, taken: readonly
       const [t0, t1, t2, t3] = q(t)
       if (t0 - gap < u0 + dep - EPS && u0 < t1 + gap - EPS) blocked.push([t2 - gap, t3 + gap])
     }
-    const s = slide(pref, len, lo, hi, blocked)
+    const s = slide(pref, len, lo, hi, blocked, keep)
     if (s === null) continue
     const cost = Math.abs(e - e0) + SLIDE_COST * Math.abs(s - pref)
     if (best === null || cost < best.cost - EPS) best = alongX ? { x: s, y: u0, cost } : { x: u0, y: s, cost }
@@ -215,6 +223,7 @@ function onSide(side: BlockId, b: BlockSize, sq: Square, S: Box, taken: readonly
  * else goes to another side (the altitude beyond the speed, the heading under the attitude…), else it is hidden (null):
  * a square larger than the safe area hides them all. sizes: each block's variants (0 × 0, or none: hidden). prev: the
  * last frame's placement, for hysteresis: a block that went away comes home, or grows back, only with HYST_PX to spare.
+ * A block away from home keeps the place it had along that side over one up to STAY_PX nearer the aircraft's line.
  * fixed: the blocks the viewer moved (edit mode), placed first where movedTo put them, over the aircraft if that is where
  * they were put; the others go round them.
  */
@@ -260,7 +269,8 @@ export function frameLayout(
     let best: { c: Cand; side: BlockId; v: number; b: BlockSize; cost: number } | null = null
     for (const { b, v } of variants(id)) {
       for (const [side, detour] of AWAY[id]) {
-        const c = onSide(side, b, sq, S, taken, safe, gap, 0)
+        const keep = p != null && p.side === side ? (side === 'top' || side === 'bottom' ? p.x : p.y) : undefined
+        const c = onSide(side, b, sq, S, taken, safe, gap, 0, keep)
         if (c === null) continue
         const cost = c.cost + detour + VARIANT_PX * v - (p != null && p.side === side && p.v === v ? STAY_PX : 0)
         if (best === null || cost < best.cost - EPS) best = { c, side, v, b, cost }

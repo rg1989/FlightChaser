@@ -103,6 +103,23 @@ test('frameLayout: a tiny square: the sides stay on it, the top and bottom go ou
   apart(p, SIZES, sq, 10)
 })
 
+test('frameLayout: the heading beside the attitude keeps its side from frame to frame (the aircraft moves, the figures change width)', () => {
+  // No room over the square, none under the attitude: the heading goes beside it, with about the same room on either side.
+  const safe: Rect = { x: 0, y: 300, w: 1920, h: 250 }
+  const sides: string[] = []
+  let prev: Partial<Record<BlockId, Placed | null>> | undefined
+  for (let i = 0; i < 400; i++) {
+    const w = 196.3 + (i % 3) * 1.4 // the attitude's figures: a digit wider, a digit narrower
+    const sizes: Sizes = { ...SIZES, top: { w: 170.6, h: 28 }, bottom: { w, h: 44, ax: 98.3 + ((i * 7) % 5) * 0.6 } }
+    const p = frameLayout({ x: 900 + i * 0.3173, y: 400, side: 180 }, sizes, safe, 10, prev)
+    assert.equal(p.top!.side, 'bottom')
+    assert.equal(p.top!.y, p.bottom!.y)
+    sides.push(p.top!.x < p.bottom!.x ? 'left' : 'right')
+    prev = p
+  }
+  assert.deepEqual([...new Set(sides)], [sides[0]])
+})
+
 test('frameLayout: near an edge a block slides along its side, and one with no room there goes to another side, never over the square', () => {
   const safe: Rect = { x: 0, y: 40, w: 1216, h: 660 } // the rail on the right, a play bar at the bottom
   const cases: Array<[string, Square]> = [
