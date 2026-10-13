@@ -31,6 +31,30 @@ close-ups hide the instrument cards with the layout button.</sub>
 
 A personal, non-commercial project. **Entertainment only: not for navigation, ATC or any operational decision.**
 
+## What stands out
+
+All of it is free: no account, no subscription, no key. The flight data is open data. Three optional keys are free
+too, and they only sharpen the picture ([API keys](docs/api-keys.md)).
+
+- **You fly with the aircraft.** Pick any live flight and follow it from behind, over real terrain, down to the painted
+  runway. The aircraft is a model of its type in its airline's colours, with landing gear and lights.
+- **The light is the real light.** Sun, moon and stars stand where they are for that place and that minute: daylight,
+  low sun, dusk, and night with street lights below.
+- **Layers.** One panel switches what is drawn: map or satellite, light or dark, roads, borders and names, 3-D terrain,
+  the sun, 3-D buildings, and see-through buildings that never hide the aircraft.
+- **Weather that you fly through.** Clouds, rain and storms are bodies round the aircraft, where the weather satellite
+  and the rain radar see them. A strip shows the weather on the next six minutes of the path.
+- **The past 42 days.** The whole map on a replay clock, or one flight by its number.
+- **Scenarios you can make.** Real flights on a timeline, with the radio as captions. One command starts your own from
+  a flight file. Add marks and story messages, then share it as one folder ([Scenario SDK](docs/scenario-sdk.md)).
+
+Most of this is rare in a flight tracker.
+
+![One approach to Heathrow three times: in daylight, at low sun and at night](docs/images/light.jpg)
+<sub>One approach, three times of day. The light follows the real sun and moon.</sub>
+
+<img src="docs/images/layers.jpg" alt="The Layers panel open in the chase view: map or satellite, roads, borders and places, 3-D terrain, sun, 3-D buildings, see-through" width="760"><br><sub>The Layers panel in the chase view: each row has a key</sub>
+
 ## What it does
 
 - **Live map.** Every aircraft in view from open ADS-B data, coloured by altitude. One search box finds airports,
@@ -53,7 +77,8 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
 - **Scenarios.** Reconstructed flights played back with a timeline, in 3-D or on the map. Captions come from the
   official record; where none exists they are marked "as heard". A scenario can play a voice recording in time with
   its captions. The recordings are not in the repository: [Scenarios](docs/scenarios.md) says how one is added and
-  checked.
+  checked. To make your own scenario, follow the [Scenario SDK](docs/scenario-sdk.md): a scenario is one folder that
+  the app finds by itself.
 - **Alerts.** Emergency squawks worldwide and steep descents, with optional push to a phone.
 - **Phone.** A layout for a phone, with the same features.
 
@@ -74,6 +99,7 @@ make
 
 Two free keys make the globe look better. On the first start a setup guide walks through both: where to sign up, what
 to click, and a field that checks the key. Open it again from Settings → API keys → Setup guide.
+[API keys](docs/api-keys.md) has each step, the checks, and the problems we met.
 
 <img src="docs/images/setup.jpg" alt="The setup guide's ArcGIS step" width="460">
 
@@ -105,6 +131,7 @@ The app works the same without it. [Weather in the chase](docs/weather.md) says 
 | `make replay` | The same, replaying the newest recording in `data/recordings/`, or the bundled fixtures |
 | `make live LIVE_SOURCE=adsblol` | Live from adsb.lol (needs `CONTACT`) |
 | `npm run check` | Type-check and all tests |
+| `node tools/scenarios/new.ts <flight file> <id> --model <model id>` | Starts a scenario package from a flight file ([Scenario SDK](docs/scenario-sdk.md)) |
 | `npm run build` | The client, built into `dist/` |
 | `npm run server` | The API server alone. It also serves `dist/`, on port 8787 |
 
@@ -146,7 +173,9 @@ No framework: TypeScript run by Node directly, Vite for the client, `node --test
 
 - [History](docs/history.md): flown paths and the replay of the past
 - [Weather in the chase](docs/weather.md): the Weather menu, its looks and its check aids
-- [Scenarios](docs/scenarios.md): the package format, and how to prepare one
+- [Scenario SDK](docs/scenario-sdk.md): add your own scenario, step by step, for a person or an AI agent
+- [Scenarios](docs/scenarios.md): the package format, file by file
+- [API keys](docs/api-keys.md): the optional keys, how to get and connect each one
 - [Liveries and type models](docs/liveries.md): how to add an aircraft or an airline
 - [Alerts](docs/anomaly-alerts.md): sources, rules and limits
 - [Aircraft models](third_party/aircraft-models/README.md): licences and corresponding source

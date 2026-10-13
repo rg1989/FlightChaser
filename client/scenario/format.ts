@@ -599,6 +599,8 @@ export function parseScenario(files: {
     lines,
     base: files.base,
     present: files.present,
+    // No gear events: the gear follows the height above the ground, as in a live chase (never a take-off on the belly).
+    ...(events.some((e) => e.type === 'gear') ? {} : { gearFromHeight: true }),
   }
 }
 
@@ -661,7 +663,11 @@ export async function loadScenario(base: string, id: string, fetcher: typeof fet
   return parseScenario({ base: folder, manifest, track, events, transcript, present })
 }
 
-/** Reads `index.json` and every scenario's manifest, for the Scenarios panel; where one names a sound file, whether it is there. */
+/**
+ * Reads `index.json` (the package folders: vite.config.ts) and every scenario's manifest, for the Scenarios panel; where
+ * one names a sound file, whether it is there. A package whose manifest cannot be read is left out and named in the
+ * console: one broken folder does not hide the others.
+ */
 export async function listScenarios(base: string, fetcher: typeof fetch = fetch): Promise<ScenarioCard[]> {
   const idxRes = await fetcher(`${base}scenarios/index.json`)
   if (!idxRes.ok) throw new ScenarioError([`index.json:-: -: fetch failed: ${idxRes.status}`])
@@ -670,16 +676,21 @@ export async function listScenarios(base: string, fetcher: typeof fetch = fetch)
 
   const cards: ScenarioCard[] = []
   for (const id of ids) {
-    const res = await fetcher(`${base}scenarios/${id}/scenario.json`)
-    if (!res.ok) throw new ScenarioError([`${id}/scenario.json:-: -: fetch failed: ${res.status}`])
-    const manifest: unknown = await res.json()
-    const card = parseCard(manifest)
-    const audio = isRecord(manifest) && isRecord(manifest.audio) ? manifest.audio : {}
-    if (nonEmptyString(audio.file)) {
-      const head = await fetcher(`${base}scenarios/${id}/${audio.file}`, { method: 'HEAD' }).catch(() => null)
-      if (head !== null && head.ok && !isHtml(head)) card.sound = audio.reenacted === true ? 'voice-over' : 'recording'
+    try {
+      const res = await fetcher(`${base}scenarios/${id}/scenario.json`)
+      if (!res.ok) throw new ScenarioError([`scenario.json:-: -: fetch failed: ${res.status}`])
+      const manifest: unknown = await res.json()
+      const card = parseCard(manifest)
+      if (card.id !== id) throw new ScenarioError([`scenario.json:-: id: must be the folder's name: ${JSON.stringify(card.id)}`])
+      const audio = isRecord(manifest) && isRecord(manifest.audio) ? manifest.audio : {}
+      if (nonEmptyString(audio.file)) {
+        const head = await fetcher(`${base}scenarios/${id}/${audio.file}`, { method: 'HEAD' }).catch(() => null)
+        if (head !== null && head.ok && !isHtml(head)) card.sound = audio.reenacted === true ? 'voice-over' : 'recording'
+      }
+      cards.push(card)
+    } catch (e) {
+      console.error(`Flight Chaser: scenario "${id}" is not listed:`, e)
     }
-    cards.push(card)
   }
   return cards
 }

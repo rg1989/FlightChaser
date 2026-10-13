@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { PACKAGE_ID, packageIds } from '../../tools/scenarios/packages.ts'
 import { clockToS, sToClock, offsetMs, parseScenario, parseCard, loadScenario, listScenarios, ScenarioError } from './format.ts'
 
 // ---- clockToS / sToClock / offsetMs -----------------------------------------------------------
@@ -126,8 +127,8 @@ test('parseCard: reads only the manifest, for the scenario panel', () => {
 })
 
 test('listScenarios: a card says what sound its scenario plays only when the sound file is there', async () => {
-  const withAudio = (reenacted: boolean): unknown => validManifest({ audio: { file: 'local/cvr.m4a', source: 'x', reenacted, clips: [{ from: 0, to: 10, at: '18:11:16' }] } })
-  const files: Record<string, unknown> = { 'index.json': { scenarios: ['a', 'b', 'c', 'd'] }, 'a/scenario.json': withAudio(false), 'b/scenario.json': withAudio(true), 'c/scenario.json': withAudio(false), 'd/scenario.json': validManifest() }
+  const withAudio = (id: string, reenacted: boolean): unknown => validManifest({ id, audio: { file: 'local/cvr.m4a', source: 'x', reenacted, clips: [{ from: 0, to: 10, at: '18:11:16' }] } })
+  const files: Record<string, unknown> = { 'index.json': { scenarios: ['a', 'b', 'c', 'd'] }, 'a/scenario.json': withAudio('a', false), 'b/scenario.json': withAudio('b', true), 'c/scenario.json': withAudio('c', false), 'd/scenario.json': validManifest({ id: 'd' }) }
   const heads: string[] = []
   const fetcher = (async (url: string, init?: RequestInit) => {
     const path = url.replace('/app/scenarios/', '')
@@ -141,6 +142,22 @@ test('listScenarios: a card says what sound its scenario plays only when the sou
   const cards = await listScenarios('/app/', fetcher)
   assert.deepEqual(cards.map((c) => c.sound), ['recording', 'voice-over', null, null])
   assert.deepEqual(heads, ['a/local/cvr.m4a', 'b/local/cvr.m4a', 'c/local/cvr.m4a'], 'nothing is asked of a scenario that names no sound')
+})
+
+test('listScenarios: a package that cannot be listed is left out, and the others stay', async (t) => {
+  t.mock.method(console, 'error', () => {})
+  // b has no manifest, c's is not a scenario's, d's id is not its folder's name.
+  const files: Record<string, unknown> = { 'index.json': { scenarios: ['a', 'b', 'c', 'd', 'e'] }, 'a/scenario.json': validManifest({ id: 'a' }), 'c/scenario.json': { format: 1 }, 'd/scenario.json': validManifest({ id: 'x' }), 'e/scenario.json': validManifest({ id: 'e' }) }
+  const fetcher = (async (url: string) => {
+    const path = url.replace('/app/scenarios/', '')
+    return path in files ? new Response(JSON.stringify(files[path])) : new Response('', { status: 404 })
+  }) as typeof fetch
+  assert.deepEqual((await listScenarios('/app/', fetcher)).map((c) => c.id), ['a', 'e'])
+})
+
+test('parseScenario: a package without gear events lets the gear follow the height above the ground', () => {
+  assert.equal(parseScenario(validFiles()).gearFromHeight, true)
+  assert.equal(parseScenario(validFiles({ events: `${VALID_EVENTS}\n18:11:17,gear,0,Gear up,` })).gearFromHeight, undefined)
 })
 
 // ---- validation: manifest -----------------------------------------------------------------------
@@ -557,27 +574,35 @@ test('loadScenario: a dev server answering a missing file with its HTML page cou
   assert.deepEqual(scn.lines, [])
 })
 
-// ---- every real package (npm test fails if a shipped package is broken) ------------------------
+// ---- every real package (npm test fails if a package under public/scenarios is broken) ------------------------
 
-test('parseScenario: every real package under public/scenarios parses without throwing', async (t) => {
+/** The files a manifest may name (the body decal, the fin logo, the sound): each a path inside the package's own folder. */
+function namedFiles(manifest: Record<string, any>): string[] {
+  return [manifest.aircraft?.livery?.body, manifest.aircraft?.livery?.finLogo, manifest.audio?.file].filter((f): f is string => typeof f === 'string' && f !== '')
+}
+
+test('every package under public/scenarios loads, and is whole in its own folder', async () => {
   const root = path.resolve(import.meta.dirname, '../../public/scenarios')
-  const indexPath = path.join(root, 'index.json')
-  try {
-    await access(indexPath)
-  } catch {
-    t.skip('public/scenarios/index.json does not exist yet (another task creates it)')
-    return
-  }
-  const index = JSON.parse(await readFile(indexPath, 'utf8')) as { scenarios: string[] }
-  for (const id of index.scenarios) {
+  const ids = packageIds(root)
+  assert.deepEqual(ids.filter((id) => ['jal123', 'kc1388', 'fz1073'].includes(id)), ['jal123', 'kc1388', 'fz1073'], 'the packages are found, the oldest flight first')
+  const models = (JSON.parse(await readFile(path.resolve(root, '../models/manifest.json'), 'utf8')) as { models: { id: string }[] }).models.map((m) => m.id)
+  for (const id of ids) {
     const dir = path.join(root, id)
-    const manifest: unknown = JSON.parse(await readFile(path.join(dir, 'scenario.json'), 'utf8'))
-    const track = await readFile(path.join(dir, 'track.csv'), 'utf8')
-    const events = await readFile(path.join(dir, 'events.csv'), 'utf8').catch(() => null)
-    const transcript = await readFile(path.join(dir, 'transcript.csv'), 'utf8').catch(() => null)
-    assert.doesNotThrow(
-      () => parseScenario({ base: `${dir}/`, manifest, track, events, transcript, present: { body: false, finLogo: false, audio: false } }),
-      `scenario ${id}`,
-    )
+    const read = (f: string): Promise<string | null> => readFile(path.join(dir, f), 'utf8').catch(() => null)
+    const [manifestText, track, events, transcript] = await Promise.all(['scenario.json', 'track.csv', 'events.csv', 'transcript.csv'].map(read))
+    assert.match(id, PACKAGE_ID, `${id}: the folder's name`)
+    assert.ok(track !== null, `${id}: track.csv is missing`)
+    const manifest = JSON.parse(manifestText!) as Record<string, any>
+    const s = parseScenario({ base: `${dir}/`, manifest, track, events, transcript, present: { body: false, finLogo: false, audio: false } })
+    assert.equal(s.id, id, `${id}: scenario.json's id is the folder's name`)
+    assert.ok(models.includes(s.aircraft.model), `${id}: aircraft.model ${JSON.stringify(s.aircraft.model)} is not a model of public/models/manifest.json (${models.join(', ')})`)
+    for (const f of namedFiles(manifest)) {
+      assert.ok(!/^[a-z]+:|^\/|(^|\/)\.\.(\/|$)/i.test(f), `${id}: ${f} must be a path inside the package's folder`)
+      // local/ is not published (git-ignored): a package plays without what is in it.
+      if (!f.startsWith('local/')) await assert.doesNotReject(access(path.join(dir, f)), `${id}: ${f} is named in scenario.json and is not in the folder`)
+    }
+    for (const [file, text] of [['scenario.json', manifestText], ['events.csv', events], ['transcript.csv', transcript]] as const) {
+      assert.ok(!text?.includes('TODO'), `${id}: ${file} still holds a TODO`)
+    }
   }
 })

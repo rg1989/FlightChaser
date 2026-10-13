@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { packageIds } from '../../tools/scenarios/packages.ts'
 import { trueAirspeedKt } from '../track/airspeed.ts'
 import { parseScenario } from './format.ts'
 import { physicsReport } from './physics.ts'
@@ -59,12 +60,11 @@ test('over the ground at its airspeed plus the wind the track gives, else flagge
   assert.ok(physicsReport(wrongWind).problems.some((p) => p.startsWith('over the ground')))
 })
 
-// ---- every real package (npm test fails if a shipped package is not physically possible) ----------------------------
+// ---- every real package (npm test fails if a package under public/scenarios is not physically possible) ------------
 
 test('every package under public/scenarios flies like an airliner', async (t) => {
   const root = path.resolve(import.meta.dirname, '../../public/scenarios')
-  const index = JSON.parse(await readFile(path.join(root, 'index.json'), 'utf8')) as { scenarios: string[] }
-  for (const id of index.scenarios) {
+  for (const id of packageIds(root)) {
     const dir = path.join(root, id)
     const s = parseScenario({
       base: `${dir}/`,

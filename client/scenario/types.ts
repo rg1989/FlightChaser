@@ -147,7 +147,7 @@ export interface Scenario {
   lines: Line[]
   base: string // URL of the scenario folder, ending in '/'
   present: { body: boolean; finLogo: boolean; audio: boolean } // optional files the loader found
-  gearFromHeight?: boolean // no gear events: the gear follows the height above the ground, as in a live chase (a recording)
+  gearFromHeight?: boolean // no gear events (a recording, or a package without them): the gear follows the height above the ground, as in a live chase
 }
 
 /** The manifest alone (scenario.json), for the Scenarios panel's cards: no CSVs fetched. */

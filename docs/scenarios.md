@@ -8,10 +8,9 @@ day and time, switches between 3-D and Map (or V), and has Exit. A timeline play
 aircraft's position is a function of the scenario clock. Captions show what the crew and ATC said, from the official
 record.
 
-This document is for two readers:
-
-- a person who prepares a new scenario, and
-- the research agent that collects the data for it.
+This document is the reference: every file and every column. To add a scenario, follow the procedure in
+[scenario-sdk.md](scenario-sdk.md). It starts a package from a flight file with one command, and says how to check it,
+share it and install it.
 
 Part 1 is the package format. Part 2 says what to send and what not to send. Part 3 has the sensitivity rules for
 accident scenarios. Part 4 is a prompt to give to a research agent.
@@ -27,7 +26,6 @@ The loader that checks every rule below is `client/scenario/format.ts`.
 ### 1.1 Files
 
 ```
-public/scenarios/index.json            {"scenarios": ["jal123", "<id>"]}   the list the Scenarios panel shows
 public/scenarios/<id>/scenario.json    the manifest (required)
 public/scenarios/<id>/track.csv        the timed position and attitude (required)
 public/scenarios/<id>/events.csv       phases, marks, gear, flaps, damage (optional)
@@ -38,7 +36,10 @@ public/scenarios/<id>/local/…          files that must not be published: logos
 ```
 
 - `<id>` is the folder name. It has 1 to 64 letters, digits, `_` or `-`, and starts with a letter or a digit.
-- A package appears in the app only when its id is in `index.json`.
+- A package is its folder and nothing else. The app lists every folder under `public/scenarios/` that holds a
+  `scenario.json`, the oldest flight first. There is no list to edit: copy a folder in and reload the app.
+  (`npm run build` writes the list into the build, so a built copy needs a new build.)
+- Nothing in the package names a file outside its folder.
 - `local/` is git-ignored (`public/scenarios/*/local/` in `.gitignore`). The repository is public. Everything else in
   the folder is published.
 - All text is UTF-8. CSV files follow RFC 4180: a header row, and quotes around a field that holds a comma, a quote or
@@ -87,7 +88,7 @@ The JAL 123 file is a complete example. The fields:
 | Field | Required | Meaning |
 |---|---|---|
 | `registration`, `type`, `callsign`, `operator` | no | Shown on the card. Example: `JA8119`, `Boeing 747SR-46`, `JAL123`, `Japan Air Lines`. |
-| `model` | yes | A model id from `public/models/manifest.json`. Today: `a320 a321 a333 a359 b738 b744 b773 b789 e75l crj9 at75 c550 c182 ec135`. Take the nearest one. |
+| `model` | yes | A model id from `public/models/manifest.json`. Today: `a320 a20n a321 a21n a333 a359 b738 b38m b744 b773 b789 e75l e190 crj9 at75 c550 c182 ec135`. Take the nearest one. `node tools/scenarios/new.ts` prints the list. |
 | `shape.halfSpanM` | no | Folds the wing tips in to this half-span in metres, when the real aircraft is shorter than the model (a 747SR on the 747-400 model: `29.8`). |
 | `livery.base`, `belly`, `fin`, `engine` | `base` and `fin` | sRGB hex colours: upper body, lower body, fin, engine nacelles. |
 | `livery.body` | no | A body-wrap decal (stripes, titles, registration), path relative to the folder, normally `livery/body.png`. |
@@ -139,8 +140,9 @@ Columns: `time,type,value,label,src`.
 
 - Events have no `q` column. When a time is an estimate, say so in `label`, for example "Gear up (not recorded,
   estimated)".
-- Put the state at `start` in the file: for example `gear 1` at `start` when the aircraft is on the ground. With no
-  `gear` event the gear is up, and with no `flaps` event the frame shows no flaps.
+- A file with no `gear` event at all: the app lowers and raises the gear by the height above the ground, as in a live
+  chase. A file with one `gear` event or more: the gear follows those events alone, so put the state at `start` in the
+  file (`gear 1` at `start` when the aircraft is on the ground). With no `flaps` event the frame shows no flaps.
 - Several events can have the same time. Keep them in the order you want them applied.
 - Mark labels are short and exact. Quote the record's words: “But now uncontrol”.
 
@@ -280,11 +282,12 @@ height (`shared/geoid.ts`). While the scenario plays, the app paints these runwa
 
 ### 1.12 Checking a package
 
-1. Add the id to `public/scenarios/index.json`.
-2. Run `node --test client/scenario/format.test.ts`. It loads every package in `index.json` with the app's own
-   loader. A broken package fails the test.
-3. Run `npm run check` before you commit.
-4. Open the app with `/?scenario=<id>` and play the whole flight once.
+1. Run `node --test client/scenario/format.test.ts client/scenario/physics.test.ts`. The first loads every folder
+   under `public/scenarios/` with the app's own loader and checks that the package is whole in its folder: `id` is the
+   folder's name, `aircraft.model` is a model of the app, each file that `scenario.json` names is in the folder, and no
+   `TODO` is left. The second checks that the track flies like an aircraft. A broken package fails the test.
+2. Run `npm run check` before you commit.
+3. Open the app with `/?scenario=<id>` and play the whole flight once.
 
 The loader collects every problem and reports them together, one per line, as `file:row: column: problem`. Example:
 `transcript.csv:83: speaker: unknown speaker: "UNK"`.

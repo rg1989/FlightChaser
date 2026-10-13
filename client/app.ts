@@ -2252,7 +2252,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         // relief: flattened or growing, the ground drawn is not the ground.
         const aglFt = groundM === null || !prefs.topo || topo.animating ? null : Math.max(0, placed.hM - groundM) / FT
         // An estimated landing takes nothing of what the aircraft last sent (its airspeed, its wind): those were then.
-        const data = sf !== null ? { ...sf.data, aglFt } : liveFlightData(placed, placed.landing === undefined ? chaseRaw : null, aglFt, model.gearPos >= 1 ? 'down' : 'up', hist === null ? modelWind : null)
+        const data = sf !== null ? { ...sf.data, aglFt, ...(liveGear === null ? {} : { gear: model.gearPos >= 1 ? 'down' as const : 'up' as const }) } : liveFlightData(placed, placed.landing === undefined ? chaseRaw : null, aglFt, model.gearPos >= 1 ? 'down' : 'up', hist === null ? modelWind : null)
         // Its flight ID over its brackets, as over the traffic's: the callsign, else the hex (a scenario has its own).
         const id = placed.callsign ?? (sf === null ? placed.hex.toUpperCase() : '')
         flightFrame.update(viewer, model.model, model.entry, data, frameRoom(now), sf?.t, id)
