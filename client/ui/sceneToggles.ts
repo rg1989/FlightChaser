@@ -37,6 +37,7 @@ const SCENE_ROWS: Row[] = [
   { key: 'light', icon: 'sun', label: 'Sun', hint: 'Real sun and moon light, day and night', shortcut: 'L' },
   { key: 'buildings', icon: 'building', label: '3-D buildings', hint: 'Buildings in relief round the aircraft', shortcut: 'B' },
   { key: 'glass', icon: 'eye', label: 'See-through', hint: 'Glassy, so they never hide the aircraft', shortcut: 'X' },
+  { key: 'textures', icon: 'layout', label: 'Textures', hint: 'Roofs from the satellite photo, walls with windows', shortcut: 'U' },
 ]
 const ROWS = [...LAYER_ROWS, ...SCENE_ROWS]
 function h<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, text = ''): HTMLElementTagNameMap[K] {
@@ -130,10 +131,10 @@ export function mountSceneToggles(root: HTMLElement, opts: SceneTogglesOpts): Sc
   const scene = h('div', 'fh-scene')
   const sceneHead = h('div', 'fh-scene-head')
   sceneHead.append(h('span', 'fh-scene-title', '3-D scene'))
-  const [topoRow, lightRow, buildingsRow, glassRow] = SCENE_ROWS.map(row)
-  const buildingsBox = h('div', 'fh-scene-group') // 3-D buildings, with See-through under it
+  const [topoRow, lightRow, buildingsRow, glassRow, texturesRow] = SCENE_ROWS.map(row)
+  const buildingsBox = h('div', 'fh-scene-group') // 3-D buildings, with See-through and Textures under it
   const glassSub = h('div', 'fh-scene-sub')
-  glassSub.append(glassRow)
+  glassSub.append(glassRow, texturesRow)
   buildingsBox.append(buildingsRow, glassSub)
   scene.append(sceneHead, topoRow, lightRow, buildingsBox)
   root.append(layers, scene)
@@ -154,6 +155,13 @@ export function mountSceneToggles(root: HTMLElement, opts: SceneTogglesOpts): Sc
     if (glass.disabled === prefs.buildings) {
       glass.disabled = !prefs.buildings
       glassRow.setAttribute('aria-disabled', String(!prefs.buildings))
+    }
+    // Textures: the same, and only over the satellite (the roofs are its picture).
+    const textures = switches.get('textures')!
+    const off = !prefs.buildings || prefs.mapChase
+    if (textures.disabled !== off) {
+      textures.disabled = off
+      texturesRow.setAttribute('aria-disabled', String(off))
     }
   }
   fit()

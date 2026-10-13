@@ -5,11 +5,13 @@
 // walls near the focus and reports walls floating above it and roofs below the uphill ground, for the corner rule the
 // layer uses (extentM) and, for comparison, the old centre rule (centre ground − 2 m − 0.3 × radius).
 // Query: ?scene=hk|monaco|haifa|rio|lapaz|ibk|tlv  ?time=ISO  ?glass=1  ?topo=0  ?check=1 (run check() once settled)  ?info=0  ?buildings=0 (baseline)
+//   ?photo=1 (roofs from the satellite picture, drawn walls)  ?cam=lat,lon,HAE m,heading°,pitch°  ?focus=lat,lon (another view of the scene)
 // window.harness = { viewer, buildings, stats(), check(radiusM) }
 import { Cartesian3, Cartographic, JulianDate, Math as CMath, sampleTerrainMostDetailed } from 'cesium'
 import { readConfig } from '../client/config.ts'
 import { Buildings, extentM, footprints, groundPoints, openFreeMapLayer, tilesAround, type Footprint } from '../client/scene/buildings.ts'
 import { makeNightLayer } from '../client/scene/nightLights.ts'
+import { photoSource } from '../client/scene/roofPhoto.ts'
 import { Sun } from '../client/scene/sun.ts'
 import { TerrainHeights } from '../client/scene/terrainHeights.ts'
 import { Topography } from '../client/scene/topography.ts'
@@ -28,7 +30,12 @@ const SCENES: Record<string, Scene> = {
   ibk: { cam: [47.2655, 11.3935, 880, 355, -2], focus: [47.2805, 11.3955], time: '2026-06-21T15:00:00Z', what: 'Innsbruck: Hungerburg on the Nordkette slope' },
   tlv: { cam: [32.0712, 34.7665, 330, 92, -12], focus: [32.0735, 34.785], time: '2026-09-23T14:40:00Z', what: 'Tel Aviv (flat, for comparison)' },
 }
-const scene = SCENES[q.get('scene') ?? 'hk'] ?? SCENES.hk
+const base = SCENES[q.get('scene') ?? 'hk'] ?? SCENES.hk
+const nums = (key: string, n: number): number[] | null => {
+  const v = (q.get(key) ?? '').split(',').map(Number)
+  return v.length === n && v.every(Number.isFinite) ? v : null
+}
+const scene: Scene = { ...base, cam: (nums('cam', 5) as Scene['cam'] | null) ?? base.cam, focus: (nums('focus', 2) as Scene['focus'] | null) ?? base.focus }
 const timeMs = Date.parse(q.get('time') ?? scene.time)
 const info = document.getElementById('info')!
 if (q.get('info') === '0') info.style.display = 'none'
@@ -50,7 +57,7 @@ async function main(): Promise<void> {
   const sun = new Sun(viewer, { day, night })
   sun.setEnabled(true)
   // ?ground=flat: no terrain reads (profiling their cost)
-  const buildings = new Buildings(viewer, q.get('ground') === 'flat' ? { groundM: async (at) => at.map(() => 0) } : {})
+  const buildings = new Buildings(viewer, { ...(q.get('ground') === 'flat' ? { groundM: async (at) => at.map(() => 0) } : {}), photo: q.get('photo') === '1' ? photoSource(cfg) : null })
   let glass = q.get('glass') === '1'
   buildings.setGlass(glass)
 

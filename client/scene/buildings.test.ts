@@ -6,7 +6,7 @@ import type { TerrainFrame } from '../types.ts'
 import { TOPO_ON, drawnHeightM } from './exaggeration.ts'
 import type { Layer } from './mvt.ts'
 import { followExaggeration } from './runways.ts'
-import { Buildings, extentM, footprints, groundPoints, tileLatDeg, tileLonDeg, tileOf, tilesAround, type Footprint } from './buildings.ts'
+import { Buildings, extentM, footprints, groundPoints, photoZoom, tileLatDeg, tileLonDeg, tileOf, tilesAround, tileXY, type Footprint } from './buildings.ts'
 
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b} (tol ${tol}) ${msg}`)
 const LLBG = { lat: 32.0114, lon: 34.8867 }
@@ -19,6 +19,29 @@ test('tileOf: z14 slippy-map tile of a point; the tile bounds contain it', () =>
     assert.ok(tileLonDeg(x) <= p.lon && p.lon < tileLonDeg(x + 1), `lon ${p.lon}`)
     assert.ok(tileLatDeg(y + 1) < p.lat && p.lat <= tileLatDeg(y), `lat ${p.lat}`)
   }
+})
+
+test('tileXY: a point in fractions of a tile, the inverse of the tile edges; tileOf is its whole part', () => {
+  const [x, y] = tileOf(LLBG.lat, LLBG.lon)
+  const [fx, fy] = tileXY(tileLatDeg(y + 0.25), tileLonDeg(x + 0.75))
+  assert.ok(Math.abs(fx - (x + 0.75)) < 1e-9 && Math.abs(fy - (y + 0.25)) < 1e-9)
+  assert.deepEqual(tileXY(LLBG.lat, LLBG.lon).map(Math.floor), [x, y])
+})
+
+test('photoZoom: sharpest round a low aircraft, a zoom coarser a ring out and for each doubling of its height; coarser only well past the line', () => {
+  assert.equal(photoZoom(0, 600, 0, 19), 17)
+  assert.equal(photoZoom(1, 600, 0, 19), 17)
+  assert.equal(photoZoom(2, 600, 0, 19), 16)
+  assert.deepEqual([1999, 2000, 4000, 8000, 11000].map((h) => photoZoom(0, h, 0, 19)), [17, 16, 15, 14, 14])
+  assert.equal(photoZoom(3, 11000, 0, 19), 14, 'never under the building tiles\' own zoom')
+  assert.equal(photoZoom(0, 600, 0, 14), 14, 'never deeper than the source goes (EOX)')
+  // a sharp tile left a ring behind keeps its picture; two rings, it goes coarse
+  assert.equal(photoZoom(2, 600, 17, 19), 17)
+  assert.equal(photoZoom(3, 600, 17, 19), 16)
+  // climbing through 2,000 m: coarse only from 2,500 m; descending: sharp at once
+  assert.equal(photoZoom(0, 2400, 17, 19), 17)
+  assert.equal(photoZoom(0, 2500, 17, 19), 16)
+  assert.equal(photoZoom(0, 1900, 16, 19), 17)
 })
 
 test('tilesAround: every tile touching the square of half-side r, nearest first', () => {

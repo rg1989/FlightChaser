@@ -37,7 +37,8 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
   cities, countries and flights. A flight card shows the aircraft's photo, route and flown path. The Layers panel
   picks the map, its theme and what is drawn on it.
 - **Chase view.** Follow one aircraft in 3-D: real terrain, sun and moon light for the time of day, city lights at
-  night, 3-D buildings (`B` switches them, `X` makes them see-through), painted runways. Aircraft are type models in
+  night, 3-D buildings with roofs from the satellite photo and drawn walls (`B` switches them, `X` makes them
+  see-through, `U` turns the textures off), painted runways. Aircraft are type models in
   airline liveries, with landing gear, lights and glass-cockpit instruments. Nearby traffic is drawn too. The layout
   button arranges the instruments: drag, size or hide each card, switch a card to a smaller variant, or pick a
   ready-made layout (Compact, Stylistic, Detailed).

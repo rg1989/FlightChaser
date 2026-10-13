@@ -120,6 +120,9 @@ test('a scene key acts only while what it hangs under is on: X with the building
   const p = { ...DEFAULT_PREFS, buildings: true, mapTop: true, mapChase: false }
   assert.equal(sceneKeyActs('glass', p, true), true)
   assert.equal(sceneKeyActs('glass', { ...p, buildings: false }, true), false)
+  assert.equal(sceneKeyActs('textures', p, true), true)
+  assert.equal(sceneKeyActs('textures', { ...p, buildings: false }, true), false)
+  assert.equal(sceneKeyActs('textures', { ...p, mapChase: true }, true), false, 'the roofs are the satellite picture: not over the street map')
   for (const k of ['roads', 'places'] as const) {
     assert.equal(sceneKeyActs(k, p, false), false, 'top-down shows the map')
     assert.equal(sceneKeyActs(k, p, true), true, 'the chase shows the satellite')
@@ -137,6 +140,7 @@ test('scene keys: T topography and L sun, either case; not with a modifier, on a
   assert.equal(sceneKey(press('b')), 'buildings')
   assert.equal(sceneKey(press('x')), 'glass')
   assert.equal(sceneKey(press('X')), 'glass')
+  assert.equal(sceneKey(press('u')), 'textures')
   assert.equal(sceneKey(press('m')), 'base') // map or satellite, for the view on screen
   assert.equal(sceneKey(press('R')), 'roads')
   assert.equal(sceneKey(press('p')), 'places') // borders and places: a switch apart from the roads
