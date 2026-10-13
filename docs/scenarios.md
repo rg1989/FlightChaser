@@ -231,8 +231,14 @@ word. When the record gives only the minute, say so in the source note.
 - File types: `.m4a`, `.mp3`, `.ogg`, `.opus`, `.wav`.
 - `source` is required. The loader rejects audio without it.
 - Before anyone downloads audio: show the file name, the source and the size to the project owner, and wait for a
-  yes. Then check each clip against the official transcript. If a copy is edited, re-ordered or of unclear origin,
-  do not use it. Captions alone are enough.
+  yes (a request for the audio is that yes). If a copy is re-ordered or of unclear origin, do not use it. Captions
+  alone are enough.
+- Then check it against the transcript, line by line: `tools/scenarios/align_lines.py` says how late each line is
+  heard. A copy laid out by ear can sit seconds off and run off speed. Move each continuous stretch to the record's
+  times and measure again. JAL 123 is the example: `tools/scenarios/jal123/cvr_audio.py` (the leaked recording, moved
+  by up to 5.2 s and stretched by up to 1 %; after that, 190 cockpit lines lie a median 0.0 s from their captions,
+  88 % of them within 1.5 s).
+- An accident's file stops at `darkAt`. The sounds of contact are not in it.
 
 ### 1.10 Sources and `src` cells
 
@@ -311,7 +317,7 @@ Send these for a new scenario. The first 5 are needed. The rest make it better.
 10. **Weather aloft.** Upper-air soundings near the route for the day: wind and temperature by height. They convert
     pressure altitude to true altitude and add the wind.
 11. **Card text.** `note`, `summary`, `crew` and, for an accident, the closing card.
-12. **Audio.** Only as described in 1.9. Say where a copy exists. Do not download it.
+12. **Audio.** Only as described in 1.9. Say where a copy exists.
 
 ### 2.2 Not needed
 

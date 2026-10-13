@@ -82,10 +82,9 @@
     }
   },
   "audio": {
-    "file": "local/voiceover.m4a",
-    "source": "A reenactment, not the recording: synthetic voices (Kokoro-82M) read the English captions of transcript.csv, and the alerts the record names are synthesized. Made by tools/scenarios/voiceover.py with tools/scenarios/jal123/voices.json.",
-    "reenacted": true,
-    "clips": [{ "from": 0, "to": 2708, "at": "18:11:15" }]
+    "file": "local/cvr.m4a",
+    "source": "The cockpit voice recording as it leaked to Japanese broadcasters in 2000 (never released officially; about 20 of its 32 minutes survive, the rest is silence here), with the ground radio tape after 18:36:42. Taken from the Audacity project github.com/SonGohan/JAL123CVR and re-timed to the official record by tools/scenarios/jal123/cvr_audio.py; checked line by line with tools/scenarios/align_lines.py. It stops at 18:56:22, before the first sound of contact.",
+    "clips": [{ "from": 0, "to": 1942, "at": "18:24:00" }]
   },
   "sources": [
     {
