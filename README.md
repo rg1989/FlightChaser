@@ -55,7 +55,7 @@ A personal, non-commercial project. **Entertainment only: not for navigation, AT
   its captions. The recordings are not in the repository: [Scenarios](docs/scenarios.md) says how one is added and
   checked.
 - **Alerts.** Emergency squawks worldwide and steep descents, with optional push to a phone.
-- **Phone and TV.** A phone layout, and a kiosk mode driven by a TV remote ([tv/](tv/README.md)).
+- **Phone.** A layout for a phone, with the same features.
 
 ## Quick start
 
@@ -124,7 +124,7 @@ Server settings are environment variables. `npm run server` and `make` read them
 | `EUMETSAT_KEY`, `EUMETSAT_SECRET` | none | A EUMETSAT account's key and secret: the weather satellite's raw cloud products ([Keys](#keys-optional)). Secrets |
 
 Useful links into the app: `?hex=<icao>&chase=1` chases an aircraft, `?scenario=<id>` plays a scenario,
-`?hist=<unix seconds>` opens the past, `?tv=1` is the TV kiosk, `?setup=1` opens the setup guide.
+`?hist=<unix seconds>` opens the past, `?setup=1` opens the setup guide.
 Settings → Controls lists the keyboard shortcuts.
 
 ## Layout
@@ -136,8 +136,7 @@ Settings → Controls lists the keyboard shortcuts.
 | `shared/` | Types and maths used by both |
 | `public/` | Aircraft models, liveries, airports, scenario packages, map overlays |
 | `tools/` | Scripts that build the data in `public/`, recorders and benchmarks |
-| `harness/` | Single-feature pages for development |
-| `tv/` | The TV setup |
+| `harness/` | Development pages: each loads one part of the app alone (the sun, a model, the runways, the instruments), to work on it without live traffic |
 | `third_party/` | Source of the GPL aircraft models |
 | `.planning/` | Design notes and work plans, kept as the project's log |
 

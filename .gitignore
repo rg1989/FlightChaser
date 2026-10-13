@@ -23,3 +23,6 @@ data/eumetsat/
 
 # Source material for the scenarios (reports, raw tracks): kept outside the repository
 .work/
+
+# The owner's own TV kiosk and streaming setup: kept on this machine, not published
+tv/
