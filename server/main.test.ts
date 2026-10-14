@@ -936,3 +936,23 @@ test('the type table is not loaded at the start with the alerts off, nor for liv
   await waitFor('the table', async () => asked, (a) => a.includes(TYPE_DB_URL))
   assert.equal(asked.filter((u) => u === TYPE_DB_URL).length, 1)
 })
+
+test('ADSB_SOURCE=adsbfi,adsblol: both upstreams are asked, each with its own budget, into one store; /api/status names both', async (t) => {
+  const clock = { t: T0 }
+  const fi = liveStub(clock)
+  const lol = liveStub(clock)
+  lol.source.caps = { ...lol.source.caps, kind: 'adsblol' }
+  fi.world.heard = [plane('4x0001')]
+  lol.world.heard = [plane('4x0001'), plane('4x0002', { lat: 32.1 })] // the same aircraft, and one only adsb.lol hears
+  const cfg = { ...readServerConfig({ ADSB_SOURCE: 'adsbfi,adsblol', CONTACT: 'me@example.invalid' }), staticDir: join(tmp(), 'dist') }
+  const app = createServer(cfg, { source: fi.source, moreSources: [lol.source], nowMs: () => clock.t })
+  const base = await app.listen(0)
+  t.after(() => app.close())
+  await get(`${base}/api/view?lat=32&lon=35&nm=400&since=0`) // a wide view: many areas to share
+  await waitFor('both upstreams asked', async () => [fi.world.asked.length, lol.world.asked.length], ([a, b]) => a > 0 && b > 0)
+  const status = (await get<StatusReport>(`${base}/api/status`)).body
+  assert.deepEqual([status.source, status.sources, status.lanes?.map((l) => l.source)], ['adsbfi', ['adsbfi', 'adsblol'], ['adsbfi', 'adsblol']])
+  assert.deepEqual(status.lanes?.map((l) => l.budget.maxRps), [0.9, 0.04])
+  const view = (await get<ViewResponse>(`${base}/api/view?lat=32&lon=35&nm=400&since=0`)).body
+  assert.deepEqual(view.samples.map((s) => s.hex).sort(), ['4x0001', '4x0002'], 'one store: each aircraft once, from either')
+})

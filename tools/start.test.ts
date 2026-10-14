@@ -25,7 +25,7 @@ test('the options: live on port 8787 and the browser opened unless told otherwis
 
 test('the server: adsb.fi under its limit whatever the environment says, flights and alerts into data/ unless it names a folder', () => {
   const live = serverEnv(startArgs([]), { MAX_RPS: '5', ADSB_SOURCE: 'adsblol' })
-  assert.deepEqual(live, { PORT: '8787', RECORD_DIR: '', ADSB_SOURCE: 'adsbfi', MAX_RPS: '0.9', FLIGHTS_DIR: 'data/flights', EVENTS_DIR: 'data/events' })
+  assert.deepEqual(live, { PORT: '8787', RECORD_DIR: '', ADSB_SOURCE: 'adsbfi,adsblol', MAX_RPS: '0.9', FLIGHTS_DIR: 'data/flights', EVENTS_DIR: 'data/events' })
   assert.equal(serverEnv(startArgs([]), { FLIGHTS_DIR: 'mine', EVENTS_DIR: '' }).FLIGHTS_DIR, 'mine')
   assert.equal(serverEnv(startArgs([]), { FLIGHTS_DIR: 'mine', EVENTS_DIR: '' }).EVENTS_DIR, 'data/events')
 })

@@ -27,6 +27,7 @@ export interface SourceView {
 /** Badge text for a status; serverNowMs dates a replay (server now − upstreamOffsetMs = the recording's own time). */
 export function sourceView(status: StatusBrief, serverNowMs: number | null): SourceView {
   const src = SOURCES[status.source]
+  const names = (status.sources ?? [status.source]).map((k) => SOURCES[k].name) // adsbfi,adsblol: both at once
   const trouble = status.degraded !== null
   // In trouble the pending count means nothing (no answers are coming): the badge says what is wrong instead.
   const loading = !trouble && (status.pendingAreas ?? 0) > 0 ? ` · loading ${status.pendingAreas} area${status.pendingAreas === 1 ? '' : 's'}` : ''
@@ -37,8 +38,8 @@ export function sourceView(status: StatusBrief, serverNowMs: number | null): Sou
   }
   const word = status.degraded === 'rate-limited' ? 'SLOWED' : trouble ? 'NO DATA' : 'LIVE'
   return {
-    text: `${word} · ${src.name}${loading}`,
-    title: trouble ? `The flight-data source is ${status.degraded}` : `Live flight data from ${src.name}`,
+    text: `${word} · ${names.join(' + ')}${loading}`,
+    title: trouble ? `The flight-data source is ${status.degraded}` : `Live flight data from ${names.join(' and ')}`,
     state: trouble ? 'trouble' : 'live',
     href: src.href,
   }
@@ -56,6 +57,7 @@ export interface PanelView {
   dot: 'live' | 'replay' | 'trouble' | 'wait' // theme.css .fh-dot's data-state
   mode: string
   source: { name: string; href: string | null; title: string } | null // null: no source line
+  more?: { name: string; href: string | null }[] // the other sources asked at the same time (adsbfi,adsblol), after a "+"
   refresh: string
   coverage: { text: string; loading: boolean } // loading: the spinner goes before the text
 }
@@ -85,7 +87,9 @@ export function panelView(status: StatusBrief | null, serverNowMs: number | null
   // In trouble the pending count means nothing (no answers are coming): no "Loading" spinner then.
   const pending = status !== null && status.degraded === null ? (status.pendingAreas ?? 0) : 0
   const every = status?.viewEveryS
+  const more = (status?.sources ?? []).slice(1).map((k) => ({ name: SOURCES[k].name, href: SOURCES[k].href }))
   return {
+    ...(more.length > 0 ? { more } : {}),
     dot: statusDot(status),
     mode: v === null ? 'Connecting…' : v.text.split(' · ')[0] === 'REPLAY' ? v.text.replace('REPLAY', 'Replay') : v.state === 'trouble' ? v.title : 'Live traffic',
     source: src === null ? null : { name: src.name, href: src.href, title: '' },
@@ -120,10 +124,15 @@ export function mountStatusPanel(root: HTMLElement, opts: { onPick?(hex: string)
   const heroText = h('div', 'fh-status-hero-t')
   const mode = h('div', 'fh-status-mode', 'Connecting…')
   const sourceLine = h('div', 'fh-status-src')
-  const link = h('a', 'fh-status-link')
-  link.target = '_blank'
-  link.rel = 'noopener'
-  sourceLine.append(link)
+  const anchor = (): HTMLAnchorElement => {
+    const a = h('a', 'fh-status-link')
+    a.target = '_blank'
+    a.rel = 'noopener'
+    return a
+  }
+  const link = anchor()
+  const moreLinks = h('span')
+  sourceLine.append(link, moreLinks)
   heroText.append(mode, sourceLine)
   hero.append(dot, heroText)
 
@@ -172,6 +181,12 @@ export function mountStatusPanel(root: HTMLElement, opts: { onPick?(hex: string)
       sourceLine.hidden = v.source === null
     }
     link.title = v.source?.title ?? ''
+    moreLinks.replaceChildren(...(v.more ?? []).flatMap((m) => {
+      const a = anchor()
+      a.textContent = m.name
+      if (m.href !== null) a.href = m.href
+      return [document.createTextNode(' + '), a]
+    }))
     refreshV.textContent = v.refresh
     coverageV.replaceChildren()
     if (v.coverage.loading) coverageV.append(h('span', 'fh-spin'), document.createTextNode(` ${v.coverage.text}`))

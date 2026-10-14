@@ -5,9 +5,12 @@ import { EMERGENCY_SQUAWKS } from '../shared/alerts.ts'
 import type { SourceKind } from '../shared/types.ts'
 
 export interface ServerConfig {
-  source: SourceKind // ADSB_SOURCE, default replay
+  source: SourceKind // ADSB_SOURCE (its first source when it lists more), default replay
+  // ADSB_SOURCE's other sources (adsbfi,adsblol: the two can be combined), each asked at the same time as the first, at its
+  // own default rate. adsblol is left out of a list when CONTACT is not set.
+  moreSources: { kind: SourceKind; maxRps: number }[]
   contact: string | null // CONTACT, required for adsblol (it goes into the User-Agent)
-  maxRps: number // MAX_RPS, default per source (adsblol 0.04, adsbfi 0.9, else 1); never above 1 for adsblol and adsbfi
+  maxRps: number // MAX_RPS, the first source's: default per source (adsblol 0.04, adsbfi 0.9, else 1); never above 1 for adsblol and adsbfi
   readsbUrl: string // READSB_URL, default http://127.0.0.1:8042
   readsbCoverage: { lat: number; lon: number; radiusNm: number } | null // READSB_COVERAGE "lat,lon,nm", required for readsb
   replayFiles: string[] // REPLAY_FILES expanded to files (replay only), default data/fixtures/*.jsonl
@@ -27,8 +30,9 @@ export interface ServerConfig {
 type Env = Record<string, string | undefined>
 
 const SOURCES: readonly string[] = ['adsblol', 'adsbfi', 'readsb', 'replay'] satisfies SourceKind[]
-// Polite defaults per source. adsb.lol refused this IP at 0.082–0.5 req/s and has run clean at 0.04 (2026-09-22);
-// adsb.fi documents 1 req/s for its public endpoints.
+const COMBINABLE: readonly string[] = ['adsbfi', 'adsblol'] satisfies SourceKind[] // live area sources: they share the work
+// Polite defaults per source. adsb.lol refused this IP at 0.082–0.5 req/s and has run clean at 0.04 (2026-09-22; its burst:
+// sources/adsblol.ts); adsb.fi documents 1 req/s for its public endpoints.
 const DEFAULT_MAX_RPS: Record<SourceKind, number> = { adsblol: 0.04, adsbfi: 0.9, readsb: 1, replay: 1 }
 const DEFAULT_REPLAY_FILES = 'data/fixtures/*.jsonl'
 const DEFAULT_READSB_URL = 'http://127.0.0.1:8042'
@@ -73,15 +77,22 @@ function expand(patterns: string): string[] {
 
 /** Reads and checks every setting; throws an Error naming the variable when one is invalid. */
 export function readServerConfig(env: Env): ServerConfig {
-  const source = str(env, 'ADSB_SOURCE') || 'replay'
-  if (!SOURCES.includes(source)) throw new Error(`ADSB_SOURCE must be one of ${SOURCES.join(', ')}, got "${source}"`)
-  const kind = source as SourceKind
+  const raw = str(env, 'ADSB_SOURCE') || 'replay'
+  const list = raw.split(',').map((x) => x.trim()).filter((x) => x !== '')
+  for (const s of list) if (!SOURCES.includes(s)) throw new Error(`ADSB_SOURCE must be one of ${SOURCES.join(', ')}, got "${s}"`)
+  if (list.length > 1 && list.some((s) => !COMBINABLE.includes(s))) throw new Error(`ADSB_SOURCE can combine only ${COMBINABLE.join(' and ')}, got "${raw}"`)
+  if (new Set(list).size !== list.length) throw new Error(`ADSB_SOURCE names a source twice: "${raw}"`)
+  const kind = (list[0] ?? 'replay') as SourceKind
 
   const contact = str(env, 'CONTACT') || null
   if (kind === 'adsblol' && contact === null) {
     throw new Error('CONTACT is required for ADSB_SOURCE=adsblol: adsb.lol asks every client for a contact (email or URL) in its User-Agent')
   }
   const maxRps = num(env, 'MAX_RPS', DEFAULT_MAX_RPS[kind], (v) => v > 0, 'a number > 0')
+  // ponytail: the other sources take their defaults; MAX_RPS is the first's. A per-source rate is a setting no one asked for.
+  const moreSources = (list.slice(1) as SourceKind[])
+    .filter((k) => k !== 'adsblol' || contact !== null) // make and npm start ask for both; an install without CONTACT gets adsb.fi alone
+    .map((k) => ({ kind: k, maxRps: DEFAULT_MAX_RPS[k] }))
 
   const readsbUrl = str(env, 'READSB_URL') || DEFAULT_READSB_URL
   let readsbCoverage: ServerConfig['readsbCoverage'] = null
@@ -113,6 +124,7 @@ export function readServerConfig(env: Env): ServerConfig {
 
   return {
     source: kind,
+    moreSources,
     contact,
     maxRps: kind === 'adsblol' || kind === 'adsbfi' ? Math.min(1, maxRps) : maxRps,
     readsbUrl,

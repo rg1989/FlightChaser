@@ -1,5 +1,5 @@
 // server/poller.ts
-import type { CellStatus, StatusBrief, StatusReport } from '../shared/api.ts'
+import type { CellStatus, Degraded, StatusBrief, StatusReport } from '../shared/api.ts'
 import { MinOffset } from '../shared/clock.ts'
 import { isHidden, toSample } from '../shared/sample.ts'
 import type { TokenBucket } from './budget.ts'
@@ -10,6 +10,12 @@ import type { Recorder } from './recorder.ts'
 import type { FetchResult, Source } from './sources/types.ts'
 import type { ReadsbAircraft, Sample } from '../shared/types.ts'
 import { LATEST_HORIZON_MS, type SampleStore } from './store.ts'
+
+/** One upstream with its own request budget. */
+export interface Lane {
+  source: Source
+  bucket: TokenBucket
+}
 
 export interface PollerOpts {
   cellPeriodMs: number
@@ -36,6 +42,10 @@ export interface PollerOpts {
   // ponytail: squawks() is called every tick (100 ms) and must not throw: a throw rejects the tick (start() logs it each time).
   squawks?: () => readonly string[]
   onAircraft?: (ac: ReadsbAircraft, rxMs: number) => void // every non-hidden aircraft object of every good answer (server/alerts.ts)
+  // More upstreams, each with its own budget (ADSB_SOURCE=adsbfi,adsblol): area sources, after the first. Every lane asks
+  // at its own rate at the same time as the others, and each free one takes the most urgent request it can make, so no
+  // token of any upstream goes unused. All answers go into the one store.
+  lanes?: Lane[]
 }
 
 /**
@@ -98,7 +108,7 @@ export function viewPeriodMs(radiusNm: number): number {
   if (radiusNm <= 500) return Math.max(5_000, 120 * radiusNm)
   return Math.min(1_800_000, 60_000 * (radiusNm / 500) ** 2)
 }
-const MAX_HEXES = 100 // adsb.lol /v2/hex batch limit used by server/sources/adsblol.ts
+const MAX_HEXES = 100 // hexes a hex request carries when its source does not say (caps.maxHexes)
 const OFFSET_WINDOW_MS = 10 * 60_000
 const HOUR_MS = 3_600_000
 const MIN_SPAN_MS = 60_000 // bytes/hour is extrapolated from at least one minute
@@ -139,7 +149,9 @@ interface CellState {
 }
 
 /**
- * Decides what to ask the upstream next and feeds the answers into the store.
+ * Decides what to ask the upstream next and feeds the answers into the store. With more than one upstream (opts.lanes),
+ * each lane makes one request at a time at its own rate, all lanes at once, and each takes the most urgent request it can
+ * make: what follows is the order they all take from.
  * Full-snapshot sources (readsb, replay): one all() per fullSnapshotPeriodMs serves every view and chase.
  * Area sources (adsb.fi, adsb.lol): the newest view up to 250 nm wide is one circle of its own, a wider one the grid
  * cells covering it. Each area is asked every viewPeriodMs of the finest view that touched it (empty ones less often),
@@ -152,12 +164,14 @@ interface CellState {
  * lapses interestTtlMs after the last touch.
  */
 export class Poller {
-  #source: Source
+  #source: Source // the first lane's: what kind of source this is (full snapshot or areas), named in the status
   #store: SampleStore
-  #bucket: TokenBucket
+  #bucket: TokenBucket // the first lane's
+  #lanes: (Lane & { busy: boolean })[] // busy: a request of this lane is in flight
   #opts: PollerOpts
   #now: () => number
   #startMs: number
+  // One for all lanes: both networks keep UTC, so one offset stamps a position both report alike (shared/dedupe.ts).
   #offset = new MinOffset(OFFSET_WINDOW_MS)
   #cells = new Map<string, CellState>()
   #viewAt = { lat: 0, lon: 0 } // centre of the newest view
@@ -175,8 +189,7 @@ export class Poller {
   #snapOk = new OkIntervals()
   #bytes: { t: number; n: number }[] = [] // last hour of responses
   #requestsTotal = 0
-  #busy = false
-  #asking: CellState | null = null // the area whose request is in flight
+  #asking = new Set<CellState>() // the areas whose requests are in flight
   #timer: ReturnType<typeof setInterval> | null = null
   #lookups: { callsigns: readonly string[]; done: (found: ReadsbAircraft[] | null) => void; timer: ReturnType<typeof setTimeout> }[] = []
 
@@ -184,6 +197,8 @@ export class Poller {
     this.#source = source
     this.#store = store
     this.#bucket = bucket
+    this.#lanes = [{ source, bucket }, ...(opts.lanes ?? [])].map((l) => ({ ...l, busy: false }))
+    if (this.#lanes.length > 1 && this.#lanes.some((l) => l.source.caps.fullSnapshot)) throw new Error('Poller: only area sources share the work')
     this.#opts = opts
     this.#now = opts.nowMs ?? Date.now
     this.#startMs = this.#now()
@@ -244,7 +259,7 @@ export class Poller {
    * could not be sent within LOOKUP_WAIT_MS (the budget is paused or spent).
    */
   lookup(callsigns: readonly string[]): Promise<ReadsbAircraft[] | null> {
-    if (this.#source.callsign === undefined || callsigns.length === 0) return Promise.resolve(null)
+    if (!this.#lanes.some((l) => l.source.callsign !== undefined) || callsigns.length === 0) return Promise.resolve(null)
     return new Promise((done) => {
       const ask = { callsigns, done, timer: setTimeout(() => {
         this.#lookups = this.#lookups.filter((l) => l !== ask)
@@ -255,86 +270,112 @@ export class Poller {
     })
   }
 
-  /** At most one upstream request. Returns whether one was made. Overlapping calls return false at once. */
+  /**
+   * At most one upstream request on each lane that has none in flight; waits for their answers. Returns whether one was
+   * made. A lane whose request is in flight is passed over, so a slow answer (adsb.lol's take 10 s now and then) holds up
+   * its own lane only.
+   */
   async tick(): Promise<boolean> {
-    if (this.#busy) return false
-    this.#busy = true
-    try {
-      const now = this.#now()
-      this.#expire(now)
-      // Once a second; a clock that went back (the wall clock set back) prunes at once and counts from there.
-      if (now - this.#prunedMs >= PRUNE_EVERY_MS || now < this.#prunedMs) {
-        this.#prunedMs = now
-        this.#store.prune(now)
-      }
-      if (this.#source.caps.fullSnapshot) {
-        if (now - this.#lastAllReqMs < this.#opts.fullSnapshotPeriodMs || !this.#bucket.tryTake()) return false
-        this.#lastAllReqMs = now
-        if (this.#ingest(await this.#source.all())) {
+    const now = this.#now()
+    this.#expire(now)
+    // Once a second; a clock that went back (the wall clock set back) prunes at once and counts from there.
+    if (now - this.#prunedMs >= PRUNE_EVERY_MS || now < this.#prunedMs) {
+      this.#prunedMs = now
+      this.#store.prune(now)
+    }
+    const asks: Promise<void>[] = []
+    for (const lane of this.#lanes) {
+      if (lane.busy) continue
+      const ask = this.#ask(lane, now)
+      if (ask === null) continue
+      lane.busy = true
+      asks.push(ask().finally(() => (lane.busy = false)))
+    }
+    await Promise.all(asks)
+    return asks.length > 0
+  }
+
+  /**
+   * The most urgent request this lane can make now, its token taken and its schedule marked (so another lane does not
+   * make it too), to be sent by calling it; null when the lane has no token or nothing is due. In order: a due chase, a
+   * callsign looked up, a due sweep, due watched hexes, then the most urgent area.
+   */
+  #ask(lane: Lane, now: number): (() => Promise<void>) | null {
+    const { source, bucket } = lane
+    if (source.caps.fullSnapshot) {
+      if (now - this.#lastAllReqMs < this.#opts.fullSnapshotPeriodMs || !bucket.tryTake()) return null
+      this.#lastAllReqMs = now
+      return async () => {
+        if (this.#ingest(await source.all(), lane)) {
           const t = this.#now()
           this.#snapOk.ok(t)
           if (this.#chased.size > 0) this.#chaseOk.ok(t)
         }
-        return true
       }
-      const batch = now - this.#lastChaseReqMs >= this.#opts.chasePeriodMs ? this.#batch(now) : []
-      if (batch.length > 0) {
-        if (!this.#bucket.tryTake()) return false // a due chase never yields its token to an area
-        this.#lastChaseReqMs = now
-        const r = await this.#source.hexes(batch)
-        if (this.#ingest(r)) {
+    }
+    const maxHexes = source.caps.maxHexes ?? MAX_HEXES
+    const batch = now - this.#lastChaseReqMs >= this.#opts.chasePeriodMs ? this.#batch(now, maxHexes) : []
+    if (batch.length > 0) {
+      if (!bucket.tryTake()) return null // a due chase never yields its token to an area
+      this.#lastChaseReqMs = now
+      return async () => {
+        if (this.#ingest(await source.hexes(batch), lane)) {
           this.#chaseOk.ok(this.#now())
           // A failed request is the bucket's to pace (Retry-After, back-off).
           this.#backOff(batch, now)
         }
-        return true
       }
-      // A callsign looked up for the flight search: someone is waiting for it.
-      if (this.#lookups.length > 0 && this.#source.callsign !== undefined) {
-        if (!this.#bucket.tryTake()) return false
-        const ask = this.#lookups.shift()!
-        clearTimeout(ask.timer)
+    }
+    // A callsign looked up for the flight search: someone is waiting for it.
+    if (this.#lookups.length > 0 && source.callsign !== undefined) {
+      if (!bucket.tryTake()) return null
+      const ask = this.#lookups.shift()!
+      clearTimeout(ask.timer)
+      return async () => {
         let found: ReadsbAircraft[] | null = null
         try {
-          const r = await this.#source.callsign(ask.callsigns)
-          if (this.#ingest(r)) found = r.snapshot!.aircraft.filter((ac) => !(this.#opts.hideFlagged && isHidden(ac)))
+          const r = await source.callsign!(ask.callsigns)
+          if (this.#ingest(r, lane)) found = r.snapshot!.aircraft.filter((ac) => !(this.#opts.hideFlagged && isHidden(ac)))
         } finally {
           ask.done(found) // whatever happened: its timer is gone, and someone waits for it
         }
-        return true
       }
-      // ponytail: a due sweep goes before the areas, so it can delay a chase circle (an area request) by one token interval:
-      // about 1 s every 10 s at 0.9 req/s.
-      const code = this.#sweepCode(now)
-      if (code !== null) {
-        if (!this.#bucket.tryTake()) return false
-        this.#lastSweepMs = now
-        this.#sweepNext++
-        this.#ingest(await this.#source.squawk!(code))
-        return true
+    }
+    // ponytail: a due sweep goes before the areas, so it can delay a chase circle (an area request) by one token interval:
+    // about 1 s every 10 s at 0.9 req/s.
+    const code = source.squawk === undefined ? null : this.#sweepCode(now)
+    if (code !== null) {
+      if (!bucket.tryTake()) return null
+      this.#lastSweepMs = now
+      this.#sweepNext++
+      return async () => void this.#ingest(await source.squawk!(code), lane)
+    }
+    const watch = now - this.#lastWatchReqMs >= WATCH_GAP_MS ? this.#watchBatch(now, maxHexes) : []
+    if (watch.length > 0) {
+      if (!bucket.tryTake()) return null
+      this.#lastWatchReqMs = now
+      return async () => {
+        if (this.#ingest(await source.hexes(watch), lane)) this.#backOff(watch, now)
       }
-      const watch = now - this.#lastWatchReqMs >= WATCH_GAP_MS ? this.#watchBatch(now) : []
-      if (watch.length > 0) {
-        if (!this.#bucket.tryTake()) return false
-        this.#lastWatchReqMs = now
-        if (this.#ingest(await this.#source.hexes(watch))) this.#backOff(watch, now)
-        return true
-      }
-      const c = this.#next(now)
-      if (!c || !this.#bucket.tryTake()) return false
-      c.lastReqMs = now
-      this.#asking = c
-      const r = await this.#source.circle(c.cell.lat, c.cell.lon, c.cell.radiusNm).finally(() => (this.#asking = null))
-      if (this.#ingest(r)) {
+    }
+    const c = this.#next(now)
+    if (!c || !bucket.tryTake()) return null
+    const before = c.lastReqMs
+    c.lastReqMs = now
+    this.#asking.add(c)
+    return async () => {
+      const r = await source.circle(c.cell.lat, c.cell.lon, c.cell.radiusNm).finally(() => this.#asking.delete(c))
+      if (this.#ingest(r, lane)) {
         const t = this.#now()
         c.ok.ok(t)
         c.count = r.snapshot!.aircraft.length
         // The view circle is how a chased aircraft in it is refreshed: its answers count as chase answers.
         if (this.#chased.size > 0 && r.snapshot!.aircraft.some((a) => this.#chased.has(a.hex.toLowerCase()))) this.#chaseOk.ok(t)
+      } else if (c.lastReqMs === now) {
+        // No answer (a 429, an error): the area is as due as it was, for the first lane with a token (this one's bucket
+        // waits out its pause), not a whole period later. Unless a moved view circle has reset it meanwhile.
+        c.lastReqMs = before
       }
-      return true
-    } finally {
-      this.#busy = false
     }
   }
 
@@ -358,7 +399,7 @@ export class Poller {
   brief(): StatusBrief {
     this.#expire(this.#now())
     const cellIntervals = this.#source.caps.fullSnapshot ? this.#snapOk.intervals : [...this.#cells.values()].flatMap((c) => c.ok.intervals)
-    const tokenMs = 1000 / this.#bucket.state().rps
+    const tokenMs = 1000 / this.#rps()
     const full = this.#source.caps.fullSnapshot
     let busy = 0 // areas of the view that hold (or may hold) aircraft: each costs one request per round
     let pending = 0
@@ -373,13 +414,13 @@ export class Poller {
       if (c.cell.id !== 'view') waiting.push(c)
     }
     // In the order they will be asked: the one in flight first (the map shows a spinner in it).
-    const order = (c: CellState): number => (c === this.#asking ? Infinity : this.#priority(c, now, chaseInView))
+    const order = (c: CellState): number => (this.#asking.has(c) ? Infinity : this.#priority(c, now, chaseInView))
     const boxes = waiting.sort((a, b) => order(b) - order(a)).map((c) => cellBox(c.cell))
     // While the sweep runs it takes up to SWEEP_SHARE of the tokens (11 % at adsb.fi's 0.9 req/s): the areas have the rest.
     const areaTokenMs = this.#sweeping() ? tokenMs / (1 - SWEEP_SHARE) : tokenMs
     const b: StatusBrief = {
       source: this.#source.caps.kind,
-      degraded: this.#bucket.degraded,
+      degraded: this.#degraded(),
       cellPeriodP95S: p95S(cellIntervals),
       chasePeriodP95S: p95S(this.#chaseOk.intervals),
       // What to expect next, for the client's delay and staleness: the budget stretches both when it cannot keep up.
@@ -388,6 +429,7 @@ export class Poller {
       pendingAreas: pending,
     }
     if (boxes.length > 0) b.pendingBoxes = boxes
+    if (this.#lanes.length > 1) b.sources = this.#lanes.map((l) => l.source.caps.kind)
     // The offset that stamps every sample (#ingest): lets the client light a replay at its recorded time (sun = tRender − it).
     if (this.#offset.ready) b.upstreamOffsetMs = Math.round(this.#offset.get())
     return b
@@ -411,6 +453,7 @@ export class Poller {
     return {
       ...brief,
       budget: this.#bucket.state(),
+      ...(this.#lanes.length > 1 ? { lanes: this.#lanes.map((l) => ({ source: l.source.caps.kind, budget: l.bucket.state() })) } : {}),
       cells,
       chasedHexes: [...this.#chased.keys()],
       bytesPerHourEstimate: Math.round((bytes * HOUR_MS) / spanMs),
@@ -419,14 +462,14 @@ export class Poller {
   }
 
   /** Budget, recorder, clock offset, stores. Returns whether the answer was good (200 and parsed). */
-  #ingest(r: FetchResult): boolean {
+  #ingest(r: FetchResult, lane: Lane): boolean {
     const now = this.#now()
-    this.#bucket.onResult(r.status, r.retryAfterS)
+    lane.bucket.onResult(r.status, r.retryAfterS)
     this.#requestsTotal++
     this.#bytes.push({ t: now, n: r.bytes })
     this.#pruneBytes(now)
     try {
-      this.#opts.recorder?.write(this.#source.caps.kind, r)
+      this.#opts.recorder?.write(lane.source.caps.kind, r)
     } catch (e) {
       console.error('poller: recorder write failed:', e) // ponytail: a full disk logs once per request; polling goes on
     }
@@ -475,12 +518,12 @@ export class Poller {
   }
 
   /**
-   * The chased hexes (≤ 100, most recently touched first) that need a hex request: never stored (a ?hex= link), or last
+   * The chased hexes (at most max, most recently touched first) that need a hex request: never stored (a ?hex= link), or last
    * seen outside the view circle (none while the view is grid cells). A hex whose last hex request left it without a
    * fresh position (landed, out of coverage, GPS jammed, hidden, a mistyped ?hex=) is left out for HEX_RETRY_MS.
    * ponytail: more than 100 concurrent chases starve the rest.
    */
-  #batch(now: number): string[] {
+  #batch(now: number, max: number): string[] {
     if (this.#chased.size === 0) return []
     const view = this.#cells.get('view')?.cell
     // Only chases a client asked about in the last 2.5 s (clients ask every second): one released by Esc or a new
@@ -495,7 +538,7 @@ export class Poller {
         // Inside the view circle its answers carry the aircraft (or, once it is gone, a hex request would not find it either).
         return s === null || view === undefined || distanceNm(view.lat, view.lon, s.lat, s.lon) > view.radiusNm
       })
-      .slice(0, MAX_HEXES)
+      .slice(0, max)
       .map(([hex]) => hex)
   }
 
@@ -504,26 +547,44 @@ export class Poller {
    * The gap between two sweep requests is the larger of SWEEP_PERIOD_MS / codes and 1 / (rps × SWEEP_SHARE) seconds, so the
    * sweep never takes more than SWEEP_SHARE of the tokens. It goes before the areas: without the second term, at 0.1 req/s
    * (a token every 10 s) it would take all of them and the map none.
-   * rps is the bucket's rate now, read each time we ask: a 429 halves it for good. `degraded` is not used for this: it is
-   * null again 60 s after a 429, but the halved rate stays, so the sweep would go back to its full rate on half a budget.
+   * rps is the rate now of the lanes that can sweep, read each time we ask: a 429 halves it for good. `degraded` is not
+   * used for this: it is null again 60 s after a 429, but the halved rate stays, so the sweep would go back to its full rate
+   * on half a budget.
    */
   #sweepCode(now: number): string | null {
     const codes = this.#opts.squawks?.() ?? []
-    if (codes.length === 0 || this.#source.squawk === undefined) return null
-    const gapMs = Math.max(SWEEP_PERIOD_MS / codes.length, 1000 / (this.#bucket.state().rps * SWEEP_SHARE))
+    if (codes.length === 0 || !this.#sweeping()) return null
+    const gapMs = Math.max(SWEEP_PERIOD_MS / codes.length, 1000 / (this.#rps((l) => l.source.squawk !== undefined) * SWEEP_SHARE))
     return now - this.#lastSweepMs < gapMs ? null : codes[this.#sweepNext % codes.length]
   }
 
-  /** Whether the sweep runs: squawks are asked for, and the source can sweep them. */
+  /** Whether the sweep runs: squawks are asked for, and a source can sweep them. */
   #sweeping(): boolean {
-    return (this.#opts.squawks?.() ?? []).length > 0 && this.#source.squawk !== undefined
+    return (this.#opts.squawks?.() ?? []).length > 0 && this.#lanes.some((l) => l.source.squawk !== undefined)
+  }
+
+  /** Requests a second the lanes (those `which` picks) can make now, a blocked one none; the first lane's rate if that is 0. */
+  #rps(which: (l: Lane) => boolean = () => true): number {
+    let rps = 0
+    for (const l of this.#lanes) {
+      const b = l.bucket.state()
+      if (which(l) && !b.blocked) rps += b.rps
+    }
+    return rps > 0 ? rps : this.#bucket.state().rps
+  }
+
+  /** The first lane's trouble; only 'rate-limited' (slowed) while another lane still answers (is neither blocked nor down). */
+  #degraded(): Degraded {
+    const first = this.#bucket.degraded
+    const answers = (d: Degraded): boolean => d === null || d === 'rate-limited'
+    return answers(first) || !this.#lanes.slice(1).some((l) => answers(l.bucket.degraded)) ? first : 'rate-limited'
   }
 
   /**
-   * Watched hexes (≤ 100) due for a hex request: no sample for WATCH_PERIOD_MS (a chase or a view keeps most fresh),
+   * Watched hexes (at most max) due for a hex request: no sample for WATCH_PERIOD_MS (a chase or a view keeps most fresh),
    * not waiting after a request that brought no position. The stalest first, so one-hex sources go round.
    */
-  #watchBatch(now: number): string[] {
+  #watchBatch(now: number, max: number): string[] {
     const hexes = this.#opts.watched?.() ?? []
     if (hexes.length === 0 || this.#source.caps.fullSnapshot) return []
     const due: [string, number][] = []
@@ -534,7 +595,7 @@ export class Poller {
     }
     return due
       .sort((a, b) => a[1] - b[1])
-      .slice(0, MAX_HEXES)
+      .slice(0, max)
       .map(([hex]) => hex)
   }
 

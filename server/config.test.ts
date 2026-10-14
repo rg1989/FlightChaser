@@ -12,6 +12,7 @@ const FILE = fileURLToPath(new URL('../data/fixtures/golden/recording-sample.jso
 test('defaults: replay at 1 req/s on port 8787, no recording, no alerts, PIA/LADD hidden, client from dist/', () => {
   assert.deepEqual(readServerConfig({ REPLAY_FILES: FILE }), {
     source: 'replay',
+    moreSources: [],
     contact: null,
     maxRps: 1,
     readsbUrl: 'http://127.0.0.1:8042',
@@ -68,6 +69,17 @@ test('adsblol: MAX_RPS defaults to 0.04, is clamped to 1, and replay files are n
   assert.deepEqual(cfg.replayFiles, [])
   assert.equal(readServerConfig({ ...env, MAX_RPS: '5' }).maxRps, 1)
   assert.equal(readServerConfig({ ...env, MAX_RPS: '0.5' }).maxRps, 0.5)
+})
+
+test('adsbfi,adsblol: both, the first at MAX_RPS, the second at its own 0.04; adsb.lol left out without CONTACT', () => {
+  const cfg = readServerConfig({ ADSB_SOURCE: ' adsbfi , adsblol ', CONTACT: 'me@example.invalid', MAX_RPS: '0.9' })
+  assert.deepEqual([cfg.source, cfg.maxRps, cfg.moreSources], ['adsbfi', 0.9, [{ kind: 'adsblol', maxRps: 0.04 }]])
+  assert.deepEqual(readServerConfig({ ADSB_SOURCE: 'adsbfi,adsblol' }).moreSources, [], 'no CONTACT: adsb.fi alone')
+  assert.deepEqual(readServerConfig({ ADSB_SOURCE: 'adsblol,adsbfi', CONTACT: 'me@example.invalid' }).moreSources, [{ kind: 'adsbfi', maxRps: 0.9 }])
+  assert.deepEqual(readServerConfig({ ADSB_SOURCE: 'adsbfi,' }).moreSources, [], 'a trailing comma is no source')
+  assert.throws(() => readServerConfig({ ADSB_SOURCE: 'adsbfi,readsb' }), /^Error: ADSB_SOURCE can combine only adsbfi and adsblol, got "adsbfi,readsb"$/)
+  assert.throws(() => readServerConfig({ ADSB_SOURCE: 'adsbfi,adsbfi' }), /^Error: ADSB_SOURCE names a source twice: "adsbfi,adsbfi"$/)
+  assert.throws(() => readServerConfig({ ADSB_SOURCE: 'adsbfi,opensky' }), /^Error: ADSB_SOURCE must be one of adsblol, adsbfi, readsb, replay, got "opensky"$/)
 })
 
 test('adsbfi: no CONTACT needed, MAX_RPS defaults to 0.9 and is clamped to 1', () => {

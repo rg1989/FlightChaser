@@ -411,13 +411,14 @@ test('the recorder receives every result, failures included', async () => {
   s.poller.touchView(LLBG[0], LLBG[1], 5)
   s.poller.touchChase('a1c7e4')
   s.replies.push({ status: 200 }, { status: 429, retryAfterS: 2 })
-  await runUntil(s, 3000) // chase 200 at 0, cell 429 at 100, pause, chase 200 at 2100
+  await runUntil(s, 3000) // chase 200 at 0, cell 429 at 100, pause, chase 200 at 2100, the refused cell again at 2200
   const files = readdirSync(dir)
   assert.deepEqual(files, ['1970-01-01.jsonl'])
   const lines = readRecording(join(dir, files[0]))
   assert.equal(lines.length, s.calls.length)
-  assert.deepEqual(lines.map((l) => l.status), [200, 429, 200])
-  assert.deepEqual(lines.map((l) => l.url), ['fake:hexes', 'fake:circle', 'fake:hexes'])
+  assert.deepEqual(rel(s.calls), [0, 100, 2100, 2200])
+  assert.deepEqual(lines.map((l) => l.status), [200, 429, 200, 200])
+  assert.deepEqual(lines.map((l) => l.url), ['fake:hexes', 'fake:circle', 'fake:hexes', 'fake:circle'])
   assert.equal(lines[1].body, '')
   assert.equal(lines[0].source, 'adsblol')
 })
@@ -824,4 +825,101 @@ test('onSample and onAircraft that keep throwing: each is logged once a minute, 
   assert.equal(logged.filter((m) => m === 'poller: onSample failed:').length, 3, "its own minute, not the other hook's")
   assert.equal(logged.length, 6)
   assert.equal(s.store.size, 3 * s.calls.length, 'every sample of every answer (3 aircraft each) was stored all the same')
+})
+
+/** Two upstreams on one fake clock (ADSB_SOURCE=adsbfi,adsblol): the first paced like adsb.fi, the second like adsb.lol. */
+function setupLanes(o: { firstRps?: number; secondRps?: number; secondBurst?: number; liveHexes?: boolean; opts?: Partial<PollerOpts> } = {}) {
+  const s = setup({ maxRps: o.firstRps ?? 1, burst: 1, liveHexes: o.liveHexes, opts: o.opts })
+  const second = fakeSource(s.clock, false, o.liveHexes)
+  second.source.caps = { ...second.source.caps, kind: 'adsbfi' } // any kind other than the first's, to tell them apart
+  const secondBucket = new TokenBucket(o.secondRps ?? 0.2, () => s.clock.t, () => 0, o.secondBurst ?? 3)
+  const poller = new Poller(s.source, s.store, s.bucket, {
+    cellPeriodMs: 3000, chasePeriodMs: 1000, fullSnapshotPeriodMs: 1000, interestTtlMs: 15_000, chaseTtlMs: 10_000,
+    recorder: null, hideFlagged: true, nowMs: () => s.clock.t, ...o.opts,
+    lanes: [{ source: second.source, bucket: secondBucket }],
+  })
+  return { ...s, poller, second, secondBucket }
+}
+
+test('two lanes: each asks at its own rate at the same time as the other, and a view fills from both, no area asked twice', async () => {
+  const s = setupLanes()
+  s.poller.touchView(KSFO[0], KSFO[1], 600) // a wide view: many grid cells, each one request
+  await runUntil(s, 9_900)
+  // The first: 1 req/s → 10 in 10 s. The second: its burst of 3 at once, then one every 5 s (0.2 req/s) → 4.
+  assert.equal(s.calls.length, 10)
+  assert.deepEqual(rel(s.second.calls), [0, 100, 200, 5000])
+  const asked = [...s.calls, ...s.second.calls].map((c) => JSON.stringify(c.args))
+  assert.equal(new Set(asked).size, asked.length, 'never the same area twice')
+  assert.equal(s.poller.brief().pendingAreas, cellsForView(KSFO[0], KSFO[1], 600).length - 14)
+})
+
+test('two lanes: a slow answer holds up its own lane only', async () => {
+  const s = setupLanes()
+  let release = (): void => {}
+  const slow = s.second.source.circle
+  s.second.source.circle = (lat, lon, nm) => new Promise((done) => (release = () => void slow(lat, lon, nm).then(done)))
+  s.poller.touchView(KSFO[0], KSFO[1], 600)
+  const ticks: Promise<boolean>[] = []
+  for (; s.clock.t <= T0 + 4_900; s.clock.t += 100) {
+    ticks.push(s.poller.tick()) // as start() does: every 100 ms, whatever is in flight
+    await new Promise(setImmediate)
+  }
+  assert.equal(s.calls.length, 5, 'the first lane went on, one request a second')
+  assert.equal(s.second.calls.length, 0, 'the second waits for its answer: one request in flight at a time')
+  release()
+  await Promise.all(ticks)
+  assert.equal(s.second.calls.length, 1)
+  s.second.source.circle = slow
+  await s.poller.tick()
+  assert.equal(s.second.calls.length, 2, 'the lane is free again: its next request goes at once')
+})
+
+test('two lanes: a due chase goes to whichever lane has a token; the other takes an area', async () => {
+  const s = setupLanes({ secondBurst: 2, liveHexes: true })
+  s.poller.touchView(LLBG[0], LLBG[1], 5)
+  s.poller.touchChase('a1c7e4') // stored nowhere yet: a hex request
+  assert.equal(await s.poller.tick(), true)
+  assert.deepEqual([s.calls.map((c) => c.m), s.second.calls.map((c) => c.m)], [['hexes'], ['circle']])
+  s.clock.t += 1000
+  s.poller.touchChase('a1c7e4')
+  s.calls.length = s.second.calls.length = 0
+  s.bucket.tryTake() // the first lane's token is gone: the chase is the second's
+  assert.equal(await s.poller.tick(), true)
+  assert.deepEqual([s.calls.length, s.second.calls.map((c) => c.m)], [0, ['hexes']])
+})
+
+test("two lanes: each answer goes to its own lane's budget; the status names both and is only slowed while one still answers", async () => {
+  const s = setupLanes({ secondRps: 1 })
+  s.poller.touchView(KSFO[0], KSFO[1], 600)
+  s.second.replies.push({ status: 429, retryAfterS: 5 })
+  await s.poller.tick()
+  assert.equal(s.secondBucket.state().rps, 0.5, "the second's 429 halved the second's rate")
+  assert.equal(s.bucket.state().rps, 1, "and not the first's")
+  const b = s.poller.brief()
+  assert.deepEqual([b.source, b.sources, b.degraded], ['adsblol', ['adsblol', 'adsbfi'], null], 'the first answers: not degraded')
+  assert.deepEqual(s.poller.report().lanes?.map((l) => [l.source, l.budget.counts.r429]), [['adsblol', 0], ['adsbfi', 1]])
+  s.replies.push({ status: 403 }) // the first is blocked for good…
+  s.clock.t += 10_000
+  await s.poller.tick()
+  assert.equal(s.poller.brief().degraded, 'rate-limited', '…while the second answers, the map is only slowed')
+})
+
+test('a one-hex source (adsb.fi) asks its watched hexes one a request: one not found waits, the others are not held back', async () => {
+  const s = setup({ opts: { watched: () => ['abcdef', '123456'] } }) // neither is in the hex answer
+  s.source.caps = { ...s.source.caps, maxHexes: 1 }
+  await runUntil(s, 2_000)
+  // abcdef first, not found: it waits 30 s. 123456, not asked with it, is asked 2 s later all the same.
+  assert.deepEqual(s.calls.map((c) => [c.t - T0, c.args[0]]), [[0, ['abcdef']], [2000, ['123456']]])
+})
+
+test('two lanes: an area one lane could not answer (429) is asked by the other at once, not a period later', async () => {
+  const s = setupLanes({ secondBurst: 1 })
+  s.poller.touchView(KSFO[0], KSFO[1], 400)
+  s.second.replies.push({ status: 429 })
+  await s.poller.tick() // the first lane asks the nearest area; the second the next one, and is refused
+  const refused = JSON.stringify(s.second.calls[0].args)
+  s.clock.t += 1000 // the first lane's next token
+  await s.poller.tick()
+  assert.equal(JSON.stringify(s.calls[1].args), refused, 'the refused area is the most urgent again')
+  assert.equal(s.second.calls.length, 1, 'the refusing lane waits out its pause')
 })

@@ -384,6 +384,7 @@ export function createServer(
   cfg: ServerConfig,
   deps: {
     source?: Source
+    moreSources?: Source[] // in place of cfg.moreSources' own, in the same order (tests)
     nowMs?: () => number
     routesFetch?: typeof fetch
     wxFetch?: typeof fetch
@@ -402,6 +403,11 @@ export function createServer(
   const info = new InfoStore({ nowMs })
   const rps = Math.min(cfg.maxRps, source.caps.maxRps)
   const bucket = new TokenBucket(rps, nowMs, Math.random, source.caps.burst)
+  // The other upstreams (ADSB_SOURCE=adsbfi,adsblol): each with its own budget, asked at the same time as the first.
+  const lanes = cfg.moreSources.map((m, i) => {
+    const s = deps.moreSources?.[i] ?? makeSource(cfg, m.kind)
+    return { source: s, bucket: new TokenBucket(Math.min(m.maxRps, s.caps.maxRps), nowMs, Math.random, s.caps.burst) }
+  })
   const recorder = cfg.recordDir !== null && source.caps.kind !== 'replay' ? new Recorder(cfg.recordDir) : null
   const flights = cfg.flightsDir === null ? null : new FlightLog({ dir: cfg.flightsDir, source: source.caps.kind, nowMs })
   // The alerts (server/alerts.ts): a live source with EVENTS_DIR set; a replay's world is not now.
@@ -422,6 +428,7 @@ export function createServer(
   // so no separate prune timer is needed.
   const poller = new Poller(source, store, bucket, {
     ...POLLER_DEFAULTS,
+    lanes,
     singleCircle: rps < LOW_BUDGET_RPS,
     recorder,
     hideFlagged: !cfg.showPiaLadd,
@@ -946,7 +953,11 @@ if (import.meta.main) {
     const routes = cfg.contact === null || cfg.source === 'replay' ? '' : cfg.routes && cfg.source === 'adsblol' ? ', routes on' : ', routes of selected flights'
     const rec = cfg.flightsDir === null ? '' : `, recording flights to ${cfg.flightsDir}`
     const sat = cfg.eumetsat === null ? '' : ', the satellite\'s products with the EUMETSAT key'
-    console.log(`Flight Chaser server on ${url} (source ${cfg.source}${routes}${rec}${sat})`)
+    const sources = [cfg.source, ...cfg.moreSources.map((m) => m.kind)].join(' + ')
+    console.log(`Flight Chaser server on ${url} (source ${sources}${routes}${rec}${sat})`)
+    if (cfg.contact === null && cfg.source !== 'adsblol' && /adsblol/.test(process.env.ADSB_SOURCE ?? '')) {
+      console.log('adsb.lol left out: it asks for a contact. Set CONTACT (your email or a URL) in .env.local to use it as well.')
+    }
   } catch (e) {
     console.error(`server: ${(e as Error).message}`)
     process.exit(1)

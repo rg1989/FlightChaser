@@ -5,6 +5,7 @@ export interface SourceCaps {
   fullSnapshot: boolean                    // true: all() returns everything the source knows
   maxRps: number                           // polite ceiling for this source
   burst?: number                           // token-bucket burst (default 2); 1 = strictly paced
+  maxHexes?: number                        // hexes one hexes() request carries (default 100)
   coverage: { lat: number; lon: number; radiusNm: number } | null   // null = global
   attribution: string
 }

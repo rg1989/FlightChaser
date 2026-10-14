@@ -17,6 +17,8 @@ test('live: source name linked, loading areas counted', () => {
   assert.equal(sourceView(st({ pendingAreas: 12 }), 0).text, 'LIVE · adsb.fi · loading 12 areas')
   assert.equal(sourceView(st({ pendingAreas: 1 }), 0).text, 'LIVE · adsb.fi · loading 1 area')
   assert.equal(sourceView(st({ source: 'readsb' }), 0).href, null)
+  const both = sourceView(st({ sources: ['adsbfi', 'adsblol'] }), 0)
+  assert.deepEqual([both.text, both.title, both.href], ['LIVE · adsb.fi + adsb.lol', 'Live flight data from adsb.fi and adsb.lol', 'https://adsb.fi'])
   assert.equal(sourceView(st({ degraded: 'rate-limited' }), 0).state, 'trouble')
   assert.equal(sourceView(st({ degraded: 'rate-limited', pendingAreas: 5 }), 0).text, 'SLOWED · adsb.fi', 'no frozen loading count')
   assert.equal(sourceView(st({ degraded: 'upstream-down', pendingAreas: 5 }), 0).text, 'NO DATA · adsb.fi', 'not LIVE when nothing comes')
@@ -38,6 +40,8 @@ test('panelView, live: the mode, the linked source, the refresh and the coverage
     coverage: { text: 'Up to date', loading: false },
   })
   assert.deepEqual(panelView(st({ source: 'readsb' }), 0).source, { name: 'own receiver', href: null, title: '' }, 'named, not linked')
+  const both = panelView(st({ sources: ['adsbfi', 'adsblol'] }), 0)
+  assert.deepEqual([both.source?.name, both.more], ['adsb.fi', [{ name: 'adsb.lol', href: 'https://adsb.lol' }]], 'each source linked')
   assert.equal(panelView(st({ viewEveryS: 13.4 }), 0).refresh, 'every 13 s')
   assert.equal(panelView(st({ viewEveryS: 59 }), 0).refresh, 'every 59 s')
   assert.equal(panelView(st({ viewEveryS: 600 }), 0).refresh, 'every 10 min')

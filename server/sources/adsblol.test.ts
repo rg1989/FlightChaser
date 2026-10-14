@@ -14,7 +14,12 @@ const HEX = golden('adsblol-hex.json')
 const UA = 'FlightChaser/0.1 (+test@example.com)'
 
 // The mock answers by path prefix; `mode` switches the next responses to a failure.
-let mode: 'ok' | '429' | '403' | '500' | 'bad' | 'readsb' = 'ok'
+let mode: 'ok' | '429' | '403' | '500' | 'bad' | 'readsb' | 'jammed' = 'ok'
+// Two aircraft as adsb.lol serves them over Israel: one with its GPS jammed (nic 0, nac_p 0), one fine.
+const JAMMED = JSON.stringify({ now: 1792015130500, total: 2, msg: 'No error', ac: [
+  { hex: '738069', flight: 'ELY572  ', alt_baro: 7600, lat: 33.1, lon: 35.2, nic: 0, nac_p: 0, seen_pos: 4.6, seen: 0.2 },
+  { hex: '4b1803', flight: 'SWR252  ', alt_baro: 35000, lat: 32.5, lon: 34.1, nic: 8, nac_p: 9, seen_pos: 0.3, seen: 0.1 },
+] })
 const seen: { url: string; ua: string | undefined; ae: string | undefined }[] = []
 let server: Server
 let src: Source
@@ -28,6 +33,7 @@ before(async () => {
     if (mode === '500') { res.writeHead(500); return void res.end() }
     if (mode === 'bad') return void res.end('<html>maintenance</html>')
     if (mode === 'readsb') return void res.end(golden('readsb-circle.json'))
+    if (mode === 'jammed') return void res.end(JAMMED)
     if (req.url?.startsWith('/v2/point/')) return void res.end(POINT)
     if (req.url?.startsWith('/v2/hex/')) return void res.end(HEX)
     res.writeHead(404)
@@ -45,8 +51,8 @@ after(() => {
 
 const last = () => seen[seen.length - 1]
 
-test('caps: area source, 1 req/s, global, ODbL attribution', () => {
-  assert.deepEqual(src.caps, { kind: 'adsblol', fullSnapshot: false, maxRps: 1, coverage: null, attribution: 'adsb.lol (ODbL 1.0)' })
+test('caps: area source, 1 req/s, burst 3, 100 hexes a request, global, ODbL attribution', () => {
+  assert.deepEqual(src.caps, { kind: 'adsblol', fullSnapshot: false, maxRps: 1, burst: 3, maxHexes: 100, coverage: null, attribution: 'adsb.lol (ODbL 1.0)' })
   assert.equal(ADSBLOL_BASE, 'https://api.adsb.lol') // default; never contacted by tests
 })
 
@@ -82,6 +88,16 @@ test('hexes: empty or more than 100 → RangeError, no request sent', async () =
   assert.equal(seen.length, n0)
   mode = 'ok'
   assert.equal((await src.hexes(Array.from({ length: 100 }, (_, i) => (0xa00000 + i).toString(16)))).status, 200)
+})
+
+test('withholdJammed: merged with adsb.fi, a position its aircraft calls worthless is withheld as adsb.fi does; the aircraft stays', async () => {
+  mode = 'jammed'
+  const plain = (await src.circle(33, 35, 100)).snapshot!.aircraft
+  assert.equal(plain[0].lat, 33.1) // alone, adsb.lol's answer is kept as it is
+  const merged = makeAdsblol({ userAgent: UA, baseUrl: base, timeoutMs: 2000, withholdJammed: true })
+  const [jammed, fine] = (await merged.circle(33, 35, 100)).snapshot!.aircraft
+  assert.deepEqual([jammed.hex, jammed.lat, jammed.lon, jammed.seen_pos, jammed.seen, jammed.alt_baro], ['738069', undefined, undefined, undefined, 0.2, 7600])
+  assert.deepEqual([fine.lat, fine.lon, fine.seen_pos], [32.5, 34.1, 0.3])
 })
 
 test('all() rejects with Error("unsupported")', async () => {

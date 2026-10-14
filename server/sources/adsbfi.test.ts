@@ -40,7 +40,7 @@ after(() => {
 })
 
 test('caps: area source paced at 1 req/s with burst 1, personal non-commercial attribution', () => {
-  assert.deepEqual(src.caps, { kind: 'adsbfi', fullSnapshot: false, maxRps: 1, burst: 1, coverage: null, attribution: 'adsb.fi (personal, non-commercial use)' })
+  assert.deepEqual(src.caps, { kind: 'adsbfi', fullSnapshot: false, maxRps: 1, burst: 1, maxHexes: 1, coverage: null, attribution: 'adsb.fi (personal, non-commercial use)' })
   assert.equal(ADSBFI_BASE, 'https://opendata.adsb.fi/api') // default; never contacted by tests
 })
 

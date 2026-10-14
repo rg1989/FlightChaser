@@ -5,6 +5,7 @@ export type Degraded = null | 'rate-limited' | 'blocked' | 'upstream-down'
 
 export interface StatusBrief {
   source: SourceKind
+  sources?: SourceKind[]         // every source asked, the first being `source`, when there is more than one (ADSB_SOURCE=adsbfi,adsblol)
   degraded: Degraded
   cellPeriodP95S: number | null
   chasePeriodP95S: number | null
@@ -226,7 +227,8 @@ export interface CellStatus {
 }
 
 export interface StatusReport extends StatusBrief {
-  budget: BudgetState
+  budget: BudgetState            // the first source's
+  lanes?: { source: SourceKind; budget: BudgetState }[] // each source's own, when there is more than one
   cells: CellStatus[]
   chasedHexes: string[]
   bytesPerHourEstimate: number

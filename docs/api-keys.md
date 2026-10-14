@@ -117,7 +117,7 @@ none of the data to disk.
 
 | Variable | What it is | When you need it |
 |---|---|---|
-| `CONTACT` | Your email address or a URL. The server sends it in its User-Agent | Only for `make live LIVE_SOURCE=adsblol` and the recorders. adsb.lol requires it. |
+| `CONTACT` | Your email address or a URL. The server sends it in its User-Agent | For adsb.lol: live traffic from it next to adsb.fi (`make`, `npm start`), `LIVE_SOURCE=adsblol`, and the recorders. adsb.lol requires it. |
 | `NTFY_URL` | An [ntfy](https://ntfy.sh) topic that receives each new alert | Only for alerts on your phone. The topic is a password: anybody who knows it can read the alerts. Use a long random name. |
 
 ## 6. Keep the keys safe

@@ -33,10 +33,18 @@ test('identical position < 100 ms later is rejected; a moved one is accepted', (
   assert.equal(d.accept(s('a', 1060, 1.0001, 2)), true)
 })
 
-test('new position ≥ 100 ms later is accepted even if identical (parked aircraft)', () => {
+test('new position ≥ 1 s later is accepted even if identical (parked aircraft)', () => {
   const d = new Deduper()
   d.accept(s('a', 1000))
-  assert.equal(d.accept(s('a', 1500)), true)
+  assert.equal(d.accept(s('a', 2000)), true)
+})
+
+test('the same position from the other network, stamped up to a second apart, is rejected', () => {
+  const d = new Deduper()
+  d.accept(s('a', 1000)) // adsb.lol
+  assert.equal(d.accept(s('a', 1104)), false) // adsb.fi, 104 ms later by its clock (the most measured)
+  assert.equal(d.accept(s('a', 1900)), false)
+  assert.equal(d.accept(s('a', 1200, 1.00001, 2)), true, 'a new position is new however soon')
 })
 
 test('hexes are independent; forget resets', () => {

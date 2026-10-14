@@ -41,13 +41,14 @@ export function startArgs(argv: readonly string[]): StartArgs {
 }
 
 /**
- * What the server is started with, over the caller's environment: live traffic from adsb.fi as `make` sets it (paced
- * under its public limit of 1 request a second, whatever .env.local says), nothing recorded but the flights asked for
- * with the Record button. Those and the alerts go where the caller's environment says, else into data/.
+ * What the server is started with, over the caller's environment: live traffic from adsb.fi and adsb.lol at once as `make`
+ * sets it (adsb.fi paced under its public limit of 1 request a second, whatever .env.local says; adsb.lol only with a
+ * CONTACT), nothing recorded but the flights asked for with the Record button. Those and the alerts go where the caller's
+ * environment says, else into data/.
  */
 export function serverEnv(args: StartArgs, env: Readonly<Record<string, string | undefined>>): Record<string, string> {
   return {
-    PORT: String(args.port), RECORD_DIR: '', ADSB_SOURCE: 'adsbfi', MAX_RPS: '0.9',
+    PORT: String(args.port), RECORD_DIR: '', ADSB_SOURCE: 'adsbfi,adsblol', MAX_RPS: '0.9',
     FLIGHTS_DIR: env.FLIGHTS_DIR || 'data/flights', EVENTS_DIR: env.EVENTS_DIR || 'data/events',
   }
 }

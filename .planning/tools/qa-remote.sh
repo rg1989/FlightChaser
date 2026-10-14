@@ -15,7 +15,7 @@ CHROME=$(command -v chromium || ls -d ~/.cache/fh-chrome/chrome/*/chrome-linux64
 rm -rf shots && mkdir -p shots
 API_P=${QA_API:-8798} FE_P=${QA_FE:-5198} CDP_P=${QA_CDP:-9377}
 PROF=/tmp/chrome-prof-qa-$FE_P
-ADSB_SOURCE=replay REPLAY_FILES="${REPLAY:-data/recordings/2026-09-23.jsonl}" PORT=$API_P RECORD_DIR= node --env-file-if-exists="${QA_ENV:-.env.local}" server/main.ts > api.log 2>&1 &
+ADSB_SOURCE=${QA_SOURCE:-replay} REPLAY_FILES="${REPLAY:-data/recordings/2026-09-23.jsonl}" PORT=$API_P RECORD_DIR= node --env-file-if-exists="${QA_ENV:-.env.local}" server/main.ts > api.log 2>&1 &
 API=$!
 API_PORT=$API_P npx vite --port $FE_P --strictPort > vite.log 2>&1 &
 VITE=$!

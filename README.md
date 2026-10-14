@@ -148,10 +148,10 @@ The app works the same without it. [Weather in the chase](docs/weather.md) says 
 
 | Command | What it does |
 |---|---|
-| `npm start` | The app as people use it: live traffic from adsb.fi on http://localhost:8787. `npm start -- --port <n>` picks the port, `--no-open` leaves the browser closed |
+| `npm start` | The app as people use it: live traffic from adsb.fi, and from adsb.lol at the same time when `CONTACT` is set, on http://localhost:8787. `npm start -- --port <n>` picks the port, `--no-open` leaves the browser closed |
 | `make` | The same for development: the client from Vite on http://localhost:5173, reloading as you edit |
 | `make replay` | The same, replaying the newest recording in `data/recordings/`, or the bundled fixtures |
-| `make live LIVE_SOURCE=adsblol` | Live from adsb.lol (needs `CONTACT`) |
+| `make live LIVE_SOURCE=adsbfi` | Live from adsb.fi alone (`LIVE_SOURCE=adsblol`: adsb.lol alone, needs `CONTACT`) |
 | `npm run check` | Type-check and all tests |
 | `node tools/scenarios/new.ts <flight file> <id> --model <model id>` | Starts a scenario package from a flight file ([Scenario SDK](docs/scenario-sdk.md)) |
 | `npm run build` | The client, built into `dist/` |
@@ -164,8 +164,8 @@ Server settings are environment variables. `npm run server` and `make` read them
 
 | Variable | Default | What it is |
 |---|---|---|
-| `ADSB_SOURCE` | `replay` (`make` sets `adsbfi`) | `adsbfi`, `adsblol`, `readsb` (your own receiver) or `replay` |
-| `CONTACT` | none | An email or URL for the User-Agent. adsb.lol requires it |
+| `ADSB_SOURCE` | `replay` (`make` sets `adsbfi,adsblol`) | `adsbfi`, `adsblol`, `readsb` (your own receiver) or `replay`. `adsbfi,adsblol` asks both at once, each at its own limit |
+| `CONTACT` | none | An email or URL for the User-Agent. adsb.lol requires it: without it, `make` uses adsb.fi alone |
 | `PORT` | `8787` | The API server's port |
 | `READSB_URL`, `READSB_COVERAGE` | | Your receiver's address and its coverage as `lat,lon,nm` |
 | `EVENTS_DIR` | none (`make` sets `data/events`) | Where alerts keep their switch and log. Unset: no alerts |
@@ -206,8 +206,8 @@ No framework: TypeScript run by Node directly, Vite for the client, `node --test
 
 ## Data sources and credits
 
-- **Live aircraft:** [adsb.fi](https://adsb.fi) open data (personal, non-commercial use), the default.
-  [adsb.lol](https://adsb.lol) for recordings and `LIVE_SOURCE=adsblol`: data © adsb.lol contributors,
+- **Live aircraft:** [adsb.fi](https://adsb.fi) open data (personal, non-commercial use), and
+  [adsb.lol](https://adsb.lol) at the same time when `CONTACT` is set, and for recordings: data © adsb.lol contributors,
   [ODbL 1.0](https://opendatacommons.org/licenses/odbl/1-0/).
 - **The past:** adsb.lol's heatmap files and per-aircraft traces, the same ODbL 1.0 data.
 - **Aircraft types in the past:** contains information from the

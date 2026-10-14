@@ -23,7 +23,7 @@ export function makeAdsbfi(opts: { userAgent: string; baseUrl?: string; timeoutM
   const base = (opts.baseUrl ?? ADSBFI_BASE).replace(/\/+$/, '')
   const get = (path: string) => fetchSnapshot(base + path, normalizeAdsblol, { userAgent: opts.userAgent, timeoutMs: opts.timeoutMs })
   return {
-    caps: { kind: 'adsbfi', fullSnapshot: false, maxRps: 1, burst: 1, coverage: null, attribution: 'adsb.fi (personal, non-commercial use)' },
+    caps: { kind: 'adsbfi', fullSnapshot: false, maxRps: 1, burst: 1, maxHexes: 1, coverage: null, attribution: 'adsb.fi (personal, non-commercial use)' },
     async circle(lat, lon, radiusNm) {
       const nm = Math.max(1, Math.min(MAX_RADIUS_NM, Math.round(radiusNm)))
       return get(`/v3/lat/${lat.toFixed(4)}/lon/${lon.toFixed(4)}/dist/${nm}`)
