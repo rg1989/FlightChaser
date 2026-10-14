@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Southwest heart, from https://commons.wikimedia.org/wiki/File:Southwest_Airlines_logo_2014.svg (PD-textlogo; Southwest Airlines' trademark). Paths and gradients unchanged; turned a quarter turn anticlockwise, so that its top points to the nose in the belly view (nose at the left). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="454" height="470" viewBox="190.6 10.3 22.8 23.6">
+  <defs>
+    <linearGradient id="SVGID_1_" gradientUnits="userSpaceOnUse" x1="190.944" y1="781.4805" x2="206.401" y2="781.4805" gradientTransform="matrix(1 0 0 1 0 -757)"> <stop offset="0" style="stop-color:#3656CC"/> <stop offset="0.35" style="stop-color:#304CB2"/> <stop offset="0.72" style="stop-color:#283B80"/> </linearGradient>
+    <linearGradient id="SVGID_2_" gradientUnits="userSpaceOnUse" x1="193.1394" y1="769.2701" x2="210.601" y2="781.4969" gradientTransform="matrix(1 0 0 1 0 -757)"> <stop offset="0.3" style="stop-color:#E61C23"/> <stop offset="0.8" style="stop-color:#C3161C"/> </linearGradient>
+    <linearGradient id="SVGID_3_" gradientUnits="userSpaceOnUse" x1="203.9645" y1="767.6895" x2="213.9482" y2="774.6802" gradientTransform="matrix(1 0 0 1 0 -757)"> <stop offset="0" style="stop-color:#FDBC11"/> <stop offset="0.25" style="stop-color:#FCB415"/> <stop offset="0.8" style="stop-color:#F89E1C"/> </linearGradient>
+  </defs>
+  <g transform="rotate(-90 202 22.1)">
+    <path fill="#CCCCCC" d="M207,10.8c-2,0-3.7,0.7-5,1.4c-1.3-0.7-2.9-1.4-5-1.4c-4.1,0-6.7,2.6-6.7,7.2c0,5.5,5.3,10.9,11.7,15.3 c6.4-4.3,11.7-9.7,11.7-15.3C213.7,13.4,211,10.8,207,10.8z"/>
+    <path fill="url(#SVGID_1_)" d="M190.9,18.1c0,5.6,6,10.9,11,14.4c1.5-1,3-2.2,4.4-3.4c-6.7-5.6-13.1-10.7-15.3-12.5 C191,17,190.9,17.5,190.9,18.1z"/>
+    <path fill="url(#SVGID_2_)" d="M212.6,20.7c-4.9-4-7.8-6.1-11-8c-0.9-0.5-2.6-1.3-4.5-1.3c-1.8,0-3.4,0.6-4.5,1.7c-0.7,0.7-1.2,1.6-1.4,2.7 c2.5,1.8,9.4,6.7,16.3,12.2C209.8,25.8,211.7,23.3,212.6,20.7z"/>
+    <path fill="url(#SVGID_3_)" d="M211.3,13.1c-1.1-1.1-2.6-1.7-4.4-1.7c-1.9,0-3.3,0.6-4.4,1.2c1.9,1.1,6,3.4,10.3,6.6 c0.1-0.4,0.1-0.9,0.1-1.3C213,15.9,212.4,14.2,211.3,13.1z"/>
+  </g>
+</svg>

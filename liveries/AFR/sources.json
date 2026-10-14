@@ -1,0 +1,17 @@
+{
+  "wordmark.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Air_France_Logo.svg",
+    "licence": "PD-textlogo (public domain; Air France's trademark still applies)",
+    "note": "the AIRFRANCE wordmark with the red accent. Changed: its two fills set to the paint colours of the dossier (navy #051039 to #1b2b56, red #ff0000 to #e8303f); the shapes are unchanged. 189 x 18 units; letters x 0.38 to 160.29, accent x 164.68 to 188.27, cap height y 2.03 to 16.81, accent top y 0.67"
+  },
+  "seahorse-navy.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Logo_Air_Orient_-_Air_France.svg",
+    "licence": "PD-France, as the Commons page says (public domain in France; the winged seahorse of Air Orient, used by Air France since 1933); Air France's trademark still applies",
+    "note": "changed: mirrored (the horse faces left, as on the left side of the aircraft; draw it with mirror: true) and coloured the paint's navy #1b2b56 with the disc left empty; the shapes are unchanged. It is the 1933 drawing, not the 2021 redrawing that the aircraft wear"
+  },
+  "seahorse-white.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Logo_Air_Orient_-_Air_France.svg",
+    "licence": "PD-France, as the Commons page says (public domain in France); Air France's trademark still applies",
+    "note": "changed: mirrored (the horse faces left) and coloured white with the disc left empty, for the navy wingtip device; the shapes are unchanged"
+  }
+}

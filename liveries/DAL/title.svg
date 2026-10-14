@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Delta Air Lines logo (the widget and the DELTA wordmark), from https://commons.wikimedia.org/wiki/File:Delta_logo.svg (PD-textlogo; trademarked).
+     Path data unchanged. The registered-trade-mark sign is left out (it is not on the aircraft); the wordmark is recoloured #003D79 to the paint navy #12306E. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="308" viewBox="0 0 1000 154">
+  <path fill="#98002E" d="M185.7,137.6l-89.3-43V0L185.7,137.6z M192.8,154l-96.4-40.7V154H192.8z"/>
+  <polyline fill="#E31837" points="7.1,137.6 96.4,0 96.4,94.6 7.1,137.6"/>
+  <polyline fill="#E31837" points="0,154 96.4,154 96.4,113.3 0,154"/>
+  <g fill="#12306E">
+    <path d="M268.1,137.6h43.3c44.6,0,71.1-23.1,71.1-61.4S356,14.9,311.4,14.9h-43.3V137.6z M295.5,36.2h15.9c28.9,0,43.4,14.3,43.4,40s-14.5,40-43.4,40h-15.9V36.2z"/>
+    <polygon points="475.7,84.4 527.8,84.4 527.8,63.1 475.7,63.1 475.7,36.2 534.6,36.2 534.6,14.9 448.2,14.9 448.2,137.6 536.5,137.6 536.5,116.3 475.7,116.3"/>
+    <polygon points="692.7,116.3 639.8,116.3 639.8,14.9 612.3,14.9 612.3,137.6 692.7,137.6"/>
+    <polygon points="840.7,14.9 730.6,14.9 730.6,36.2 771.8,36.2 771.8,137.6 799.4,137.6 799.4,36.2 840.7,36.2"/>
+    <path d="M1000,137.6h-28.7l-12-30.7h-49.9l-12,30.7h-26.8l51.3-123.2h27.7L1000,137.6z M951.5,86.3l-17.1-43.6l-17.2,43.6H951.5z"/>
+  </g>
+</svg>

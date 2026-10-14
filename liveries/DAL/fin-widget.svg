@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Delta Air Lines widget, turned as on the fin, from https://commons.wikimedia.org/wiki/File:Delta_Air_Lines_rotated_symbol.svg (PD-textlogo; trademarked).
+     Path data unchanged; mirrored left to right (the group's transform) to show it as on the LEFT side of the fin, nose to the left: the point of the
+     widget is at the top left corner (0, 0), the bright facets are above its axis. The Commons file shows the right side. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="900" viewBox="0 0 500 450">
+  <g transform="translate(500 0) scale(-1 1)">
+    <path fill="#98002E" d="M 316.829285 409.297241 L 281.988495 140.588379 L 500 0 L 316.829285 409.297241 Z M 289.576965 450 L 238.874557 168.391113 L 145 228.927719 L 289.576965 450 Z"/>
+    <path fill="#E31837" fill-rule="evenodd" d="M -0 8.204559 L 238.6548 168.539185 L 144.700211 229 L -0 8.204559 Z M 48.535885 0 L 500 0.360779 L 281.821259 140.761078 L 48.535885 0 Z"/>
+  </g>
+</svg>

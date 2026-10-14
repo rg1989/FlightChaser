@@ -1,0 +1,12 @@
+{
+  "title.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:British_Airways_1997_wordmark.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademark}}, permission field {{TOO-UK}}); author British Airways plc. Trademark rights remain.",
+    "modified": "Path data unchanged (the 14 letter paths of \"BRITISH AIRWAYS\"). Flight Chaser recoloured the fill from #00054c to the navy measured on the aircraft (#1b2857) and set width and height in pixels (500 x 44.03) instead of millimetres. The image box is the text box: its height is the cap height, its width the title's length (11.36 : 1)."
+  },
+  "oneworld.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Oneworld_Logo.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademark}}); author unknown (moved from de.wikipedia). Trademark rights remain.",
+    "modified": "Unchanged copy. For the small alliance roundel beside the left doors (about 0.3 m across)."
+  }
+}

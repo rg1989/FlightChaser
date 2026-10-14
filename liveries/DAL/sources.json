@@ -1,0 +1,17 @@
+{
+  "title.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Delta_logo.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{trademark}} + {{TOO-US}}); author Delta Air Lines, source delta.com. Trademark rights remain.",
+    "modified": "Path data unchanged. FlightHopper left out the registered-trade-mark sign (it is not on the aircraft), recoloured the wordmark #003D79 to the paint navy #12306E (the reds #E31837 and #98002E are the file's own) and set a 2000 x 308 raster size."
+  },
+  "title-white.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Delta_logo.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{trademark}} + {{TOO-US}}); author Delta Air Lines, source delta.com. Trademark rights remain.",
+    "modified": "The same paths as title.svg, unchanged; FlightHopper made every shape white, as the title is painted on the blue belly, and left out the registered-trade-mark sign."
+  },
+  "fin-widget.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Delta_Air_Lines_rotated_symbol.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{trademark}} + {{TOO-US}}); author Delta Air Lines. Trademark rights remain.",
+    "modified": "Path data unchanged. FlightHopper mirrored it left to right with a group transform, to show the widget as on the LEFT side of the fin with the nose to the left (the Commons file shows the right side), changed the bright red #E31937 to the logo file's #E31837 and set a 1000 x 900 raster size."
+  }
+}

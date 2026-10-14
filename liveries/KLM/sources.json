@@ -1,0 +1,24 @@
+{
+  "logo.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:KLM_logo.svg",
+    "licence": "PD-textlogo (public domain; KLM's trademark still applies)",
+    "note": "the crown over KLM, unchanged (fill #00a1e4; 350 x 203.53): the fin, the engines, the winglets"
+  },
+  "logo-white.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:KLM_logo.svg",
+    "licence": "PD-textlogo (public domain; KLM's trademark still applies)",
+    "note": "the same file with the fill changed to #ffffff: the fuselage title. \"Royal Dutch Airlines\" and \"Cityhopper\" have no free file: typeset them in Source Sans 3 (SourceSans3-Bold.woff2, SourceSans3-Regular.woff2)"
+  },
+  "SourceSans3-Bold.woff2": {
+    "source": "https://github.com/adobe-fonts/source-sans/blob/release/WOFF2/TTF/SourceSans3-Bold.ttf.woff2",
+    "licence": "SIL Open Font License 1.1 (SourceSans3-OFL.txt)"
+  },
+  "SourceSans3-Regular.woff2": {
+    "source": "https://github.com/adobe-fonts/source-sans/blob/release/WOFF2/TTF/SourceSans3-Regular.ttf.woff2",
+    "licence": "SIL Open Font License 1.1 (SourceSans3-OFL.txt)"
+  },
+  "SourceSans3-OFL.txt": {
+    "source": "https://github.com/adobe-fonts/source-sans/blob/release/LICENSE.md",
+    "licence": "SIL Open Font License 1.1"
+  }
+}

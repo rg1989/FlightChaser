@@ -5,6 +5,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { Cartesian2, UniformType } from 'cesium'
 import { DESIGNS } from '../livery/designs/index.ts'
 import { drawDesign, profileOf } from '../livery/kit.ts'
+import { tableDesign } from '../livery/legacy.ts'
 import type { Op } from '../livery/kit.ts'
 import type { ModelManifest, ModelManifestEntry } from '../types.ts'
 import { liveryCode, MILITARY, liveryFromSpec, liveryOf, LiveryShaders, paintShaderText, paintVertexText, TABLE, WHITE } from './livery.ts'
@@ -44,13 +45,14 @@ test('a military aircraft without an airline livery flies in grey, not white; on
 })
 
 test('a colours-only table livery draws the old regions: base, belly, fin, fin2, decals at the paint map boxes', () => {
-  const ops = leftOps('DLH')
+  // DLH's table entry (its design, liveries/DLH, is what the app draws now): the one with both decals
+  const ops = drawDesign(tableDesign('DLH', TABLE.liveries.DLH, '/'), { id: a320.id, profile: profileOf(a320)!, paint: a320.paint }).skin.left
   assert.deepEqual(ops[0], { k: 'fill', color: '#f7f7f7' })
   assert.ok(colours(ops).includes('#05164d'), 'the fin')
   assert.deepEqual(images(ops), ['/liveries/DLH-fin.png', '/liveries/DLH-title.png'])
   const [lz, ly, ls] = a320.paint!.finLogo
   assert.deepEqual(ops.find((o) => o.k === 'image'), { k: 'image', src: '/liveries/DLH-fin.png', z: lz, y: ly, w: ls, h: ls })
-  assert.deepEqual(images(leftOps('SWA')), ['/liveries/SWA-title.png']) // title only
+  assert.deepEqual(images(leftOps('JBU')), ['/liveries/JBU-title.png']) // title only
 })
 
 test('Air Astana (KZR): white, its midnight-blue fin, light engines; colours only (its logo is not free-licensed)', () => {

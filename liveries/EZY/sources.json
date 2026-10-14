@@ -1,0 +1,27 @@
+{
+  "title.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:EasyJet_logo.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademarked}}); author easyJet. Trademark rights remain.",
+    "modified": "The 7 letter paths are unchanged. Flight Chaser set the fill to white (the Commons file is orange #FF6600), kept the tight viewBox and set a raster size of 10 x the viewBox. Use: the fuselage title."
+  },
+  "title-up.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:EasyJet_logo.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademarked}}); author easyJet. Trademark rights remain.",
+    "modified": "The same 7 paths as title.svg, white, turned 50 degrees (rotate(-50)) to read upwards along the fin's leading edge. Use: the left side of the fin, and the inner face of the right Sharklet."
+  },
+  "title-down.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:EasyJet_logo.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademarked}}); author easyJet. Trademark rights remain.",
+    "modified": "The same 7 paths as title.svg, white, turned 50 degrees the other way (rotate(50)) to read downwards along the fin's leading edge. Use: the right side of the fin, and the inner face of the left Sharklet."
+  },
+  "title-up-47.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:EasyJet_logo.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademarked}}); author easyJet. Trademark rights remain.",
+    "modified": "The same 7 paths as title.svg, white, turned 47 degrees (rotate(-47)): title-up.svg for a model whose fin leading edge is nearer 47 degrees than 50 (the a320 and a319 models). Use: the left side of the fin."
+  },
+  "title-down-47.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:EasyJet_logo.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademarked}}); author easyJet. Trademark rights remain.",
+    "modified": "The same 7 paths as title.svg, white, turned 47 degrees the other way (rotate(47)): title-down.svg for a model whose fin leading edge is nearer 47 degrees than 50 (the a320 and a319 models). Use: the right side of the fin."
+  }
+}

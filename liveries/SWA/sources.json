@@ -1,0 +1,26 @@
+{
+  "title.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Southwest_Airlines_logo_2014.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{trademarked}}); author Lippincott Studio, NY. Southwest Airlines' trademark rights remain.",
+    "modified": "The \"Southwest\" wordmark of the 2014 logo. Path data unchanged. Flight Chaser took out the registered-trademark sign and the heart, coloured the letters white as on the aircraft (the logo has them in #304CB2), and set a viewBox round the letters and a 10x raster size."
+  },
+  "heart.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Southwest_Airlines_logo_2014.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{trademarked}}); author Lippincott Studio, NY. Southwest Airlines' trademark rights remain.",
+    "modified": "The heart of the 2014 logo. The four paths and the three gradients are unchanged. Flight Chaser took out the wordmark and set a viewBox round the heart and a 20x raster size."
+  },
+  "heart-belly.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Southwest_Airlines_logo_2014.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{trademarked}}); author Lippincott Studio, NY. Southwest Airlines' trademark rights remain.",
+    "modified": "The same heart as heart.svg, turned a quarter turn anticlockwise (rotate(-90)), so that its top points to the nose in the kit's belly view (nose at the left)."
+  },
+  "SourceSans3-Bold.woff2": {
+    "source": "https://github.com/adobe-fonts/source-sans/blob/release/WOFF2/TTF/SourceSans3-Bold.ttf.woff2",
+    "licence": "SIL Open Font License 1.1 (SourceSans3-OFL.txt); copyright Adobe, Reserved Font Name 'Source'",
+    "note": "Unchanged file, renamed. For the letters that the logo file does not have: the \"com\" of the engine title."
+  },
+  "SourceSans3-OFL.txt": {
+    "source": "https://github.com/adobe-fonts/source-sans/blob/release/LICENSE.md",
+    "licence": "SIL Open Font License 1.1"
+  }
+}

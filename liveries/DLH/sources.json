@@ -1,0 +1,19 @@
+{
+  "title.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Lufthansa_Logo_2018.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademark}}, read on 2026-10-13); author Lufthansa Group, from the Lufthansa style guide downloads. Trademark rights remain.",
+    "modified": "The eleven letter subpaths of the file's one path (\"Lufthansa\"), path data unchanged. Flight Chaser left out the crane and its ring, cropped the viewBox to the letters (954.33 98.53 2362.19 391.45), set width and height, and recoloured the letters from #0A1D3D to the paint blue #0E1C4B."
+  },
+  "crane-white.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Lufthansa_Logo_2018_crane.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademark}}, read on 2026-10-13); author Lufthansa Group. Trademark rights remain.",
+    "modified": "Path data unchanged (the crane and its ring, one path). Flight Chaser set width and height (586 x 586) and the fill white, for the blue fin.",
+    "note": "Commons keeps this figurative emblem as PD-textlogo, but the tag is disputed there: the deletion request for File:Miles & More Lufthansa Logo.svg was closed as kept on 2023-01-12 with the remark that a broader discussion is needed if the logo is above the threshold of originality, and a 2025 category discussion claims that it is. See liveries/DLH/README.md, section 6."
+  },
+  "crane-blue.svg": {
+    "source": "https://commons.wikimedia.org/wiki/File:Lufthansa_Logo_2018_crane.svg",
+    "licence": "PD-textlogo (Commons {{PD-textlogo}} + {{Trademark}}, read on 2026-10-13); author Lufthansa Group. Trademark rights remain.",
+    "modified": "Path data unchanged (the crane and its ring, one path). Flight Chaser set width and height (586 x 586) and recoloured it from #0A1D3D to the paint blue #0E1C4B, for the roundels on white (below the cockpit, on the wingtip devices).",
+    "note": "The same disputed PD-textlogo tag as crane-white.svg."
+  }
+}
