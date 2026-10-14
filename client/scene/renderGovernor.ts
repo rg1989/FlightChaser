@@ -63,6 +63,7 @@ const RUN_MS = 1500 // frames are judged in runs of this long
 const START_MS = 5000 // nor in the first seconds: the view is loading
 const GAP_MS = 2000 // a longer wait is not a frame (the tab was hidden, the page stalled); a very slow machine's frames, up to 2 s, count
 const BAD_RUNS = 2 // this many runs in a row over the budget: a level coarser
+const OFFER_RUNS = 3 // and this many over the strain limit: the switch offered (4.5 s: a burst of tile uploads is not a slow machine)
 const QUICK_RUNS = 4 // this many within it: a level finer, if it fits
 const ROOM = 0.85 // a finer level is taken when it would cost no more than this share of the budget
 const CHEAPER = 0.7 // and no more than this share of what it cost when it was last given up
@@ -103,6 +104,12 @@ class Runs {
     this.#sum = this.#due = 0
     this.#gpu = []
   }
+
+  /** From the start again, the first START_MS not judged: a new view loads its tiles, and the uploads make its first frames dear. */
+  restart(): void {
+    this.clear()
+    this.#age = 0
+  }
 }
 
 /** Whether the view as designed is more than the card draws smoothly (the switch's offer), from runs at the level as designed. Pure. */
@@ -121,7 +128,7 @@ export class Strain {
     this.#clear = (limitMs * STRAIN_OFF_MS) / STRAIN_MS
   }
 
-  /** Offered: two runs in a row over the limit (or, with no word from the card, slow); withdrawn after four clearly under it. */
+  /** Offered: OFFER_RUNS in a row over the limit (or, with no word from the card, slow); withdrawn after four clearly under it. */
   get on(): boolean {
     return this.#on
   }
@@ -140,7 +147,7 @@ export class Strain {
     const clear = timed ? run.gpu < this.#clear : !run.slow
     if (over) {
       this.#quick = 0
-      if (++this.#bad >= BAD_RUNS) this.#on = true
+      if (++this.#bad >= OFFER_RUNS) this.#on = true
     } else if (clear) {
       this.#bad = 0
       if (++this.#quick >= QUICK_RUNS) this.#on = false
@@ -148,9 +155,9 @@ export class Strain {
     return this.#on
   }
 
-  /** Judged afresh (another view, another size): not offered until runs say so again. */
+  /** Judged afresh (another view, another size): not offered until runs say so again, the first seconds (loading) not judged. */
   reset(): void {
-    this.#runs.clear()
+    this.#runs.restart()
     this.#bad = this.#quick = 0
     this.#on = false
     this.#gpu = Number.NaN
