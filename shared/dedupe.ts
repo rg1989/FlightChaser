@@ -1,5 +1,7 @@
 import type { Sample } from './types.ts'
 
+const SAME_POSITION_MS = 1000
+
 /**
  * Drops re-served and out-of-order positions. adsb.lol often re-serves the same position;
  * its tMs then repeats within a few ms of rounding. Genuine ADS-B positions are ≥ ~500 ms apart.
@@ -7,8 +9,6 @@ import type { Sample } from './types.ts'
  * time: 23–104 ms apart, measured 2026-10-15. So an identical position is new only a second or more later (a parked
  * aircraft's next one).
  */
-const SAME_POSITION_MS = 1000
-
 export class Deduper {
   #last = new Map<string, { tMs: number; lat: number; lon: number }>()
 
