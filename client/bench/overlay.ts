@@ -69,7 +69,7 @@ function cloudsText(clouds: CloudsBench | null): string {
  * The overlay's text: one line per fact, unknown values as n/a. clouds: how the chase's clouds are drawn (null: its weather is not
  * shown; absent: no such line); textures: the WebGL textures alive (absent: not said), with the heap.
  */
-export function overlayText(r: BenchReport, state: RenderState | null, canvas?: { width: number; height: number }, clouds?: CloudsBench | null, textures?: number): string {
+export function overlayText(r: BenchReport, state: RenderState | null, canvas?: { width: number; height: number }, clouds?: CloudsBench | null, textures?: number, picture?: string): string {
   const alt = state?.onGround ? 'ground' : `${num(state?.altBaroFt ?? null, 0)} ft`
   return [
     `bench ${r.label} · ${r.frames} frames${canvas ? ` · ${canvas.width}×${canvas.height} px` : ''}`,
@@ -79,6 +79,7 @@ export function overlayText(r: BenchReport, state: RenderState | null, canvas?: 
     ...(clouds === undefined ? [] : [cloudsText(clouds)]),
     `clearance min ${num(r.minClearanceM, 0)} m · violations ${r.clearanceViolations}`,
     `heap ${num(r.heapMB, 0)} MB${textures === undefined ? '' : ` · textures ${num(textures, 0)}`}`,
+    ...(picture === undefined ? [] : [picture]),
     state ? `${state.hex} ${state.mode} ${alt}` : 'no aircraft',
   ].join('\n')
 }
@@ -210,9 +211,9 @@ export class BenchRecorder {
   /**
    * A small fixed-position text box, refreshed at 2 Hz, summarising the last ~2 s of frames. Mount once. clouds: asked at each
    * refresh how the chase's clouds are drawn (null: its weather is not shown); textures: asked for the WebGL textures alive
-   * (countTextures). With neither, the box has no line for them.
+   * (countTextures); picture: how much the view draws (renderGovernor.ts). Without them, the box has no line for them.
    */
-  mountOverlay(root: HTMLElement, clouds?: () => CloudsBench | null, textures?: () => number): void {
+  mountOverlay(root: HTMLElement, clouds?: () => CloudsBench | null, textures?: () => number, picture?: () => string): void {
     const el = document.createElement('pre')
     el.style.cssText =
       'position:fixed;top:8px;left:8px;z-index:10;margin:0;padding:6px 8px;border-radius:4px;pointer-events:none;' +
@@ -220,7 +221,7 @@ export class BenchRecorder {
     root.append(el)
     const tick = (): void => {
       const c = this.#viewer.canvas
-      el.textContent = overlayText(this.recent(), this.#state, { width: c.width, height: c.height }, clouds?.(), textures?.())
+      el.textContent = overlayText(this.recent(), this.#state, { width: c.width, height: c.height }, clouds?.(), textures?.(), picture?.())
     }
     tick()
     this.#overlay = el

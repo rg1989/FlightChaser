@@ -23,6 +23,8 @@ export interface QueryGl {
   endQuery(target: number): void
   getQueryParameter(q: unknown, what: number): unknown
   getParameter(what: number): unknown
+  getQuery?(target: number, what: number): unknown // WebGL 2's: the query running now (another's: the whole frame's, renderGovernor.ts)
+  readonly CURRENT_QUERY?: number
 }
 
 /** A stage as the timer takes it: something drawn by its `execute`. */
@@ -87,6 +89,7 @@ export class PassTimer {
       const draw = stage.execute as (...args: unknown[]) => void
       ;(stage as { execute: (...args: unknown[]) => void }).execute = (...args) => {
         if (!this.#timing || !this.#watched.has(stage)) return draw.apply(stage, args)
+        if (this.#gl.getQuery !== undefined && this.#gl.getQuery(this.#elapsed, this.#gl.CURRENT_QUERY ?? 0x8865) !== null) return draw.apply(stage, args) // another query runs (one at a time): this frame's pass is not timed
         const q = this.#gl.createQuery()
         this.#gl.beginQuery(this.#elapsed, q)
         try {

@@ -220,3 +220,18 @@ test('passTimer: when other stages are watched (a new pass, or none) the time of
   assert.ok(Number.isNaN(t.ms))
   assert.ok(f.left() <= 1)
 })
+
+test('passTimer: a frame in which another query already runs (the whole frame\'s, renderGovernor.ts) draws its pass untimed: one query at a time', () => {
+  const f = fakeGl()
+  let other: object | null = {}
+  const gl = Object.assign(f.gl, { CURRENT_QUERY: 0x8865, getQuery: () => other })
+  const t = passTimer(gl)!
+  const s = stage('march', f, 2)
+  t.watch([s])
+  for (let k = 0; k < 8; k++) (t.poll(), f.poll(), s.execute())
+  assert.equal(s.drawn, 8)
+  assert.equal(f.made(), 0)
+  other = null
+  for (let k = 0; k < 8; k++) (t.poll(), f.poll(), s.execute())
+  assert.equal(f.made(), 2)
+})

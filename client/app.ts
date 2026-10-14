@@ -75,6 +75,7 @@ import { BOX_HALF, Traffic, minScale, trafficRangeNm } from './scene/traffic.ts'
 import { AircraftLights } from './scene/aircraftLights.ts'
 import { makeNightLayer } from './scene/nightLights.ts'
 import { Buildings } from './scene/buildings.ts'
+import { QUALITY, RenderGovernor } from './scene/renderGovernor.ts'
 import { photoSource } from './scene/roofPhoto.ts'
 import { addRunways } from './scene/runways.ts'
 import { FlatTerrainProvider, areasFor, stripsFor, type AirfieldAirport } from './scene/flatTerrain.ts'
@@ -1104,7 +1105,17 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       march: clouds.marchSize?.(viewer.canvas.width, viewer.canvas.height) ?? [0, 0],
     }
   }
-  bench?.mountOverlay(div('fh-bench', ui), cloudsBench, texturesAlive)
+  // How much the view draws (renderGovernor.ts): fewer frames while nothing moves, cheaper anti-aliasing and then fewer pixels
+  // while a frame costs the graphics card more than its budget. The overlay says where it stands. ?governor=0: every frame, as
+  // designed, whatever it costs (the before of a measurement).
+  const governor = new URLSearchParams(location.search).get('governor') === '0' ? null : new RenderGovernor(viewer, { tv })
+  const pictureBench = (): string => {
+    if (governor === null) return 'picture as designed, every frame (?governor=0)'
+    const { level, fps, gpuMs } = governor.state
+    const q = QUALITY[level]
+    return `picture ${level} (${q.msaa > 1 ? `MSAA ${q.msaa}` : 'FXAA'}${q.scale < 1 ? `, ${Math.round(q.scale * 100)} %` : ''}) · ${fps === undefined ? 'every frame' : `${fps} fps`} · card ${Number.isFinite(gpuMs) ? `${gpuMs.toFixed(1)} ms` : 'not timed'}`
+  }
+  bench?.mountOverlay(div('fh-bench', ui), cloudsBench, texturesAlive, pictureBench)
   // ?bench=1: User Timing measures fh:frame, fh:fleet, fh:table, fh:wx and its part fh:wx-ahead (each frame) and fh:ingest (each poll), and two marks
   // under the chased aircraft for gate GE: fh:no-ground for each undefined terrain reading, and fh:ground-unknown for
   // each frame whose ground is still unknown after the memo. Read them with performance.getEntriesByName(name) or in
@@ -1116,6 +1127,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   let benchSayMs = bench === null ? Infinity : performance.now() + BENCH_SAY_MS
   ;(window as unknown as { viewer?: Viewer }).viewer = viewer // console access for debugging and G3, as in WP-00
   ;(window as unknown as { weather3d?: Weather3D }).weather3d = weather3d // and for checks of the chase's weather
+  ;(window as unknown as { governor?: RenderGovernor | null }).governor = governor // and of how much the view draws
 
   // The first view: ?at= (a reload or a shared link), else ?airport=, else all of Israel (a chase: over the home airport).
   const urlView = readView(location.search)
@@ -2379,6 +2391,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         : `${weather3d.look}, march at tier ${weather3d.tier} (size ${weather3d.sky.clouds.scale ?? '?'}), the pass ${Number.isFinite(pass) ? `${pass.toFixed(1)} ms on the GPU` : 'not timed'}, last draw ${weather3d.drawMs.toFixed(0)} ms, its field made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms, ${from}`
       console.warn(`Flight Chaser bench: frame p50 ${(1000 / b.fpsP50).toFixed(1)} ms, p95 ${b.frameMsP95.toFixed(1)} ms · weather ${wx}`)
     }
+    governor?.update({ paused: run !== null && !run.player.clock.playing })
     measure?.('fh:frame', now)
   }
   const removeFrame = viewer.scene.preUpdate.addEventListener(frame)
@@ -2735,6 +2748,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       if (hoverTimer !== null) clearTimeout(hoverTimer)
       mouse.destroy()
       bench?.destroy()
+      governor?.destroy()
       document.removeEventListener('fullscreenchange', onFullscreen)
       run?.destroy()
       hist?.bar.destroy()
@@ -2779,6 +2793,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       viewer.destroy()
       delete (window as unknown as { viewer?: Viewer }).viewer
       delete (window as unknown as { weather3d?: Weather3D }).weather3d
+      delete (window as unknown as { governor?: RenderGovernor | null }).governor
     },
   }
 }
