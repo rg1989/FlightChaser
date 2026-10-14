@@ -32,10 +32,12 @@ const TILE_PX = 256
 const MAX_FETCHES = 12 // across all mosaics: the globe loads its own imagery at the same time
 let fetching = 0
 const waiting: (() => void)[] = []
-async function pooled<T>(job: () => Promise<T>): Promise<T> {
+/** job once a fetch slot is free; a job whose mosaic has given up meanwhile asks for nothing (it throws). */
+async function pooled<T>(job: () => Promise<T>, signal: AbortSignal): Promise<T> {
   if (fetching >= MAX_FETCHES) await new Promise<void>((r) => waiting.push(r))
   fetching++
   try {
+    signal.throwIfAborted()
     return await job()
   } finally {
     fetching--
@@ -45,23 +47,40 @@ async function pooled<T>(job: () => Promise<T>): Promise<T> {
 
 class NoDeeperTile extends Error {}
 
+/** A canvas's pixels go when it is sized 0 (as mapLayer.ts's), not when it is collected. */
+export function releaseCanvas(canvas: HTMLCanvasElement): void {
+  canvas.width = canvas.height = 0
+}
+
 async function mosaicAt(src: PhotoSource, x: number, y: number, n: number, z: number): Promise<HTMLCanvasElement> {
   const canvas = document.createElement('canvas')
   canvas.width = canvas.height = n * TILE_PX
   const ctx = canvas.getContext('2d')!
-  await Promise.all(
-    Array.from({ length: n * n }, async (_, i) => {
-      const [dx, dy] = [i % n, Math.floor(i / n)]
-      const bmp = await pooled(async () => {
-        const res = await fetch(src.url(z, x * n + dx, y * n + dy))
-        if (res.status === 404) throw new NoDeeperTile()
-        if (!res.ok) throw new Error(`imagery tile: HTTP ${res.status}`)
-        return createImageBitmap(await res.blob()) // Esri without a token answers 200 with JSON: this throws
-      })
-      ctx.drawImage(bmp, dx * TILE_PX, dy * TILE_PX, TILE_PX, TILE_PX)
-      bmp.close()
-    }),
-  )
+  // The first tile that fails (a 404: no deeper tile here) ends the attempt: the tiles still queued are not asked for.
+  const stop = new AbortController()
+  try {
+    await Promise.all(
+      Array.from({ length: n * n }, async (_, i) => {
+        const [dx, dy] = [i % n, Math.floor(i / n)]
+        const bmp = await pooled(async () => {
+          try {
+            const res = await fetch(src.url(z, x * n + dx, y * n + dy))
+            if (res.status === 404) throw new NoDeeperTile()
+            if (!res.ok) throw new Error(`imagery tile: HTTP ${res.status}`)
+            return await createImageBitmap(await res.blob()) // Esri without a token answers 200 with JSON: this throws
+          } catch (e) {
+            if (!stop.signal.aborted) stop.abort(e) // before the slot goes to the next tile in the queue
+            throw e
+          }
+        }, stop.signal)
+        if (!stop.signal.aborted) ctx.drawImage(bmp, dx * TILE_PX, dy * TILE_PX, TILE_PX, TILE_PX)
+        bmp.close()
+      }),
+    )
+  } catch (e) {
+    releaseCanvas(canvas)
+    throw stop.signal.reason ?? e // the first failure, not a queued tile's abort
+  }
   return canvas
 }
 
@@ -83,7 +102,10 @@ export interface PhotoTexture {
   destroy(): void
 }
 
-/** The picture on the graphics card, with mipmaps: roofs far away must not sparkle, and a wall takes its roof's mean colour from a small level. */
+/**
+ * The picture on the graphics card, with mipmaps: roofs far away must not sparkle, and a wall takes its roof's mean colour from
+ * a small level. The canvas is released once uploaded (up to 16 MB a picture, and on the card again in Chrome's 2-D canvas).
+ */
 export function photoTexture(context: unknown, canvas: HTMLCanvasElement): PhotoTexture {
   const texture = new Texture({
     context,
@@ -91,5 +113,6 @@ export function photoTexture(context: unknown, canvas: HTMLCanvasElement): Photo
     sampler: new Sampler({ minificationFilter: TextureMinificationFilter.LINEAR_MIPMAP_LINEAR, magnificationFilter: TextureMagnificationFilter.LINEAR, maximumAnisotropy: 8 }),
   })
   texture.generateMipmap()
+  releaseCanvas(canvas)
   return texture as PhotoTexture
 }

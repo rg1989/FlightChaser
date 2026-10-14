@@ -14,6 +14,7 @@ import {
   Color,
   ColorGeometryInstanceAttribute,
   ComponentDatatype,
+  CullFace,
   Ellipsoid,
   GeometryInstance,
   GeometryInstanceAttribute,
@@ -28,14 +29,18 @@ import {
   type Viewer,
 } from 'cesium'
 import type { TerrainFrame } from '../types.ts'
+import { drawnHeightM } from './exaggeration.ts'
 import { decodeLayer, type Layer } from './mvt.ts'
-import { mosaic, photoTexture, type PhotoSource, type PhotoTexture } from './roofPhoto.ts'
+import { mosaic, photoTexture, releaseCanvas, type PhotoSource, type PhotoTexture } from './roofPhoto.ts'
 import { followExaggeration } from './runways.ts'
 import { TerrainHeights } from './terrainHeights.ts'
 
 export const BUILDINGS_Z = 14 // OpenMapTiles has buildings at z13–14; 14 is unmerged and ~2 km a side at mid latitudes
 export const BUILDINGS_RADIUS_M = 5000 // tiles touching the square of this half-side around the chased aircraft
 const KEEP_MARGIN_M = 2000 // loaded tiles stay until the aircraft is this much farther away (no churn at a tile edge)
+const VIEW_MARGIN_DEG = 15 // the view as the plan takes it is this much wider on every side: what is about to come into view counts
+export const LOAD_NEAR_M = 5000 // a tile out of view still loads while the camera is this close to it: turned round, it finds it built
+const GUESS_TOP_M = 300 // a tile not built yet: its buildings reach at most this far above the ground under its middle
 const MAX_IN_FLIGHT = 4
 const RETRY_MS = 30_000 // a failed tile is asked for again at the next plan after this
 const MIN_HEIGHT_M = 2 // walls, sheds and carports mapped as buildings
@@ -69,6 +74,32 @@ export function tilesAround(lat: number, lon: number, rM: number): [number, numb
   const out: [number, number][] = []
   for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) out.push([x, y])
   return out.sort((a, b) => Math.hypot(a[0] - cx, a[1] - cy) - Math.hypot(b[0] - cx, b[1] - cy))
+}
+
+/** A plane: n·X + d ≥ 0 on its inner side (world coordinates, m). */
+export interface Plane {
+  n: Cartesian3
+  d: number
+}
+
+/**
+ * The side planes of a camera's view (at pos, looking along dir; up and right its own unit axes; tanX and tanY the tangents
+ * of its half-widths), each turned marginDeg outward, and the plane through pos across dir: what is inside all five is in
+ * view or within the margin of it.
+ */
+export function viewPlanes(pos: Cartesian3, dir: Cartesian3, up: Cartesian3, right: Cartesian3, tanX: number, tanY: number, marginDeg: number): Plane[] {
+  const side = (axis: Cartesian3, sign: number, tan: number): Plane => {
+    const a = Math.min(Math.atan(tan) + (marginDeg * Math.PI) / 180, (85 * Math.PI) / 180)
+    const n = Cartesian3.add(Cartesian3.multiplyByScalar(axis, sign * Math.cos(a), new Cartesian3()), Cartesian3.multiplyByScalar(dir, Math.sin(a), new Cartesian3()), new Cartesian3())
+    return { n, d: -Cartesian3.dot(n, pos) }
+  }
+  const front = Cartesian3.normalize(dir, new Cartesian3())
+  return [side(right, 1, tanX), side(right, -1, tanX), side(up, 1, tanY), side(up, -1, tanY), { n: front, d: -Cartesian3.dot(front, pos) }]
+}
+
+/** Whether a box (its corners) may be in view: false only when every corner is outside one of the planes. */
+export function boxSeen(corners: Cartesian3[], planes: Plane[]): boolean {
+  return planes.every(({ n, d }) => corners.some((c) => Cartesian3.dot(n, c) + d >= 0))
 }
 
 /** One polygon of a building (or building:part), in degrees. rnd is a stable per-building random in [0, 1). */
@@ -333,19 +364,28 @@ const NIGHT_SOURCE = `czm_material czm_getMaterial(czm_materialInput materialInp
   return m;
 }`
 /**
+ * The render state of a look (Appearance adds depthMask and blending from translucent). Solid, back faces are culled: Cesium
+ * draws every fragment it rasterizes (the log depth buffer writes the depth in the shader, so nothing is rejected before it),
+ * and a building's far walls were half of them. Its walls and roof face outward (buildings.test.ts checks the winding); the
+ * open bottoms are buried. Opaque, Cesium reads the cull from here only, not from Appearance.closed. See-through draws the far
+ * walls on purpose: no culling.
+ */
+const lookState = (translucent: boolean): object =>
+  translucent ? { depthTest: { enabled: true } } : { depthTest: { enabled: true }, cull: { enabled: true, face: CullFace.BACK } }
+
+/**
  * The solid and see-through looks, each with a Material whose uniform `night` setNight writes (with a material, Cesium
- * takes translucency from it, not from the Appearance). closed: false, so no back-face culling: the bottoms are left
- * open (buried) and see-through shows the far walls.
+ * takes translucency from it, not from the Appearance).
  */
 function looks(): { solid: Appearance; glass: Appearance } {
   const make = (translucent: boolean): Appearance =>
     new Appearance({
       material: new Material({ translucent, fabric: { type: 'FhBuildingsNight', uniforms: { night: 0 }, source: NIGHT_SOURCE } }),
       translucent,
-      closed: false,
+      closed: !translucent,
       vertexShaderSource: VS,
       fragmentShaderSource: translucent ? `#define GLASS\n${FS}` : FS,
-      renderState: { depthTest: { enabled: true } }, // Appearance adds depthMask and blending from translucent
+      renderState: lookState(translucent),
     })
   return { solid: make(false), glass: make(true) }
 }
@@ -382,6 +422,10 @@ const PHOTO_SOURCE = `czm_material czm_getMaterial(czm_materialInput materialInp
 const PHOTO_DEFINES = '#define PHOTO\n#define WALL_TINT 0.6\n'
 
 interface Tile {
+  x: number
+  y: number
+  topM: number // the highest roof (true HAE m): with hM, the box the plan tests against the view
+  seen: boolean // in view (with the margin) at the last plan
   state: 'loading' | 'done' | 'failed'
   failedAtMs: number
   prim: Primitive | null // null while loading, and for a tile without buildings
@@ -400,11 +444,17 @@ export interface BuildingsOpts {
   loadLayer?: (x: number, y: number) => Promise<Layer | null> // default: OpenFreeMap
   groundM?: (at: Cartographic[]) => Promise<(number | undefined)[]> // true terrain heights; default: TerrainHeights
   photo?: PhotoSource | null // the satellite picture for the roofs (roofPhoto.ts photoSource), on until setPhoto(false); none: clay
+  // tests: a picture without a network or a graphics card (default: roofPhoto.ts's mosaic and photoTexture)
+  mosaic?: (src: PhotoSource, x: number, y: number, tileZ: number, z: number) => Promise<HTMLCanvasElement>
+  upload?: (canvas: HTMLCanvasElement) => PhotoTexture
 }
 
 /**
  * The buildings around the chased aircraft. update() every frame: with a focus (chase) it plans when the aircraft enters
- * another tile or a load finishes: drops tiles farther than the radius + 2 km, and starts up to 4 loads, nearest first.
+ * another tile, the camera moves or turns, or a load finishes: drops tiles farther than the radius + 2 km, and starts up to
+ * 4 loads, the tiles in view first (the camera's view widened by 15° a side), nearest first. A tile out of view loads only
+ * within 5 km of the camera (from cruise height nothing of the square is in view, so nothing loads); a roof picture is taken
+ * only for a tile in view. Turned to where it has none, a tile is clay until its picture comes.
  * Each tile reads the TRUE ground at its footprints' corners (TerrainHeights) and is built at those heights, then
  * placed with followExaggeration, so it grows and sinks with the relief. Without a focus (browse) everything is hidden
  * and nothing loads.
@@ -415,6 +465,8 @@ export class Buildings {
   readonly #viewer: Viewer
   readonly #load: (x: number, y: number) => Promise<Layer | null>
   readonly #ground: (at: Cartographic[]) => Promise<(number | undefined)[]>
+  readonly #mosaic: NonNullable<BuildingsOpts['mosaic']>
+  readonly #upload: NonNullable<BuildingsOpts['upload']>
   readonly #tiles = new Map<string, Tile>()
   readonly #looks = looks()
   #source: PhotoSource | null // where the roofs' picture comes from
@@ -437,6 +489,8 @@ export class Buildings {
     const heights = opts.groundM ? null : new TerrainHeights(viewer.terrainProvider)
     this.#ground = opts.groundM ?? ((at) => heights!.heights(at))
     this.#source = this.#webgl2() ? (opts.photo ?? null) : null
+    this.#mosaic = opts.mosaic ?? mosaic
+    this.#upload = opts.upload ?? ((canvas) => photoTexture(this.#context(), canvas))
   }
 
   /** The source while the pictures are on. */
@@ -468,30 +522,88 @@ export class Buildings {
     if (this.#photo) for (const t of this.#tiles.values()) if (t.mat) this.#light(t.mat)
     if (focus === null || !Number.isFinite(focus.lat) || !Number.isFinite(focus.lon)) return
     const [fx, fy] = tileOf(focus.lat, focus.lon)
-    const planKey = `${fx}/${fy}/${Math.round((focus.hM ?? 0) / 250)}` // the height: the pictures' zoom follows it
+    const cam = (this.#viewer as Partial<Viewer>).camera
+    const camKey = cam === undefined ? '' : [cam.positionWC.x / 100, cam.positionWC.y / 100, cam.positionWC.z / 100, cam.directionWC.x * 20, cam.directionWC.y * 20, cam.directionWC.z * 20].map(Math.round).join(',')
+    // the height: the pictures' zoom follows it; the camera (100 m, ~3°): what is in view follows it
+    const planKey = `${fx}/${fy}/${Math.round((focus.hM ?? 0) / 250)}/${camKey}`
     if (planKey === this.#planKey && !this.#dirty) return
     this.#planKey = planKey
     this.#dirty = false
+    const view = this.#view()
     const keep = new Set(tilesAround(focus.lat, focus.lon, BUILDINGS_RADIUS_M + KEEP_MARGIN_M).map(([x, y]) => `${x}/${y}`))
     for (const [k, t] of this.#tiles) if (!keep.has(k)) this.#drop(k, t)
+    for (const t of this.#tiles.values()) t.seen = view === null || this.#seen(t.x, t.y, t, view)
     const nowMs = performance.now()
-    for (const [x, y] of tilesAround(focus.lat, focus.lon, BUILDINGS_RADIUS_M)) {
-      if (this.#inFlight >= MAX_IN_FLIGHT) break
+    // Loads: the tiles in view first, each group nearest the aircraft first (tilesAround's order); out of view only near the camera.
+    const cands = tilesAround(focus.lat, focus.lon, BUILDINGS_RADIUS_M).map(([x, y]) => {
       const k = `${x}/${y}`
       const t = this.#tiles.get(k)
-      if (t && !(t.state === 'failed' && nowMs - t.failedAtMs > RETRY_MS)) continue
-      void this.#fetch(x, y, k)
+      return { x, y, k, t, seen: t?.seen ?? (view === null || this.#seen(x, y, undefined, view)) }
+    })
+    for (const c of [...cands.filter((c) => c.seen), ...cands.filter((c) => !c.seen)]) {
+      if (this.#inFlight >= MAX_IN_FLIGHT) break
+      if (c.t && !(c.t.state === 'failed' && nowMs - c.t.failedAtMs > RETRY_MS)) continue
+      if (!c.seen && view !== null && this.#cameraM(c.x, c.y, c.t, view) > LOAD_NEAR_M) continue
+      void this.#fetch(c.x, c.y, c.k)
     }
-    // Pictures, nearest first (the map keeps the order the tiles were asked for in), each at photoZoom's zoom.
+    // Pictures for the tiles in view, nearest first (the map keeps the order the tiles were asked for in), each at photoZoom's zoom.
     const src = this.#photo
     if (src === null) return
     for (const [k, t] of this.#tiles) {
       if (this.#photoInFlight >= PHOTO_MAX_IN_FLIGHT) break
-      if (!t.prim || !t.framed || t.photoBusy) continue
-      const [x, y] = k.split('/').map(Number)
-      const z = photoZoom(Math.max(Math.abs(x - fx), Math.abs(y - fy)), (focus.hM ?? t.hM) - t.hM, t.photoZ, src.maxZ)
-      if (z !== t.photoZ) void this.#loadPhoto(src, k, t, x, y, z)
+      if (!t.prim || !t.framed || t.photoBusy || !t.seen) continue
+      const z = photoZoom(Math.max(Math.abs(t.x - fx), Math.abs(t.y - fy)), (focus.hM ?? t.hM) - t.hM, t.photoZ, src.maxZ)
+      if (z !== t.photoZ) void this.#loadPhoto(src, k, t, t.x, t.y, z)
     }
+  }
+
+  /**
+   * The camera's view for the plan: where it is and the planes of its view widened by VIEW_MARGIN_DEG; null without a
+   * perspective camera (Node's tests): then every tile counts as in view.
+   */
+  #view(): { at: Cartographic; planes: Plane[] } | null {
+    const cam = (this.#viewer as Partial<Viewer>).camera
+    const fr = cam?.frustum as { fov?: number; aspectRatio?: number } | undefined
+    if (cam === undefined || fr?.fov === undefined || fr.aspectRatio === undefined || !(fr.fov > 0 && fr.aspectRatio > 0)) return null
+    const { positionWC: p, directionWC: d, upWC: u, rightWC: r, positionCartographic: at } = cam
+    if (![p.x, p.y, p.z, d.x, d.y, d.z].every(Number.isFinite)) return null
+    const tan = Math.tan(fr.fov / 2) // Cesium's fov spans the larger side
+    const [tanX, tanY] = fr.aspectRatio >= 1 ? [tan, tan / fr.aspectRatio] : [tan * fr.aspectRatio, tan]
+    return { at, planes: viewPlanes(p, d, u, r, tanX, tanY, VIEW_MARGIN_DEG) }
+  }
+
+  /** The drawn ground and top of tile x/y's buildings (HAE m); not built yet: the ground under its middle, a tall guess above. */
+  #box(x: number, y: number, t: Tile | undefined): [number, number] {
+    if (t?.prim) return [drawnHeightM(t.hM, this.#f, this.#relHM) - FOUNDATION_M, drawnHeightM(t.topM, this.#f, this.#relHM)]
+    const globe = (this.#viewer.scene as Partial<Viewer['scene']>).globe
+    const g = globe?.getHeight(Cartographic.fromDegrees(tileLonDeg(x + 0.5), tileLatDeg(y + 0.5))) ?? this.#meanGroundM()
+    return [g - FOUNDATION_M, g + GUESS_TOP_M]
+  }
+
+  /** The mean drawn ground of the built tiles, 0 without one: the last guess for a tile's ground. */
+  #meanGroundM(): number {
+    let sum = 0
+    let n = 0
+    for (const t of this.#tiles.values()) if (t.prim) (sum += drawnHeightM(t.hM, this.#f, this.#relHM)), n++
+    return n === 0 ? 0 : sum / n
+  }
+
+  /** Whether tile x/y's box may be in the (widened) view. */
+  #seen(x: number, y: number, t: Tile | undefined, view: { planes: Plane[] }): boolean {
+    const [lo, hi] = this.#box(x, y, t)
+    const corners: Cartesian3[] = []
+    for (const h of [lo, hi]) for (const [cx, cy] of [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]]) corners.push(Cartesian3.fromDegrees(tileLonDeg(cx), tileLatDeg(cy), h))
+    return boxSeen(corners, view.planes)
+  }
+
+  /** How far the camera is from tile x/y's box, m. */
+  #cameraM(x: number, y: number, t: Tile | undefined, view: { at: Cartographic }): number {
+    const [lo, hi] = this.#box(x, y, t)
+    const lat = (view.at.latitude * 180) / Math.PI
+    const lon = (view.at.longitude * 180) / Math.PI
+    const dx = Math.max(0, tileLonDeg(x) - lon, lon - tileLonDeg(x + 1)) * 111_320 * Math.cos(view.at.latitude)
+    const dy = Math.max(0, tileLatDeg(y + 1) - lat, lat - tileLatDeg(y)) * 111_320
+    return Math.hypot(dx, dy, Math.max(0, view.at.height - hi, lo - view.at.height))
   }
 
   /** Textures on or off, for every tile now and later: off, the tiles go back to clay and their pictures are freed. */
@@ -523,18 +635,20 @@ export class Buildings {
     t.photoBusy = true
     t.photoZ = z // also after a failure: not asked again until the aircraft's ring asks for another zoom
     this.#photoInFlight++
+    let canvas: HTMLCanvasElement | null = null
     try {
-      const canvas = await mosaic(src, x, y, BUILDINGS_Z, z)
+      canvas = await this.#mosaic(src, x, y, BUILDINGS_Z, z)
       if (this.#destroyed || this.#tiles.get(k) !== t || !t.prim) return // dropped while loading
       if (this.#photo !== src) return void (t.photoZ = 0) // switched off, or another source, while loading
       const old = t.tex
-      t.tex = photoTexture(this.#context(), canvas)
+      t.tex = this.#upload(canvas)
       t.prim.appearance = this.#look(t) // the old look is not drawn again: its picture can go
       old?.destroy()
     } catch (e) {
       if (!this.#warned) console.warn('Flight Chaser: roof picture failed (the tile stays clay):', e)
       this.#warned = true
     } finally {
+      if (canvas) releaseCanvas(canvas) // uploaded (photoTexture released it already) or not wanted any more
       t.photoBusy = false
       this.#photoInFlight--
       this.#dirty = true
@@ -554,10 +668,10 @@ export class Buildings {
     return new Appearance({
       material: t.mat,
       translucent,
-      closed: false,
+      closed: !translucent,
       vertexShaderSource: PHOTO_DEFINES + VS,
       fragmentShaderSource: PHOTO_DEFINES + (translucent ? '#define GLASS\n' : '') + FS,
-      renderState: { depthTest: { enabled: true } },
+      renderState: lookState(translucent),
     })
   }
 
@@ -615,7 +729,7 @@ export class Buildings {
   }
 
   async #fetch(x: number, y: number, k: string): Promise<void> {
-    const t: Tile = { state: 'loading', failedAtMs: 0, prim: null, model: new Matrix4(), up: new Cartesian3(), upDotBase: 0, hM: 0, tex: null, mat: null, photoZ: 0, photoBusy: false, framed: false }
+    const t: Tile = { x, y, topM: 0, seen: true, state: 'loading', failedAtMs: 0, prim: null, model: new Matrix4(), up: new Cartesian3(), upDotBase: 0, hM: 0, tex: null, mat: null, photoZ: 0, photoBusy: false, framed: false }
     this.#tiles.set(k, t)
     this.#inFlight++
     try {
@@ -658,6 +772,7 @@ export class Buildings {
     const stood = extents.filter((e) => e !== null)
     if (stood.length === 0) return null
     t.hM = stood.reduce((a, e) => a + e.groundM, 0) / stood.length
+    t.topM = stood.reduce((a, e) => Math.max(a, e.topM), -Infinity)
     const vec3 = (value: number[]): GeometryInstanceAttribute => new GeometryInstanceAttribute({ componentDatatype: ComponentDatatype.FLOAT, componentsPerAttribute: 3, value })
     // The picture's frame (VS, PHOTO): the tile's centre at the mean ground, east and north over its width and height there.
     let frame: Record<string, GeometryInstanceAttribute> | null = null
