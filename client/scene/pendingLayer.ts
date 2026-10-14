@@ -1,5 +1,5 @@
 // client/scene/pendingLayer.ts
-// The areas of a wide view the server has not loaded yet (StatusBrief.pendingBoxes: its ≈ 4° grid cells), veiled on the
+// The areas of a wide view the server has not loaded yet (StatusBrief.pendingBoxes: its ≈ 5.6° grid cells), veiled on the
 // map, so an empty patch reads as "not loaded yet", not "no aircraft there". The one loading now (the first) is half
 // veiled, a light running round its edge (the rail's busy loader, on the map). A cell's veil goes when its first answer
 // lands. Never pickable: a tap on an aircraft over a veiled cell still selects it (fleetLayer picks the topmost object).

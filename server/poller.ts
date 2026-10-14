@@ -101,7 +101,7 @@ export const WIDE_REACH_NM = 2500
  * How often to refresh the aircraft of a view radiusNm wide. Between answers the client dead-reckons every aircraft
  * along its track, so what a gap costs is the turn error on screen, which grows with the view's scale: 0.12 s per nm
  * up to 500 nm (5 s for a city, 16 s for the default regional view, 60 s at 500 nm). Wider, a view covers ~r² areas,
- * so the period grows as r² too and every zoomed-out view costs about the same (~0.3 req/s): 4 min for a continent
+ * so the period grows as r² too and every zoomed-out view costs about the same (~0.2 req/s): 4 min for a continent
  * (1,000 nm), 30 min for the globe. The chased aircraft goes faster still (chasePeriodMs).
  */
 export function viewPeriodMs(radiusNm: number): number {
