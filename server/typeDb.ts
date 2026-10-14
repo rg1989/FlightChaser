@@ -9,7 +9,8 @@
 // A type's desc is its ICAO Doc 8643 description: kind (L landplane, S seaplane, A amphibian, H helicopter, G gyrocopter;
 // this table writes R for a tiltrotor, V a surface vehicle, D a drone, B a balloon or airship), engine count, engine kind
 // (P piston, T turboprop, J jet, E electric). wtc is the wake category (L, M, H; J super).
-// Downloaded when the server starts and checked once a day after (a conditional GET: the zip changes weekly), read with
+// Downloaded at its first need (History's first ask for the past, or the alerts on: server/main.ts), not when the server
+// starts, and checked once a day after (a conditional GET: the zip changes weekly), read with
 // Node's own zlib, held in memory only and compact: the addresses sorted in a Uint32Array, a type index and a military flag
 // per address, a category per type (about 3 MB). Never written to disk. Not tar1090-db or ADS-B Exchange's database: their licences
 // are unclear.
@@ -347,7 +348,7 @@ export class TypeDb {
         return JSON.parse(new TextDecoder().decode(bytes))
       }
       // ponytail: JSON.parse of the 26 MB aircrafts.json and the build hold the event loop ~0.85 s (0.56 s + 0.29 s measured
-      // on the real zip, an Apple M2), when the server starts and when the weekly zip changes; a 304 costs nothing, and
+      // on the real zip, an Apple M2), at the table's first need and when the weekly zip changes; a 304 costs nothing, and
       // ~250 MB of heap come and go. Upgrade: both in a worker thread (node:worker_threads), the typed arrays handed back.
       const table = buildTypeTable(json('aircrafts.json'), json('types.json'))
       if (table.addrs.length === 0) return false // a file with no type in it is no table

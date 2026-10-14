@@ -1,7 +1,7 @@
 // server/main.history.test.ts
 // The past over HTTP: /api/history, /api/history/status and /api/trace on the real server (port 0), with adsb.lol's
 // files and the type table from a fake fetch. Nothing here reaches adsb.lol or GitHub. A server fetches the past by itself
-// only when asked to: to roll it, or to look up its types and oldest day.
+// only when asked to: to roll it (while a page asks for traffic), or to look up its types (at their first need) and oldest day.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { mkdtempSync } from 'node:fs'
@@ -15,7 +15,7 @@ import type { ReadsbAircraft } from '../shared/types.ts'
 import { readServerConfig } from './config.ts'
 import { ADSBDB_FLIGHT_URL } from './flightRoutes.ts'
 import { encodeHeatmap } from './heatmap.ts'
-import { heatmapUrl } from './historyStore.ts'
+import { HistoryStore, heatmapUrl } from './historyStore.ts'
 import { commandLineDeps, createServer, rollsHistory } from './main.ts'
 import { makeReplay } from './sources/replay.ts'
 import type { FetchResult, Source } from './sources/types.ts'
@@ -256,7 +256,7 @@ test('/api/history: each aircraft with its type and the category it implies from
   assert.deepEqual(slot.body.aircraft.map((a) => [a.hex, a.type, a.category]), [['4691c4', 'A320', 'A3'], ['a1b2c3', null, null]])
 })
 
-test('the command line\'s lookups: the type table and the oldest day come through the past\'s fetch; the first ask for the past waits for the table', async (t) => {
+test('the command line\'s lookups: the type table and the oldest day come through the past\'s fetch; the table loads at the first ask for the past, which waits for it', async (t) => {
   const nowMs = (): number => T0
   const cfg = config()
   const up = upstream()
@@ -265,6 +265,10 @@ test('the command line\'s lookups: the type table and the oldest day come throug
   const app = createServer(cfg, { source: makeReplay({ files: cfg.replayFiles, nowMs }), nowMs, historyFetch: up.fetchFn, historyMeta: true })
   const base = await app.listen(0)
   t.after(() => app.close())
+  await waitFor('the oldest day search', () => up.urls.some((u) => u.endsWith('/heatmap/00.bin.ttf')))
+  assert.equal((await get<HistoryStatus>(`${base}/api/history/status`)).status, 200)
+  await sleep(50)
+  assert.ok(!up.urls.includes(TYPE_DB_URL), 'not at the start: the table waits for its first need')
 
   let answered = false
   const first = get<HistorySlot>(slotUrl(base, SLOT)).then((r) => ((answered = true), r))
@@ -367,15 +371,18 @@ test('trace: origin only for a flight that is flying now: the leg ended within 1
   assert.ok(up.urls.length > 0)
 })
 
-test('a server on a live source asks adsb.lol for nothing unless it is asked to roll the past; rolling holds the newest two half hours', async (t) => {
+const liveView = (base: string): string => `${base}/api/view?lat=32&lon=34.8&nm=60`
+
+test('a server on a live source asks adsb.lol for nothing unless it is asked to roll the past; rolling holds the newest two half hours once a page asks for traffic', async (t) => {
   const clock = { t: T0 }
   const nowMs = (): number => clock.t
   const idle = upstream()
   const quiet = createServer(config(), { source: liveSource(clock), nowMs, historyFetch: idle.fetchFn })
-  await quiet.listen(0)
+  const quietBase = await quiet.listen(0)
   t.after(() => quiet.close())
+  assert.equal((await get(liveView(quietBase))).status, 200)
   await sleep(120)
-  assert.deepEqual(idle.urls, [], 'rolling is off by default: not a request')
+  assert.deepEqual(idle.urls, [], 'rolling is off by default: not a request, a page or none')
 
   const rolling = upstream()
   const newest = newestSlotMs(T0)
@@ -384,14 +391,44 @@ test('a server on a live source asks adsb.lol for nothing unless it is asked to 
   const roller = createServer(config(), { source: liveSource(clock), nowMs, historyFetch: rolling.fetchFn, rollHistory: true })
   const base = await roller.listen(0)
   t.after(() => roller.close())
+  await sleep(120)
+  assert.deepEqual(rolling.urls, [], 'no page has asked for traffic and there are no alerts: nothing is fetched')
+
+  assert.equal((await get(liveView(base))).status, 200)
   await waitFor('the newest two half hours', () => rolling.urls.length >= 2)
-  assert.deepEqual(rolling.urls, [heatUrl(newest), heatUrl(newest - SLOT_MS)], 'the newest, then the one before')
+  assert.deepEqual(rolling.urls, [heatUrl(newest), heatUrl(newest - SLOT_MS)], 'at once: the newest, then the one before')
   let slots: HistoryStatus['slots'] = []
   for (let i = 0; i < 200 && slots.filter((s) => s.state === 'ready').length < 2; i++) {
     slots = (await get<HistoryStatus>(`${base}/api/history/status`)).body.slots
     await sleep(5)
   }
   assert.deepEqual(slots.map((s) => [s.slotMs, s.state]), [[newest - SLOT_MS, 'ready'], [newest, 'ready']])
+})
+
+test('the rolling fetch rests from 10 min after a page last asked for traffic, live or past; a page back after that has the newest hour fetched at once', async (t) => {
+  const ticks = t.mock.method(HistoryStore.prototype, 'tick') // the rolling fetch, as it is (the minute's timer does not fire in a test)
+  const clock = { t: T0 }
+  const up = upstream()
+  const newest = newestSlotMs(T0)
+  for (const slot of [newest, newest + SLOT_MS]) up.custom.set(heatUrl(slot), () => heatResponse(slot))
+  const app = createServer(config(), { source: liveSource(clock), nowMs: () => clock.t, historyFetch: up.fetchFn, rollHistory: true })
+  const base = await app.listen(0)
+  t.after(() => app.close())
+  assert.equal(ticks.mock.callCount(), 0, 'no page yet')
+
+  await get(liveView(base))
+  assert.equal(ticks.mock.callCount(), 1, 'the first ask: at once')
+  for (const path of ['/api/view?lat=32&lon=34.8&nm=60', '/api/chase?hex=4691c4', '/api/history/status', `/api/history?slot=${SLOT}&lat=32&lon=34.8&nm=60`]) {
+    clock.t += 9 * 60_000
+    await get(base + path)
+    assert.equal(ticks.mock.callCount(), 1, `${path} within 10 min of the last ask: the minute's timer has it, nothing more`)
+  }
+  await get(`${base}/api/events`) // no alerts here (404), and no traffic: it keeps nothing going
+  clock.t += 10 * 60_000
+  assert.equal(newestSlotMs(clock.t), newest + SLOT_MS, 'a new half hour was published meanwhile')
+  await get(`${base}/api/history/status`)
+  assert.equal(ticks.mock.callCount(), 2, 'back after 10 min: at once')
+  await waitFor('the new half hour', () => up.urls.includes(heatUrl(newest + SLOT_MS)))
 })
 
 test('the command line rolls the past for a live source and not for a replay; it looks up the types and the oldest day for both', () => {

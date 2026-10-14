@@ -34,15 +34,18 @@
 //                                       flies now; with scan=1 also when it flew before, read in the background while the page
 //                                       keeps asking (days: how far back, default 14; deep=1: also with none found yet). 400: q
 //                                       does not read as a flight; 503: the route lists did not answer
-//   GET /*                              dist/ (index.html for client routes)
+//   GET /*                              dist/ (index.html for client routes): Vite's hashed assets/ kept a year by the browser, the
+//                                       rest asked again each time (ETag, 304 while unchanged); text over 1 KB gzipped once (serveStatic)
 // JSON, and a satellite frame's bytes, over 1 KB are gzipped when the client accepts it. ADSB_SOURCE=adsblol with ROUTES=1 also looks up flight routes;
 // any other live source with a CONTACT looks up only the routes of the aircraft selected or recorded (adsbdb.com).
 // The command line also keeps the newest hour of the past in memory for a live source (two heatmap files, refreshed each
-// half hour: rollHistory), and for any source loads the past's aircraft types and finds the oldest day adsb.lol keeps
-// (historyMeta). A server made in code, a test's included, fetches the past only when it is asked.
+// half hour: rollHistory) while a page asks for traffic, live or past (until 10 min after its last ask), or the alerts are on;
+// and for any source finds the oldest day adsb.lol keeps and loads the past's aircraft types at their first need: History's
+// first ask, or the alerts on (historyMeta). A server made in code, a test's included, fetches the past only when it is asked.
 // A live source with EVENTS_DIR set also has the alerts (alerts.ts): the poller feeds them every aircraft it takes and sweeps the
 // emergency squawks worldwide where the source can (adsb.fi), and each new half hour of the rolling past is read for late events
 // (the first read waits for the type table, so those events have their types).
+import type { Stats } from 'node:fs'
 import { readFile, stat } from 'node:fs/promises'
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
@@ -97,12 +100,18 @@ const SELECTED_ROUTE_GAP_MS = 5000
 const SELECTED_ROUTE_RPS = 1 / 60
 const FLIGHT_LOG_TICK_MS = 5000
 const HISTORY_TICK_MS = 60_000 // the rolling fetch of the newest half hours: a new file appears every 30 min
+// The rolling fetch rests once no page has asked for traffic this long (and the alerts are off): 12-25 MB a half hour, 0.6
+// to 1.2 GB a day, with nobody to show them to. A page that asks again has them fetched at once.
+const PAGE_IDLE_MS = 10 * 60_000
+// The asks of a page showing traffic, live or past. A tab in the background and a scenario ask none of them.
+const WATCHES = new Set(['/api/view', '/api/chase', '/api/history', '/api/history/status'])
 // Half-hour files held in memory (13-28 MB each): the newest two (rolling), and a replay's previous, current and next.
 const HISTORY_SLOTS = 5
 const RETRY_AFTER_S = 15 // what a 503 tells the client: the past could not be had now, try again then
 const ORIGIN_MAX_AGE_MS = 10 * 60_000 // a leg that ended longer ago than this is not the flight in the air now
-const TYPES_WAIT_MS = 5000 // the first ask for the past, and the first late scan, wait this long for the type table, which loads as the server starts
-const META_TICK_MS = 60_000 // the type table and the oldest day are checked this often; each loads when it is due
+// The first ask for the past, and the first late scan, wait this long for the type table, which loads at its first need.
+const TYPES_WAIT_MS = 5000
+const META_TICK_MS = 60_000 // the type table (once it is needed) and the oldest day are checked this often; each loads when it is due
 const SPAN_MAX_MS = 48 * 3_600_000 // the longest span of one aircraft's legs: the client asks for a day and the 12 h before it
 const gzipAsync = promisify(gzip)
 const POSTS = new Set(['/api/record', '/api/recordings/rename', '/api/recordings/delete', '/api/recordings/import', '/api/events']) // the only writes
@@ -132,6 +141,16 @@ const TYPES: Record<string, string> = {
   '.wav': 'audio/wav',
   '.vtt': 'text/vtt; charset=utf-8',
 }
+// Static files: Vite's hashed bundles (dist/assets/; a new build writes new names there, and public/ has no assets/ folder)
+// are kept by the browser for a year and never asked for again. The rest are asked again at each use: 304 while unchanged.
+const IMMUTABLE = 'public, max-age=31536000, immutable'
+// The static files gzipped when the browser accepts it and they are over 1 KB: text and WebAssembly. Everything else
+// (pictures, sound, models) goes as it is.
+const PACKABLE = /^(text\/|application\/(json|xml|wasm)|image\/svg\+xml)/
+const STATIC_GZIP_LEVEL = 6 // made once per file (Packs): zlib's default, smaller than the API's level 1
+
+/** Gzipped static files by path, each with the tag (size and mtime) it was made for; null: gzip did not make it smaller. */
+type Packs = Map<string, { tag: string; gz: Promise<Buffer | null> }>
 
 class BadRequest extends Error {}
 
@@ -225,7 +244,36 @@ function readBody(req: IncomingMessage, max: number): Promise<string | null> {
   })
 }
 
-const isFile = (p: string): Promise<boolean> => stat(p).then((s) => s.isFile(), () => false)
+/** The file's stat; null when there is no file there (nothing, or a folder). */
+const fileStat = (p: string): Promise<Stats | null> => stat(p).then((s) => (s.isFile() ? s : null), () => null)
+
+/** Whether an If-None-Match header names this ETag (compared weakly: W/ set aside), or is `*`. */
+function etagMatches(header: string | undefined, etag: string): boolean {
+  if (header === undefined) return false
+  const bare = (t: string): string => t.trim().replace(/^W\//, '')
+  return header.split(',').some((t) => t.trim() === '*' || bare(t) === bare(etag))
+}
+
+/**
+ * The gzip of a static file, made off the event loop (zlib's thread pool) once for its tag, its size and mtime: a new
+ * build or an edit makes it again. The asks meanwhile share it. null when it is no smaller than the file. A read that
+ * fails is not kept: the next ask tries again.
+ * ponytail: one kept per path for the server's life, so a build made under a running server leaves its old bundles' gzip
+ * (a few MB) in memory until a restart. npm start builds before it starts the server.
+ */
+function packed(packs: Packs, file: string, tag: string): Promise<Buffer | null> {
+  const hit = packs.get(file)
+  if (hit !== undefined && hit.tag === tag) return hit.gz
+  const gz = readFile(file).then(async (body) => {
+    const out = await gzipAsync(body, { level: STATIC_GZIP_LEVEL })
+    return out.length < body.length ? out : null
+  })
+  gz.catch(() => {
+    if (packs.get(file)?.gz === gz) packs.delete(file)
+  })
+  packs.set(file, { tag, gz })
+  return gz
+}
 
 /**
  * A single `Range: bytes=a-b | a- | -n` header resolved against a `size`-byte file.
@@ -254,12 +302,16 @@ function parseRange(header: string | undefined, size: number): { start: number; 
 /**
  * A file under root: the path itself, index.html for client routes (no extension), else 404. Honours a `Range`
  * request (206, one range only — a list of several serves the whole file, matching how few clients ask for one and
- * how rarely servers bother splitting the reply). Every response, ranged or not, advertises `accept-ranges: bytes`.
+ * how rarely servers bother splitting the reply). Every plain response, ranged or not, advertises `accept-ranges: bytes`.
  * Anything that decodes to a path outside root (%2e%2e, %2f, %5c, NUL) is a 404 before the disk is touched.
- * ponytail: no caching headers, ETags or compression, and a ranged read still loads the whole file into memory
- * first — fine for scenario audio clips (tens of MB); swap for a streamed partial read if that grows much further.
+ * Caching: a weak ETag from the file's size and mtime (one stat, no read) on every answer; Vite's hashed assets/ are kept a
+ * year (IMMUTABLE), the rest revalidated at each use (no-cache): an If-None-Match that names the tag is a 304 with no body.
+ * Text (PACKABLE) over 1 KB goes gzipped when the request accepts it, made once per file and change (packed). A request with
+ * a Range header, and every other type (pictures, sound, models), get the file's own bytes.
+ * ponytail: a plain answer, ranged too, still reads the whole file into memory first — fine for scenario audio clips (tens
+ * of MB); swap for a streamed partial read if that grows much further.
  */
-async function serveStatic(root: string, pathname: string, range: string | undefined, res: ServerResponse): Promise<void> {
+async function serveStatic(root: string, pathname: string, req: IncomingMessage, res: ServerResponse, packs: Packs): Promise<void> {
   let path: string
   try {
     path = decodeURIComponent(pathname)
@@ -269,25 +321,38 @@ async function serveStatic(root: string, pathname: string, range: string | undef
   const abs = resolve(root, `.${path}`)
   if (path.includes('\0') || (abs !== root && !abs.startsWith(root + sep))) return sendText(res, 404, 'not found\n')
   let file = abs
-  if (!(await isFile(file))) {
+  let st = await fileStat(file)
+  if (st === null) {
     if (extname(path) !== '') return sendText(res, 404, 'not found\n')
     file = join(root, 'index.html')
-    if (!(await isFile(file))) return sendText(res, 404, 'the client is not built: run npm run build\n')
+    st = await fileStat(file)
+    if (st === null) return sendText(res, 404, 'the client is not built: run npm run build\n')
+  }
+  const type = TYPES[extname(file)] ?? 'application/octet-stream'
+  const packable = PACKABLE.test(type)
+  const etag = `W/"${st.size.toString(16)}-${Math.floor(st.mtimeMs).toString(16)}"` // weak: the plain and gzipped forms share it
+  const cache: Record<string, string> = { etag, 'cache-control': file.startsWith(join(root, 'assets') + sep) ? IMMUTABLE : 'no-cache' }
+  if (packable) cache.vary = 'accept-encoding'
+  if (etagMatches(req.headers['if-none-match'], etag)) return void res.writeHead(304, cache).end()
+  const range = req.headers.range
+  if (packable && range === undefined && st.size > GZIP_MIN_BYTES && acceptsGzip(req.headers['accept-encoding'])) {
+    const gz = await packed(packs, file, etag)
+    if (gz !== null) return void res.writeHead(200, { ...cache, 'content-type': type, 'content-encoding': 'gzip', 'content-length': gz.length }).end(gz)
   }
   const body = await readFile(file)
-  const type = TYPES[extname(file)] ?? 'application/octet-stream'
   const r = parseRange(range, body.length)
   if (r === 'unsatisfiable') {
     res.writeHead(416, { 'content-range': `bytes */${body.length}`, 'accept-ranges': 'bytes' }).end()
     return
   }
   if (r === null) {
-    res.writeHead(200, { 'content-type': type, 'content-length': body.length, 'accept-ranges': 'bytes' }).end(body)
+    res.writeHead(200, { ...cache, 'content-type': type, 'content-length': body.length, 'accept-ranges': 'bytes' }).end(body)
     return
   }
   const slice = body.subarray(r.start, r.end + 1)
   res
     .writeHead(206, {
+      ...cache,
       'content-type': type,
       'content-length': slice.length,
       'content-range': `bytes ${r.start}-${r.end}/${body.length}`,
@@ -306,12 +371,14 @@ async function serveStatic(root: string, pathname: string, range: string | undef
  * deps.flightsFetch replaces fetch for the flight search's lists (adsbdb.com, the airlines' callsign lists, Ben Gurion's board; tests); its
  * past comes through deps.historyFetch.
  * deps.historyFetch replaces fetch for the past (adsb.lol's heatmap and trace files, the type table; tests). deps.rollHistory
- * (default false) keeps the newest two half hours of the past fetched while the server listens: the command line sets it for
- * a live source. deps.historyMeta (default false) loads the type table for the past's aircraft (typeDb.ts) and finds the
- * oldest day adsb.lol keeps (HistoryStore.tickOldest), each refreshed while the server listens: the command line sets it for
- * any source. Off, the past is fetched only when a client asks, so a test server asks adsb.lol for nothing by itself; its
- * aircraft have no type and the oldest day is taken to be 30 days back. deps.types and deps.oldestSlotMs put a table and an
- * oldest day in instead (tests).
+ * (default false) keeps the newest two half hours of the past fetched while a page asks for traffic, live or past (WATCHES,
+ * until 10 min after its last ask), or the alerts are on: the command line sets it for a live source. A page that asks after
+ * an idle spell has them fetched at once. deps.historyMeta (default false) finds the oldest day adsb.lol keeps
+ * (HistoryStore.tickOldest), refreshed while the server listens, and loads the type table for the past's aircraft (typeDb.ts)
+ * at its first need, History's first ask or the alerts on, refreshed daily after: the command line sets it for any source.
+ * Off, the past is fetched only when a client asks, so a test server asks adsb.lol for nothing by itself; its aircraft have
+ * no type and the oldest day is taken to be 30 days back. deps.types and deps.oldestSlotMs put a table and an oldest day in
+ * instead (tests).
  */
 export function createServer(
   cfg: ServerConfig,
@@ -351,7 +418,7 @@ export function createServer(
           push: cfg.ntfyUrl === null ? undefined : ntfyPush(cfg.ntfyUrl, deps.pushFetch),
           typeOf: (hex) => types?.lookup(hex) ?? { type: null, category: null },
         })
-  // The poller prunes the sample store (180 s of track, 35 min for each newest sample) on every 100 ms tick and the info store on every good answer,
+  // The poller prunes the sample store (180 s of track, 35 min for each newest sample) once a second and the info store on every good answer,
   // so no separate prune timer is needed.
   const poller = new Poller(source, store, bucket, {
     ...POLLER_DEFAULTS,
@@ -399,10 +466,19 @@ export function createServer(
   const traces = new TraceStore({ userAgent: pastUa, fetchFn: deps.historyFetch, nowMs })
   let historyTimer: ReturnType<typeof setInterval> | null = null
   // The past's aircraft types: Mictronics' table, loaded by this server only when asked to (historyMeta), else one put in.
+  // It loads at its first need: History's first ask for the past, or the alerts on (their late check and falls read it).
   const ownTypes = deps.types === undefined && deps.historyMeta === true ? new TypeDb({ userAgent: pastUa, fetchFn: deps.historyFetch, nowMs }) : null
   const types = deps.types ?? ownTypes
   let typesWait: Promise<boolean> | null = null // the first ask's wait for the table, shared by the asks meanwhile
+  let typesNeeded = false // History has asked for the past: from then on the table is loaded and kept fresh, as while the alerts are on
   let metaTimer: ReturnType<typeof setInterval> | null = null
+  let askedMs = -Infinity // when a page last asked for traffic, live or past (WATCHES)
+  let roll: (() => void) | null = null // the rolling fetch of the past, once listen() has armed it (deps.rollHistory)
+  const packs: Packs = new Map() // the static files gzipped
+  /** Loads the type table if it is due (TypeDb.tick: at once the first time, then a day after a good load). */
+  const tickTypes = (): void => void ownTypes?.tick().catch((e: unknown) => console.error('types: tick failed:', e))
+  /** Whether the newest hour of the past is kept fetched now: the alerts are on (they read each half hour), or a page asked for traffic in the last 10 min. */
+  const rollWanted = (): boolean => alerts?.on === true || nowMs() - askedMs < PAGE_IDLE_MS
   // The flight search (flightSearch.ts): what a ticket number or callsign is (adsbdb, the airlines' callsign lists), who sends
   // it now (the live source's lookup, through the poller's budget), and the days it flew (the start of adsb.lol's half hours,
   // read from a file the history store holds when it does; its aircraft's traces). All asked only when a page searches.
@@ -421,6 +497,23 @@ export function createServer(
     oldestSlotMs: () => history.oldestSlotMs(),
     board: (airline, number) => board.times(airline, number),
   })
+
+  /**
+   * A page asked for traffic, live or past (WATCHES). One back after an idle spell (no ask for 10 min, the alerts off) has the
+   * newest hour of the past fetched at once, not at the next minute's tick, so History opens on it as before.
+   */
+  function asked(): void {
+    const idle = !rollWanted()
+    askedMs = nowMs()
+    if (idle) roll?.()
+  }
+
+  /** History asks for the past: the type table is wanted from now on (loaded now, then kept fresh by the meta timer). */
+  function needTypes(): void {
+    if (typesNeeded) return
+    typesNeeded = true
+    tickTypes()
+  }
 
   /**
    * The AircraftInfo this client lacks for the aircraft in a view answer. since = 0: all of them. Otherwise an
@@ -501,8 +594,9 @@ export function createServer(
   /**
    * One past half hour in a circle: [200, HistorySlot], each aircraft with its type and category from the type table (null
    * when it has none); [404, …] when adsb.lol has no file for it (or it is older than the oldest day it keeps); [503, …] when
-   * it cannot be had now (adsb.lol failed or is not done with it yet, too many downloads): ask again. The first ask after the
-   * server starts waits up to 5 s for the type table, as the file downloads; no ask after it waits.
+   * it cannot be had now (adsb.lol failed or is not done with it yet, too many downloads): ask again. The first ask loads the
+   * type table (its first need, unless the alerts had it loaded) and waits up to 5 s for it, as the file downloads; no ask
+   * after it waits.
    */
   async function pastSlot(q: URLSearchParams): Promise<[number, unknown]> {
     const slot = num(q, 'slot')
@@ -513,6 +607,7 @@ export function createServer(
     check(Math.abs(lat) <= 90, 'lat must be in [-90, 90]')
     check(Math.abs(lon) <= 180, 'lon must be in [-180, 180]')
     check(nm > 0 && nm <= EVERYTHING_NM, `nm must be in (0, ${EVERYTHING_NM}]`)
+    needTypes()
     typesWait ??= types === null ? Promise.resolve(false) : types.ready(TYPES_WAIT_MS)
     const [r] = await Promise.all([history.query(slot, { lat, lon, nm }), typesWait])
     if (r === 'missing') return [404, { error: 'no data for this half hour' }]
@@ -656,6 +751,7 @@ export function createServer(
       const on = q.get('on')
       check(on === '1' || on === '0', 'on must be 1 or 0')
       alerts.setOn(on === '1')
+      if (alerts.on) tickTypes() // the late check and the falls read the type table: it loads now, by the next late scan
     }
     return [200, alerts.reply()]
   }
@@ -675,7 +771,8 @@ export function createServer(
     if (post && site !== undefined && site !== 'same-origin' && site !== 'none') {
       return sendJson(req, res, 403, { error: 'a POST from a page on another site is refused' })
     }
-    if (!isApi) return serveStatic(root, url.pathname, req.headers.range, res)
+    if (!isApi) return serveStatic(root, url.pathname, req, res, packs)
+    if (WATCHES.has(url.pathname)) asked()
     let status = 200
     let body: unknown
     let retryAfterS = RETRY_AFTER_S
@@ -752,19 +849,22 @@ export function createServer(
             }, ROUTE_TICK_MS)
             routeTimer.unref()
           }
-          // Asked to roll (the command line does, for a live source): the newest hour of the past stays ready, so History
-          // opens on it without a wait. Otherwise the past is fetched only when a client asks. After each tick the alerts read the
-          // newest two half hours held (oldest first, so the end of each goes before the next and a fall across their boundary is
-          // found: Alerts.scanSlot; one already read costs nothing, nor does any while the switch is off).
+          // Asked to roll (the command line does, for a live source): the newest hour of the past stays ready while a page asks for
+          // traffic (until 10 min after its last ask) or the alerts are on (rollWanted), so History opens on it without a wait.
+          // Otherwise the past is fetched only when a client asks. After each tick the alerts read the newest two half hours held
+          // (oldest first, so the end of each goes before the next and a fall across their boundary is found: Alerts.scanSlot; one
+          // already read costs nothing, nor does any while the switch is off).
           if (deps.rollHistory === true && historyTimer === null) {
             // ponytail: scanSlot reads a file synchronously, so a scan holds the event loop (poller ticks, HTTP replies): about 0.2 to
             // 0.6 s for a real 13 to 30 MB half hour, about 1.2 s for the two held the first time the switch is turned on, one half
             // hour at a time after. A worker thread is the way up if that is ever felt.
             const scan = async (): Promise<void> => {
-              // The type table loads as the server starts, as the two half hours do. Each half hour is read once, so one read before
-              // the table is in would leave its events without a type for good: wait for it, as the first ask for the past does.
+              if (alerts?.on !== true) return // off: nothing is read (scanSlot reads nothing then either), nor the type table wanted
+              // The type table loads at the start with the switch on, or as it is turned on. Each half hour is read once, so one read
+              // before the table is in would leave its events without a type for good: wait for it, as the first ask for the past does.
               // ponytail: a type table still loading after 5 s leaves that scan without types, so its events have no type and
               // military and fast-jet falls are not left out.
+              tickTypes()
               await types?.ready(TYPES_WAIT_MS)
               const newest = newestSlotMs(nowMs())
               for (const slot of [newest - SLOT_MS, newest]) {
@@ -772,20 +872,24 @@ export function createServer(
                 if (f !== null) alerts?.scanSlot(f, slot)
               }
             }
-            const roll = (): void =>
+            roll = (): void => {
+              // Nobody to have it ready for: the next tick after the alerts turn on fetches it, and a page that asks, at once (asked).
+              if (!rollWanted()) return
               void history
                 .tick()
                 .then(scan, (e: unknown) => console.error('history: tick failed:', e))
                 .catch((e: unknown) => console.error('alerts: late check failed:', e))
+            }
             roll()
             historyTimer = setInterval(roll, HISTORY_TICK_MS)
             historyTimer.unref()
           }
-          // Asked to (the command line does, for any source): the type table and the oldest day adsb.lol keeps, each loaded
-          // when it is due (the table daily, the oldest day every 6 h, 10 min after a failure).
+          // Asked to (the command line does, for any source): the oldest day adsb.lol keeps and, once it is needed (History has
+          // asked for the past, or the alerts are on), the type table, each loaded when it is due (the table daily, the oldest day
+          // every 6 h, 10 min after a failure).
           if (deps.historyMeta === true && metaTimer === null) {
             const meta = (): void => {
-              void ownTypes?.tick().catch((e: unknown) => console.error('types: tick failed:', e))
+              if (typesNeeded || alerts?.on === true) tickTypes()
               void history.tickOldest().catch((e: unknown) => console.error('history: the oldest day search failed:', e))
             }
             meta()

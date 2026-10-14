@@ -62,6 +62,9 @@ export const SWEEP_PERIOD_MS = 30_000
 export const SWEEP_SHARE = 1 / 8
 
 const TICK_MS = 100
+// The sample store is pruned this often, not on every tick: its horizons are 180 s and 35 min, and a pass walks every
+// aircraft it holds (thousands in a wide view).
+const PRUNE_EVERY_MS = 1000
 /** A view up to this radius is polled as one circle of its own (the upstream's limit); a wider one as grid cells. */
 export const VIEW_CIRCLE_MAX_NM = 250
 const EMPTY_FACTOR = 4 // an area whose last answer was empty (sea, desert) is asked this many times less often…
@@ -167,6 +170,7 @@ export class Poller {
   #hookFailedMs = { onAircraft: -Infinity, onSample: -Infinity } // when each hook last threw and was logged
   #hexRetryMs = new Map<string, number>() // hex → not asked again before this (its last hex request brought no position)
   #lastAllReqMs = -Infinity
+  #prunedMs = -Infinity // when the sample store was last pruned
   #chaseOk = new OkIntervals()
   #snapOk = new OkIntervals()
   #bytes: { t: number; n: number }[] = [] // last hour of responses
@@ -258,7 +262,11 @@ export class Poller {
     try {
       const now = this.#now()
       this.#expire(now)
-      this.#store.prune(now)
+      // Once a second; a clock that went back (the wall clock set back) prunes at once and counts from there.
+      if (now - this.#prunedMs >= PRUNE_EVERY_MS || now < this.#prunedMs) {
+        this.#prunedMs = now
+        this.#store.prune(now)
+      }
       if (this.#source.caps.fullSnapshot) {
         if (now - this.#lastAllReqMs < this.#opts.fullSnapshotPeriodMs || !this.#bucket.tryTake()) return false
         this.#lastAllReqMs = now

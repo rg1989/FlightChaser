@@ -5,12 +5,13 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, utimesSync, writeFileSync } from 'node:fs'
 import { request } from 'node:http'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { fileURLToPath } from 'node:url'
+import { gunzipSync } from 'node:zlib'
 import type { ChaseResponse, HistoryStatus, RecordingInfo, RecordingTrack, RecordResponse, StatusReport, ViewResponse } from '../shared/api.ts'
 import { pushBody, pushTitle, type EventsReply } from '../shared/alerts.ts'
 import { distanceNm } from '../shared/geo.ts'
@@ -65,6 +66,19 @@ function rawGet(base: string, path: string): Promise<{ status: number; body: str
       res.setEncoding('utf8')
       res.on('data', (c: string) => (body += c))
       res.on('end', () => resolve({ status: res.statusCode ?? 0, body }))
+    })
+      .on('error', reject)
+      .end()
+  })
+}
+
+/** GET with these headers; the body as it came (fetch would undo a gzip). */
+function rawAsk(url: string, headers: Record<string, string> = {}): Promise<{ status: number; headers: Record<string, string | string[] | undefined>; body: Buffer }> {
+  return new Promise((resolve, reject) => {
+    request(url, { headers }, (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (c: Buffer) => chunks.push(c))
+      res.on('end', () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks) }))
     })
       .on('error', reject)
       .end()
@@ -357,6 +371,73 @@ test('static: HTTP Range on a 1000-byte file — 206 slices (a-b, a-, -n), 416 u
   const r5 = await fetch(`${base}/data.bin`, { headers: { range: 'bytes=0-9,20-29' } })
   assert.equal(r5.status, 200)
   assert.equal(Buffer.from(await r5.arrayBuffer()).length, 1000)
+})
+
+test('static: hashed assets/ are kept a year, the rest asked again (ETag, 304 while unchanged); text over 1 KB is gzipped once; a ranged ask and sound go as they are', async (t) => {
+  const dist = join(tmp(), 'dist')
+  mkdirSync(join(dist, 'assets'), { recursive: true })
+  mkdirSync(join(dist, 'scenarios', 'x'), { recursive: true })
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>Flight Chaser</title>')
+  const js = `console.log(${JSON.stringify('flight '.repeat(1000))})\n`
+  writeFileSync(join(dist, 'assets', 'app-BP0V_pU9.js'), js)
+  const track = join(dist, 'scenarios', 'x', 'track.csv')
+  const csv = 't,alt\n'.repeat(500)
+  writeFileSync(track, csv)
+  writeFileSync(join(dist, 'scenarios', 'x', 'cvr.m4a'), Buffer.alloc(5000, 1)) // would gzip to nothing, but sound goes as it is
+  const app = createServer({ ...readServerConfig({ REPLAY_FILES: FILE }), staticDir: dist })
+  const base = await app.listen(0)
+  t.after(() => app.close())
+  const gzip = { 'accept-encoding': 'gzip, deflate, br' }
+  const YEAR = 'public, max-age=31536000, immutable'
+
+  // A hashed bundle: kept a year; gzipped for a browser that takes it, its own bytes for one that does not, one tag for both.
+  const a = await rawAsk(`${base}/assets/app-BP0V_pU9.js`, gzip)
+  assert.deepEqual([a.status, a.headers['cache-control'], a.headers['content-encoding'], a.headers['content-type'], a.headers.vary], [200, YEAR, 'gzip', 'text/javascript; charset=utf-8', 'accept-encoding'])
+  assert.equal(a.headers['accept-ranges'], undefined, 'no range of the gzip is offered')
+  assert.equal(Number(a.headers['content-length']), a.body.length)
+  assert.equal(gunzipSync(a.body).toString('utf8'), js)
+  assert.ok(a.body.length < js.length / 10, `${a.body.length} B gzipped of ${js.length}`)
+  const tag = a.headers.etag as string
+  assert.match(tag, /^W\/"[0-9a-f]+-[0-9a-f]+"$/)
+  const own = await rawAsk(`${base}/assets/app-BP0V_pU9.js`)
+  assert.deepEqual([own.status, own.headers['content-encoding'], own.headers['accept-ranges'], own.headers.etag, own.headers['cache-control'], own.body.toString('utf8')], [200, undefined, 'bytes', tag, YEAR, js])
+  const held = await rawAsk(`${base}/assets/app-BP0V_pU9.js`, { ...gzip, 'if-none-match': tag })
+  assert.deepEqual([held.status, held.body.length, held.headers.etag, held.headers['cache-control'], held.headers.vary], [304, 0, tag, YEAR, 'accept-encoding'])
+
+  // index.html, and the client routes it answers: asked again at each use, 304 while it is the same file.
+  const home = await rawAsk(`${base}/`)
+  assert.equal(home.headers['cache-control'], 'no-cache')
+  const homeTag = home.headers.etag as string
+  for (const path of ['/', '/index.html', '/chase/a067ec']) {
+    for (const asked of [homeTag, `"x", ${homeTag}`, homeTag.slice(2), '*']) {
+      const r = await rawAsk(base + path, { 'if-none-match': asked })
+      assert.deepEqual([r.status, r.body.length, r.headers['cache-control']], [304, 0, 'no-cache'], `${path} ${asked}`)
+    }
+    assert.equal((await rawAsk(base + path, { 'if-none-match': 'W/"1-1"' })).status, 200, path)
+  }
+  writeFileSync(join(dist, 'index.html'), '<!doctype html><title>Flight Chaser, built again</title>')
+  const rebuilt = await rawAsk(`${base}/`, { 'if-none-match': homeTag })
+  assert.equal(rebuilt.status, 200, 'a new build is a new tag')
+  assert.notEqual(rebuilt.headers.etag, homeTag)
+  assert.match(rebuilt.body.toString('utf8'), /built again/)
+
+  // A ranged ask gets the file's own bytes, whatever it accepts; sound is never gzipped. Both carry the cache headers.
+  const part = await rawAsk(`${base}/scenarios/x/track.csv`, { ...gzip, range: 'bytes=0-99' })
+  assert.deepEqual([part.status, part.headers['content-encoding'], part.headers['content-range'], part.headers['cache-control'], part.body.toString('utf8')], [206, undefined, `bytes 0-99/${csv.length}`, 'no-cache', csv.slice(0, 100)])
+  const sound = await rawAsk(`${base}/scenarios/x/cvr.m4a`, gzip)
+  assert.deepEqual([sound.status, sound.headers['content-encoding'], sound.headers.vary, sound.headers['accept-ranges'], sound.headers['cache-control'], sound.body.length], [200, undefined, undefined, 'bytes', 'no-cache', 5000])
+  assert.match(sound.headers.etag as string, /^W\//)
+
+  // Gzipped once per file and change: while its size and mtime stay, the gzip made first is served from memory.
+  const at = new Date(1_900_000_000_000) // whole seconds: utimes keeps them exactly
+  utimesSync(track, at, at)
+  const packedCsv = async (): Promise<string> => gunzipSync((await rawAsk(`${base}/scenarios/x/track.csv`, gzip)).body).toString('utf8')
+  assert.equal(await packedCsv(), csv)
+  writeFileSync(track, 'T,ALT\n'.repeat(500)) // as long
+  utimesSync(track, at, at)
+  assert.equal(await packedCsv(), csv, 'the same tag: not read again')
+  utimesSync(track, at, new Date(1_900_000_002_000))
+  assert.equal(await packedCsv(), 'T,ALT\n'.repeat(500), 'a new mtime: made again')
 })
 
 test('CLI: `node server/main.ts` reads the environment and serves', async (t) => {
@@ -835,4 +916,23 @@ test('the late scan: a history tick that fails is logged as the tick\'s, and not
   await sleep(50)
   assert.equal(scan.mock.callCount(), 0)
   assert.ok(!logged.includes('alerts: late check failed:'), logged.join(' | '))
+})
+
+test('the type table is not loaded at the start with the alerts off, nor for live traffic; turning the alerts on loads it', async (t) => {
+  const asked: string[] = []
+  const historyFetch = (async (input: string | URL | Request) => {
+    asked.push(String(input))
+    return String(input) === TYPE_DB_URL ? new Response(typeZip()) : new Response('not found', { status: 404 })
+  }) as typeof fetch
+  const s = await liveServer(t, { deps: { historyMeta: true, historyFetch } })
+  await waitFor('the oldest day search', async () => asked, (a) => a.some((u) => u.endsWith('/heatmap/00.bin.ttf')))
+  await getEvents(s.base)
+  await get<ViewResponse>(viewUrl(s.base, 0))
+  await get<ChaseResponse>(`${s.base}/api/chase?hex=${CHASED}`)
+  await sleep(50)
+  assert.ok(!asked.includes(TYPE_DB_URL), 'not asked for')
+
+  assert.equal((await postEvents(s.base, 'on=1')).status, 200)
+  await waitFor('the table', async () => asked, (a) => a.includes(TYPE_DB_URL))
+  assert.equal(asked.filter((u) => u === TYPE_DB_URL).length, 1)
 })

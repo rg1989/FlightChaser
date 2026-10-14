@@ -25,5 +25,6 @@
   keeps is one file of 12 to 25 MB; its first megabyte or so names every aircraft in the air as the half hour begins, so
   the server asks for that part only. It reads the newest day at even steps, then the days before at the times of day the
   flight was found, and takes each flight's ends from its aircraft's trace. It reads only while a page asks.
-- A live server keeps the newest hour of the past in memory (two half-hour files, ~25 MB per 30 min while it runs); older
-  half hours are fetched when the replay needs them and dropped again. Nothing is written to disk.
+- A live server keeps the newest hour of the past in memory (two half-hour files, ~25 MB per 30 min) while a page shows traffic
+  (until 10 minutes after its last ask) or the alerts are on; older half hours are fetched when the replay needs them and dropped
+  again. Nothing is written to disk.

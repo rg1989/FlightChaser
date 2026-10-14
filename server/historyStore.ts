@@ -2,7 +2,8 @@
 // The past, from adsb.lol: one heatmap file per UTC half hour (server/heatmap.ts reads it), published just after the half
 // hour ends. A file is fetched when it is asked for and held in memory, a few at a time: 12-25 MB on the wire, about 13-28 MB
 // decompressed, so about 140 MB at the server's maxSlots of 5. tick() keeps the newest two published ones, so the minutes
-// just gone are always at hand; a live server calls it every minute. tickOldest() finds the oldest day adsb.lol still keeps
+// just gone are at hand; a live server calls it every minute while a page asks for traffic or the alerts are on (main.ts
+// rollWanted), and at once for a page back after a spell with neither. tickOldest() finds the oldest day adsb.lol still keeps
 // (about 42 days back: whole days go, oldest first); the command line calls it every minute too. Nothing here runs a timer.
 // Memory only, by the user's choice: they asked not to collect the files. There is no disk cache; a restart fetches again.
 // ponytail: the body is not capped: it comes from adsb.lol over https.
@@ -124,7 +125,7 @@ export class HistoryStore {
     return this.#files.get(slotMs) ?? null
   }
 
-  /** The rolling fetch: the newest two published slots are held afterwards, if the upstream has them. Call it every minute. */
+  /** The rolling fetch: the newest two published slots are held afterwards, if the upstream has them. Call it every minute while they are wanted. */
   async tick(): Promise<void> {
     const newest = newestSlotMs(this.#now())
     await this.file(newest)

@@ -375,6 +375,21 @@ test('samples land in the store in server clock: upstream now − seen_pos + (tR
   assert.equal(s.store.size, 3)
 })
 
+test('the sample store is pruned once a second, not on every 100 ms tick; a clock set back prunes at once', async (t) => {
+  const s = setup({ fullSnapshot: true })
+  const prune = t.mock.method(s.store, 'prune')
+  await runUntil(s, 2950) // ticks at 0, 100, …, 2900 ms
+  const at = (): number[] => prune.mock.calls.map((c) => (c.arguments[0] as number) - T0)
+  assert.deepEqual(at(), [0, 1000, 2000])
+  s.clock.t = T0 + 500 // the wall clock set back
+  await s.poller.tick()
+  s.clock.t = T0 + 1400
+  await s.poller.tick()
+  s.clock.t = T0 + 1500
+  await s.poller.tick()
+  assert.deepEqual(at(), [0, 1000, 2000, 500, 1500], 'at once, then a second on from there')
+})
+
 test('hidden (PIA/LADD) aircraft are dropped unless hideFlagged is false', async () => {
   const hide = setup()
   hide.poller.touchView(LLBG[0], LLBG[1], 5)
