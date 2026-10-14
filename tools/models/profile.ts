@@ -37,7 +37,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ModelManifestEntry, ModelProfile, Paint } from '../../client/types.ts'
 import { loadBody, type Mesh } from './light-anchors.ts'
-import { asked, flagged, readManifest, recipeOf, writeModel, type Stations } from './packages.ts'
+import { asked, flagged, readManifest, recipeOf, setting, writeModel, type Stations } from './packages.ts'
 
 type Seg = number[] // flat [u0, v0, u1, v1, …]
 
@@ -301,9 +301,11 @@ export function profileOf(e: ModelManifestEntry, m: Mesh = paintMesh(e), doc: St
   spans.delete([...boxes].reduce((a, b) => (b[1].box[5] - b[1].box[4] > a[1].box[5] - a[1].box[4] ? b : a))[0]) // never the longest part: the fuselage (or all of the airframe, welded)
   // engines: the biggest nacelle-shaped part in the paint map's engine box on the left, and what hangs with it
   const groups = engineParts(boxes, P.engines)
-  const engines: ModelProfile['engines'] = groups.length === 0 ? null : [ // every left engine (a 747's two)
+  // every left engine (a 747's two) in one box, up to the highest pylon's top; lowEngines: up to the lowest one's (the
+  // inboard pylon's, where the wing rises so much to the outboard one that a box up to its top takes in the wing between them)
+  const engines: ModelProfile['engines'] = groups.length === 0 ? null : [
     Math.min(...groups.map((g) => g.box[0])), Math.max(...groups.map((g) => g.box[1])), Math.min(...groups.map((g) => g.box[2])),
-    Math.max(...groups.map((g) => g.box[3])), Math.min(...groups.map((g) => g.box[4])), Math.max(...groups.map((g) => g.box[5])),
+    Math.max(...groups.map((g) => g.box[3])), Math.min(...groups.map((g) => g.box[4])), (flagged(e.id, 'lowEngines') ? Math.min : Math.max)(...groups.map((g) => g.box[5])),
   ]
 
   const inBox = (x: number, y: number, z: number): boolean =>
@@ -323,7 +325,11 @@ export function profileOf(e: ModelManifestEntry, m: Mesh = paintMesh(e), doc: St
   const stations: Station[] = []
   for (let z = zMax - 0.02; z > zMin + 0.01; z -= 0.25) {
     const s = station(m, keep, z, hw, z < zMax - 0.12 * (zMax - zMin)) // no blades on the nose cone (its pointed top)
-    if (s !== null) stations.push(s)
+    // a section whose bottom is above the last station's top has left the fuselage: a tail cone that tapers into the fin's own width and
+    // is trimmed there as an antenna (its bottom jumps up to the fin cap), not a station; so has one whose top jumps up by more than the
+    // fuselage's half-width (a T-tail welded to the fin and the fuselage in one part: the section past the tail cone is the fin)
+    const prev = stations[stations.length - 1]
+    if (s !== null && !(prev !== undefined && z < (zMin + zMax) / 2 && (s.bottom > prev.top || s.top - prev.top > hw))) stations.push(s)
     else if (z < (zMin + zMax) / 2 && stations.length > 0) break // the tail cone has ended
   }
   let nose: [number, number] = [-Infinity, 0] // the nose tip's [z, y]: the forward-most point within the fuselage's width
@@ -337,6 +343,8 @@ export function profileOf(e: ModelManifestEntry, m: Mesh = paintMesh(e), doc: St
 
   // fin: horizontal slices above the body top, aft half
   const finX = Math.min(P.fin.halfWidth, 0.7)
+  const finRootM = setting(e.id, 'finRootM')
+  const finLeMax = finRootM === undefined ? zMid : nose[0] - finRootM // no fin point further forward than this
   const aft = stations.filter((s) => s.z < zMid)
   const rootLow = Math.min(...aft.map((s) => s.top))
   let finTopY = -Infinity
@@ -353,7 +361,7 @@ export function profileOf(e: ModelManifestEntry, m: Mesh = paintMesh(e), doc: St
     let [le, te] = [-Infinity, Infinity]
     for (let k = 0; k < s.length; k += 2) {
       const [x, z] = [s[k], s[k + 1]]
-      if (Math.abs(x) > finX || z > zMid || y < along(top, z) + 0.06) continue
+      if (Math.abs(x) > finX || z > finLeMax || y < along(top, z) + 0.06) continue
       if (prev !== undefined && z > prev.le + 1.5) continue
       ;[le, te] = [Math.max(le, z), Math.min(te, z)]
     }
@@ -561,6 +569,7 @@ export function profilePng(e: ModelManifestEntry, r: Measured, dir: string): str
 }
 
 if (import.meta.main) {
+  process.getBuiltinModule('node:os').setPriority(19) // gives way to whatever else runs on this machine
   const png = process.argv.indexOf('--png')
   const dir = png >= 0 ? process.argv[png + 1] : null
   if (dir !== null) mkdirSync(dir, { recursive: true })

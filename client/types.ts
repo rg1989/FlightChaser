@@ -84,6 +84,7 @@ export interface ModelManifestEntry {
   // landing gear drawn with the model (ChaseModel.setGear, Traffic); heightM: origin → wheel bottom, gear down. legs: the
   // GLB's leg nodes (tools/models/gear-glb.ts), each swung upDeg about axis (body frame: nose +X, left +Y, up +Z) to retract.
   gear?: { uri: string; heightM: number; legs?: Array<{ node: string; axis: [number, number, number]; upDeg: number }> }
+  lod?: { uri: string; triangles: number }     // the light copy the traffic draws while the aircraft is small on screen (tools/models/lod.ts)
   lights?: LightAnchors                         // exterior lights (aircraftLights.ts); absent: none drawn
   profile?: ModelProfile                        // side geometry the livery artwork is drawn on (tools/models/profile.ts)
 }
@@ -134,6 +135,7 @@ export interface Paint {
   finLogo: [z: number, y: number, side: number]               // centre and side of the square fin decal
   title: [z: number, y: number, width: number]                // centre and width of the 4:1 fuselage title
   windows?: [y: number, zAft: number, zFore: number, pitch: number] // the cabin window row (tools/models/light-anchors.ts)
+  windowSize?: [width: number, height: number]                 // a cabin window, metres, where the pitch does not give it (livery.ts windowsText; the ERJ-145's wide pitch)
   body?: [zNose: number, zTail: number, yBottom: number, yTop: number] // the box a scenario's body-wrap decal covers
   wingTipY?: number                                           // mesh y of the wing at the tip: ChaseModel.setShape folds the span to it
   cut?: {                                                     // the damage ChaseModel.setDamage shows (JAL 123: fin and tail cone lost)

@@ -1,0 +1,47 @@
+{
+  "mesh": { "source": "flightairmap-glb/A343.glb", "date": "2026-10-14" },
+  "stations": {
+    "lengthM": 63.69,
+    "doors": [
+      5.85,
+      17.74,
+      35.96,
+      50.96
+    ],
+    "cockpit": 3.3,
+    "source": "https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-12/AC_A340-200-300_20251201.pdf"
+  },
+  "gear": {
+    "noseAftM": 6.68,
+    "wheelbaseM": 25.375,
+    "trackM": 10.684,
+    "mains": 4,
+    "mainTyre": [
+      1.4,
+      0.53
+    ],
+    "noseTyre": [
+      1.05,
+      0.395
+    ],
+    "clearanceM": 1.28,
+    "mainsRetract": "inboard",
+    "body": {
+      "aftM": 0.997,
+      "trackM": 0,
+      "wheels": 2,
+      "retract": "forward"
+    }
+  },
+  "sources": [
+    "[AC] Airbus, A340-200/-300 Aircraft Characteristics, Airport and Maintenance Planning, revision 33, 1 December 2025: https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-12/AC_A340-200-300_20251201.pdf"
+  ],
+  "flags": [
+    "lowEngines"
+  ],
+  "windowRowM": [
+    7.3,
+    50.0,
+    3.7
+  ]
+}

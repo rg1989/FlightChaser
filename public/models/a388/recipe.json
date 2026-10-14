@@ -1,0 +1,35 @@
+{
+  "mesh": { "source": "flightairmap-glb/A380.glb", "date": "2026-10-14" },
+  "stations": {
+    "lengthM": 72.73,
+    "doors": [6.32, 16.5, 32.68, 44.74, 53.63],
+    "cockpit": 3.75,
+    "source": "https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-12/AC_A380_20251201.pdf"
+  },
+  "gear": {
+    "noseAftM": 4.97,
+    "wheelbaseM": 28.61,
+    "trackM": 12.46,
+    "mains": 4,
+    "mainTyre": [1.4, 0.53],
+    "noseTyre": [1.27, 0.46],
+    "clearanceM": 1.27,
+    "mainsRetract": "inboard",
+    "body": { "aftM": 3.28, "trackM": 5.26, "retract": "aft" }
+  },
+  "flags": ["lowEngines"],
+  "windowPitchM": 0.64,
+  "windowRowM": [7.56, 52.36, 3.95],
+  "sources": [
+    "[AC] Airbus, A380 Aircraft Characteristics, Airport and Maintenance Planning, revision 20, 1 December 2025: https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-12/AC_A380_20251201.pdf",
+    "Size: [AC] figure 2-2-0-991-001-A01: length 72.73 m, span 79.75 m, fuselage 7.14 m wide and 8.41 m tall, tailplane span 30.37 m. The mesh: 72.68 m, 79.78 m, 7.10 m, 8.50 m, 30.28 m. It is not scaled.",
+    "Doors: [AC] figure 2-7-0-991-002-A01: the main deck's left doors M1L to M5L (M3L is the emergency exit door over the wing). The upper deck's doors (U1L 20.94 m, U2L 40.3 m, U3L 49.19 m) are left out: the paint map has one row.",
+    "Cockpit: the aft edge of the side windows, measured on the drawing of the same figure (it prints no dimension for it): 3.75 m.",
+    "Windows: measured on the same drawing. The main deck's first window is 7.93 m and its last 52.04 m aft of the nose; they are 0.64 m apart on average (0.63 m to 0.66 m). The row is 4.63 m below the top of the fuselage: 0.4 m below its centre line, where the tool's rule does not look, so windowRowM gives it. 3.95 m above the keel under the row (the belly fairing counts) is 4.63 m below the mesh's crown.",
+    "Gear: [AC] figure 2-2-0-991-001-A01: the nose gear 4.97 m aft of the nose. Figure 7-2-0-991-003-A01: nose gear to wing gear 28.605 m and to body gear 31.881 m, wing gear track 12.456 m, body gear track 5.264 m, four wheels on each wing leg and six on each body leg, tyres 1 400 x 530 R23 (wing and body) and 1 270 x 455 R22 (nose). Section 2-9-0: the wing gear retracts sideways to the centre line, the body gear rearward, the nose gear forward. The body legs are drawn with four wheels: with six (body.wheels: 6) the gear has 856 triangles, and tools/models/gear-glb.test.ts allows 800.",
+    "clearanceM: [AC] figure 2-3-0-991-001-A01 at maximum ramp weight: the belly fairing 1.66 m and the inboard nacelles 1.05 m above the ground. The mesh's inboard nacelles hang 0.39 m below its belly fairing (0.61 m on the aircraft), so 1.27 m under them puts the belly fairing at 1.66 m.",
+    "lowEngines: the outboard pylon's top is 0.99 m above the inboard one's, and the wing's upper skin between the engines is below it.",
+    "Paint map, measured on the mesh: the fuselage is 3.56 m from the centre line at its side and the belly fairing 4.30 m (bodyHalfWidth 4.35 takes it in); the crown at y -2.04, the keel at -10.53; the fin's leading edge leaves the crown at z -17.7 and its tip is at y 11.23.",
+    "model.glb: third_party/aircraft-models/source/flightairmap-glb/A380.glb with these objects left out: engine.000 and engine.005 to engine.015 (three more copies of each engine, in the same place); in engine.1 to engine.4 the parts inside the nacelle (CompH, Stage1H, Stage2H, Stage3H, TurbineH, FanBack, cascade, FanCasingH); Box01, gearbayL, gearbayR and their .001 copies (inside the wing and the belly); door1B.001 to door4B.001 (copies); slot01 to slot06 and slat01b to slat06b (under the retracted slats); extras (antennas); static_disc_l and static_disc_r (static wicks). Then scripts/bl_join.py at ratio 1.0 (no decimation: 15,360 triangles) and scripts/canonicalise.py. A last pass drops the triangles of no area (6), the triangles that repeat another (88) and, of two triangles back to back, the one that faces into the airframe (134: the gear doors are two-sided in the source), and gives the six cockpit panes (the source's windscreen object, 139 triangles) the shade 0 in COLOR_0: the paint shader draws glass where the mesh's own colour is dark. 15,132 triangles. The source file has no landing gear, no pilots and no cockpit interior."
+  ]
+}

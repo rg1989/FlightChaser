@@ -1,0 +1,30 @@
+{
+  "mesh": { "source": "flightairmap-glb/B752.glb", "date": "2026-10-14", "scale": 1.02103 , "drop": ["WingletL", "WingletR", "Windows"] },
+  "stations": {
+    "lengthM": 47.32,
+    "doors": [5.05, 13.99, 38.23],
+    "cockpit": 3.02,
+    "source": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/757.pdf"
+  },
+  "gear": {
+    "noseAftM": 5.89,
+    "wheelbaseM": 18.29,
+    "trackM": 7.32,
+    "mains": 4,
+    "mainTyre": [1.02, 0.37],
+    "noseTyre": [0.79, 0.33],
+    "clearanceM": 0.8,
+    "mainsRetract": "inboard"
+  },
+  "sources": [
+    "Boeing D6-58327, 757-200/300 Airplane Characteristics for Airport Planning, https://www.boeing.com/content/dam/boeing/v2/airports/acaps/757.pdf",
+    "D6-58327 2.2.1 (page 13): overall length 47.32 m, fuselage 46.97 m, span 38.05 m, tailplane span 15.21 m, fuselage 3.76 m wide and 4.01 m high, nose to nose gear 5.89 m, wheelbase 18.29 m, main gear track 7.32 m",
+    "D6-58327 2.7.1 (page 24): nose to door centre: No. 1 passenger door (left) 5.05 m, No. 2 13.99 m, No. 4 38.23 m (the 757-200 has no No. 3 door station in the table; the overwing exits are not doors)",
+    "D6-58327 2.2.1, the scaled side view: the aft edge of the cockpit side windows 3.02 m aft of the nose (measured on the drawing at 400 dpi: 2.99 m at the top corner, 3.05 m at the bottom corner; the drawing's doors measure 5.08, 14.01 and 38.23 m)",
+    "D6-58327 7.2 (page 119): nose tyres H31x13-12 (0.79 m by 0.33 m), main tyres H40x14.5-19 (1.02 m by 0.37 m), four wheels on each main leg",
+    "D6-58327 2.3.1 (page 15): engine nacelle to ground 0.74 to 0.86 m (clearanceM 0.8)",
+    "The mesh: FlightAirMap-3dmodels b752/glTF2/B752.glb (FlightGear 757-200, Rolls-Royce RB211 nacelles), kept unchanged in third_party/aircraft-models/source/flightairmap-glb/B752.glb. Its licence file b752/LICENSE is GPL version 2 or any later version",
+    "Changes to the mesh (Blender 5.2.2, 2026-10-13): the blended winglets removed and each wing tip closed (the 757-200 as built: span 38.05 m); the cabin window panes (they face inward), wipers, two blade antennas, the nose light disc, the wheel-well boxes and ten small boxes at the nose removed; each object's vertices welded; every open loop of the fuselage skin closed with a cap that faces outward; all scaled by 1.02104 (the source is 46.35 m long); joined and decimated to 0.25; each part that is an open surface given a second, inward-facing copy of its faces; edges sharper than 40 degrees kept hard; then canonicalise.py of third_party/aircraft-models/scripts, unchanged",
+    "After the scale: span 37.81 m (real 38.05 m), fuselage 46.78 m (46.97 m), tailplane span 15.00 m (15.21 m), fuselage width 3.84 m (3.76 m)"
+  ]
+}

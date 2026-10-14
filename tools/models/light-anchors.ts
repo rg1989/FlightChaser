@@ -157,14 +157,27 @@ export function anchorsBody(e: ModelManifestEntry, m: Mesh): LightAnchors {
  * The paint map's window row, [y, zAft, zFore, pitch] in the turned frame (y up, z nose), or null for none. Most meshes
  * model their windows: a dense band of skin vertices a little above the fuselage's centre line, whose middle is the
  * row. Without one (the decimated wide-bodies), a fifth of the radius above the centre line (what the modelled rows of
- * the 777 and A350 show).
+ * the 777 and A350 show). The row starts FIRST_WINDOW_M behind door 1 (the profile's doors) when that is in the front
+ * half, else 13 % of the length behind the nose. A recipe's windowRowM gives the row instead: its ends and its height above the keel.
  */
 export function windowsFor(e: ModelManifestEntry, m: Mesh): [number, number, number, number] | null {
   if (flagged(e.id, 'noWindows') || e.paint === undefined) return null // its own texture; glazed cabins, not a window row
   const n = m.p.length / 3
   let [xMin, xMax] = [Infinity, -Infinity]
   for (let i = 0; i < n; i++) { xMin = Math.min(xMin, m.p[3 * i]); xMax = Math.max(xMax, m.p[3 * i]) }
-  const [aft, fore] = [e.paint.fin.behindZ - 0.5, xMax - 0.13 * (xMax - xMin)]
+  const median = (v: number[]): number => v.toSorted((a, b) => a - b)[Math.floor(v.length / 2)]
+  const row = setting(e.id, 'windowRowM')
+  if (row !== undefined) { // the recipe's row (a door where the rule starts the row, a dorsal fin or a high wing over the cabin): above the keel under it
+    const [aft, fore] = [xMax - row[1], xMax - row[0]]
+    const keel = median(Array.from({ length: 13 }, (_, k) => ray(m, [aft + ((fore - aft) * k) / 12, 0.1, -60], [0, 0, 1])).flatMap((t) => (t === null ? [] : [t - 60])))
+    return [cm(keel + row[2]), cm(aft), cm(fore), setting(e.id, 'windowPitchM') ?? 0.51]
+  }
+  // the first window a metre behind door 1's centre line (the door, then a window's width: the A320's and the 737's start
+  // there, not at 13 % of the length, which is door 1 itself), where the profile knows a door in the front half (an ATR's
+  // first passenger door is at the back)
+  const door1 = e.profile?.doors[0]
+  const front = door1 !== undefined && door1 > (xMin + xMax) / 2
+  const [aft, fore] = [e.paint.fin.behindZ - 0.5, front ? door1 - FIRST_WINDOW_M : xMax - 0.13 * (xMax - xMin)]
   const mids: number[] = []
   const radii: number[] = []
   for (let k = 0; k <= 12; k++) { // the aft 60 % of the cabin: behind a 747's upper deck
@@ -175,7 +188,6 @@ export function windowsFor(e: ModelManifestEntry, m: Mesh): [number, number, num
     mids.push((bottom - top) / 2) // ((60 − top) + (bottom − 60)) / 2
     radii.push((120 - top - bottom) / 2)
   }
-  const median = (v: number[]): number => v.toSorted((a, b) => a - b)[Math.floor(v.length / 2)]
   const [yc, r] = [median(mids), median(radii)]
   const bins = new Map<number, number>()
   let side = 0
@@ -199,6 +211,8 @@ export function windowsFor(e: ModelManifestEntry, m: Mesh): [number, number, num
 }
 
 const cm = (x: number): number => Math.round(x * 100) / 100 + 0 // + 0: no −0 in the JSON
+/** The first cabin window's centre behind door 1's, metres. */
+export const FIRST_WINDOW_M = 1.0
 
 /** A body-frame point in the manifest's model frame (fixMatrix⁻¹ · v), rounded to 1 cm. */
 export function toModelFrame(e: ModelManifestEntry, v: V3): V3 {
@@ -220,6 +234,7 @@ export function lightsLine(l: LightAnchors): string {
 }
 
 if (import.meta.main) {
+  process.getBuiltinModule('node:os').setPriority(19) // gives way to whatever else runs on this machine
   const write = process.argv.includes('--write')
   for (const e of asked(readManifest())) {
     const lights = lightsFor(e)
@@ -228,6 +243,7 @@ if (import.meta.main) {
     if (!write) continue
     e.lights = lights
     if (win !== null) e.paint!.windows = win
+    else if (flagged(e.id, 'noWindows') && e.paint !== undefined) delete e.paint.windows // its own glass is its windows (detail.ts glassAt)
     writeModel(e)
   }
 }

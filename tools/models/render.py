@@ -14,11 +14,14 @@
 #         "closed": bool, "width": px, "label": str?, "dots": bool? }] }], "cols": views per row }
 # ponytail: reads every primitive's POSITION/NORMAL/COLOR_0 with node transforms; no textures, no sparse accessors.
 import json
+import os
 import struct
 import sys
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
+
+os.nice(19)  # gives way to whatever else runs on this machine
 
 
 def read_glb(path):

@@ -1,4 +1,5 @@
 {
+  "mesh": { "source": "fr24-blend/citation.blend", "date": "2026-10-14" },
   "stations": {
     "lengthM": 14.39,
     "doors": [4.5],

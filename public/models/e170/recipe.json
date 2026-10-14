@@ -1,0 +1,8 @@
+{
+  "base": "e75l",
+  "name": "Embraer 170",
+  "types": ["E170"],
+  "date": "2026-10-13",
+  "fuselage": { "foreM": -0.84, "aftM": -0.94, "fore": [5.9, 11.17] },
+  "sources": ["draft"]
+}

@@ -3,6 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { access, readFile } from 'node:fs/promises'
 import path from 'node:path'
+import { readManifest } from '../../tools/models/packages.ts'
 import { PACKAGE_ID, packageIds } from '../../tools/scenarios/packages.ts'
 import { clockToS, sToClock, offsetMs, parseScenario, parseCard, loadScenario, listScenarios, ScenarioError } from './format.ts'
 
@@ -585,7 +586,7 @@ test('every package under public/scenarios loads, and is whole in its own folder
   const root = path.resolve(import.meta.dirname, '../../public/scenarios')
   const ids = packageIds(root)
   assert.deepEqual(ids.filter((id) => ['jal123', 'kc1388', 'fz1073'].includes(id)), ['jal123', 'kc1388', 'fz1073'], 'the packages are found, the oldest flight first')
-  const models = (JSON.parse(await readFile(path.resolve(root, '../models/manifest.json'), 'utf8')) as { models: { id: string }[] }).models.map((m) => m.id)
+  const models = readManifest().models.map((m) => m.id)
   for (const id of ids) {
     const dir = path.join(root, id)
     const read = (f: string): Promise<string | null> => readFile(path.join(dir, f), 'utf8').catch(() => null)
@@ -595,7 +596,7 @@ test('every package under public/scenarios loads, and is whole in its own folder
     const manifest = JSON.parse(manifestText!) as Record<string, any>
     const s = parseScenario({ base: `${dir}/`, manifest, track, events, transcript, present: { body: false, finLogo: false, audio: false } })
     assert.equal(s.id, id, `${id}: scenario.json's id is the folder's name`)
-    assert.ok(models.includes(s.aircraft.model), `${id}: aircraft.model ${JSON.stringify(s.aircraft.model)} is not a model of public/models/manifest.json (${models.join(', ')})`)
+    assert.ok(models.includes(s.aircraft.model), `${id}: aircraft.model ${JSON.stringify(s.aircraft.model)} is not a model in public/models (${models.join(', ')})`)
     for (const f of namedFiles(manifest)) {
       assert.ok(!/^[a-z]+:|^\/|(^|\/)\.\.(\/|$)/i.test(f), `${id}: ${f} must be a path inside the package's folder`)
       // local/ is not published (git-ignored): a package plays without what is in it.

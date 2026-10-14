@@ -31,8 +31,8 @@ test('paintMesh is the primitive POSITION turned by noseMinusZ (what the livery 
   const m = paintMesh(e)
   let [zMin, zMax] = [Infinity, -Infinity]
   for (let i = 2; i < m.p.length; i += 3) [zMin, zMax] = [Math.min(zMin, m.p[i]), Math.max(zMax, m.p[i])]
-  near(zMax, 19.12, 0.01, 'the nose at +z')
-  near(zMin, -19.12, 0.01)
+  near(zMax, 19.09, 0.01, 'the nose at +z')
+  near(zMin, -19.18, 0.01) // the re-meshed tail cone's tip, 6 cm aft of the decimated one's
   const p = measured.get('a320')!
   assert.ok(p.finRoot[1] < 0 && p.body[0][0] > 0, 'the fin aft (−z), the nose forward (+z)')
 })

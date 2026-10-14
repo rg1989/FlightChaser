@@ -19,6 +19,14 @@ const FAR_RANGE_NM = 60
 const NEAR_CAMERA_M = 5000
 export const MAX_MODELS = 30
 export const MIN_PX = 24 // a far model is enlarged to keep this size on screen (minScale), and so is its square
+// A model's light copy (manifest lod: at most 6,000 triangles, tools/models/lod.ts) is drawn while its square is smaller
+// than FULL_PX on screen, its full mesh from there (as many as 60,000 triangles: up to 30 of those would cost a laptop's
+// card more than the whole chase used to); back to the light one under LIGHT_BELOW of that, so no model flips at the line.
+export const FULL_PX = 300
+const LIGHT_BELOW = 0.8
+
+/** Whether a model with a light copy is drawn on its full mesh, px across on screen (0: behind the camera), fullNow: it is now. */
+export const fullMesh = (px: number, fullNow: boolean): boolean => px >= FULL_PX || (fullNow && px >= LIGHT_BELOW * FULL_PX)
 // The bracket square, in the GLB's model frame (Cesium's: nose +X, up +Z; unscaled): the bounding-box centre, and half
 // the side, half the larger of wingspan and length plus 8 %. A manifest entry's `box`; these are Cesium_Air.glb's (span
 // 25.7, length 21.4), for an entry without one. traffic.test checks every model's against its GLB.
@@ -206,7 +214,9 @@ export function loadTrafficModel(m: ModelManifestEntry): Promise<Model> {
 
 interface Slot {
   m: ModelManifestEntry
-  model: Model
+  model: Model // the one drawn: full, or light while the aircraft is small on screen
+  full: Model
+  light: Model | null // m.lod's, once loaded
   hex: string | null
   e: FleetEntry | null
   headingDeg: number
@@ -366,6 +376,16 @@ export class Traffic {
       const e = s.e
       if (e.trackDeg !== null) s.headingDeg = e.trackDeg
       const m = s.m
+      const k = m.types ? 1 : scaleFor(e.info?.category)
+      const rM = (m.box?.half ?? BOX_HALF) * m.scale * k
+      const depth0 = Cartesian3.dot(Cartesian3.subtract(pos, cam.positionWC, this.#v), cam.directionWC)
+      const drawn = s.light === null || !s.light.ready || fullMesh(depth0 > 1 ? squarePx(rM, depth0, fovy, hPx) : 0, s.model === s.full) ? s.full : s.light
+      if (drawn !== s.model) { // the other mesh of the same aircraft: dressed as this one was
+        s.model.show = false
+        s.model = drawn
+        s.livery = undefined
+        dress(s.model, s.placeholder)
+      }
       // On a model that is not its own: the placeholder look, and no livery (an airline's paint on the wrong shape would
       // lie). Its type can arrive, or change, after the aircraft does: then the same model is its own, and is painted.
       const placeholder = this.#placeholders.has(s.hex)
@@ -379,11 +399,8 @@ export class Traffic {
         s.livery = livery
         s.model.customShader = this.#shaders(m).for(livery)
       }
-      // The square's radius at true size; a far model and its square are enlarged together to MIN_PX (depth taken at
-      // the wheels: the centre is a few metres off).
-      const k = m.types ? 1 : scaleFor(e.info?.category)
-      const rM = (m.box?.half ?? BOX_HALF) * m.scale * k
-      const depth0 = Cartesian3.dot(Cartesian3.subtract(pos, cam.positionWC, this.#v), cam.directionWC)
+      // The square's radius at true size (rM); a far model and its square are enlarged together to MIN_PX (depth taken
+      // at the wheels: the centre is a few metres off).
       const g = depth0 > 1 ? minScale(rM, depth0, fovy, hPx) : 1
       const mm = trafficMatrix(pos, trafficHpr(e, s.headingDeg, this.#hpr), m, k * g, s.model.modelMatrix)
       if (ibl) s.model.imageBasedLighting.imageBasedLightingFactor = ibl // the setter copies it
@@ -464,7 +481,8 @@ export class Traffic {
   destroy(): void {
     this.#destroyed = true
     for (const s of this.#slots) {
-      this.#viewer.scene.primitives.remove(s.model)
+      this.#viewer.scene.primitives.remove(s.full)
+      if (s.light !== null) this.#viewer.scene.primitives.remove(s.light)
       if (s.gear !== null) this.#viewer.scene.primitives.remove(s.gear)
     }
     this.#slots.length = 0
@@ -541,7 +559,8 @@ export class Traffic {
   }
 
   #free(s: Slot): void {
-    s.model.show = false
+    s.full.show = false
+    if (s.light !== null) s.light.show = false
     if (s.gear !== null) s.gear.show = false
     if (s.hex !== null) this.#byHex.delete(s.hex)
     s.hex = null
@@ -565,8 +584,19 @@ export class Traffic {
           if (this.#destroyed) return void model.destroy()
           model.show = false
           this.#viewer.scene.primitives.add(model)
-          const slot: Slot = { m, model, hex: null, e: null, headingDeg: 0, placeholder: false, gearPlaceholder: false, gear: null, motion: new GearMotion(), want: null, aglS: Infinity, aglFt: null, legsAt: -1, occluded: false }
+          const slot: Slot = { m, model, full: model, light: null, hex: null, e: null, headingDeg: 0, placeholder: false, gearPlaceholder: false, gear: null, motion: new GearMotion(), want: null, aglS: Infinity, aglFt: null, legsAt: -1, occluded: false }
           this.#slots.push(slot)
+          if (m.lod !== undefined) {
+            this.#load({ ...m, uri: m.lod.uri }).then(
+              (light) => {
+                if (this.#destroyed) return void light.destroy()
+                light.show = false
+                this.#viewer.scene.primitives.add(light)
+                slot.light = light
+              },
+              (err: unknown) => console.warn(`Flight Chaser: traffic model ${m.lod!.uri} not loaded; drawn on its full mesh:`, err),
+            )
+          }
           if (m.gear !== undefined) {
             this.#loadGear(m.gear.uri).then(
               (g) => {

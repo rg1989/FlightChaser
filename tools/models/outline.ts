@@ -1,6 +1,6 @@
 // tools/models/outline.ts
-// Measures each manifest model's outline from its GLB, and prints or writes the manifest's `outline` entries: spheres
-// that together cover the mesh, for what must tell the aircraft from the square round it (client/scene/modelOutline.ts:
+// Measures each manifest model's outline from its GLB, and prints or writes the manifest's `outline` entries (and its
+// `box`, the traffic's bracket square: boxOf): spheres that together cover the mesh, for what must tell the aircraft from the square round it (client/scene/modelOutline.ts:
 // the place names keep off the aircraft, not off its brackets). Measured in the body frame, written in the model frame
 // the manifest keeps (like `box` and `lights`; unscaled mesh units), to 1 cm.
 //
@@ -11,9 +11,19 @@
 // sparse vertex layout does not matter); one sphere per cell the surface passes through, round the box of the cell's
 // samples and what of the surface lies between samples. A thin part (a wing, the fin) so gets spheres about as wide as
 // a cell, not as wide as the aircraft.
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { measureGlb } from '../../client/scene/model.ts'
 import type { ModelManifestEntry } from '../../client/types.ts'
 import { loadBody, toModelFrame, type Mesh } from './light-anchors.ts'
-import { asked, readManifest, writeModel } from './packages.ts'
+import { asked, MODELS, readManifest, writeModel } from './packages.ts'
+
+/** The bracket square's box (traffic.ts): the GLB's centre, and half the larger of its span and length with 8 % to spare, to 1 cm. */
+export function boxOf(glb: Uint8Array): NonNullable<ModelManifestEntry['box']> {
+  const a = measureGlb(glb)
+  const cm = (v: number): number => Math.round(v * 100) / 100
+  return { centre: [cm(a.centre.x), cm(a.centre.y), cm(a.centre.z)], half: Math.ceil(108 * Math.max(a.spanM, a.lengthM) / 2) / 100 }
+}
 
 export type Sphere = [x: number, y: number, z: number, r: number]
 export const CELLS = 16
@@ -62,11 +72,13 @@ export function outlineFor(e: ModelManifestEntry): Sphere[] {
 }
 
 if (import.meta.main) {
+  process.getBuiltinModule('node:os').setPriority(19) // gives way to whatever else runs on this machine
   for (const e of asked(readManifest())) {
     const o = outlineFor(e)
     console.log(`${e.id}: ${o.length} spheres, the largest ${Math.max(...o.map((s) => s[3]))} across its radius`)
     if (!process.argv.includes('--write')) continue
     e.outline = o
+    e.box = boxOf(readFileSync(path.join(MODELS, '..', e.uri)))
     writeModel(e)
   }
 }

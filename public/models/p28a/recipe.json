@@ -1,0 +1,15 @@
+{
+  "mesh": { "source": "flightairmap-glb/PA28.glb", "date": "2026-10-14", "scale": 1.0128 , "drop": ["propdisc", "propblur"] },
+  "stations": {
+    "lengthM": 7.25,
+    "doors": [],
+    "cockpit": 2.7,
+    "source": "Piper Cherokee Archer II Pilot's Operating Handbook VB-790 (Piper Aircraft Corporation, 1976), p. 1-2, three-view (public domain; https://commons.wikimedia.org/wiki/File:Piper_PA-28-181_Cherokee_Archer_II_3-view_line_drawing.png): overall length 23 ft 9.60 in; the left side has no door; the front seats' side window ends 2.70 m aft of the nose tip (scaled off the drawing)"
+  },
+  "flags": ["finBeacon", "noBellyBeacon", "noWindows"],
+  "sources": [
+    "Piper Cherokee Archer II POH VB-790, p. 1-2, three-view: length 23 ft 9.60 in (7.2517 m), span 35 ft 0 in (10.668 m), height 7 ft 3.60 in (2.22 m), wheel track 10 ft 0 in, wheelbase 6 ft 6.91 in, tailplane span 12 ft 10.48 in",
+    "The mesh is the source file's 36 parts joined without decimation (tools: third_party/aircraft-models/scripts/bl_join.py with ratio 1.0, then canonicalise.py), then scaled 1.0128 about its origin: the source is 10.546 m across and 7.154 m long, which is 1.2 % under the span and 1.3 % under the length of the drawing, and one factor puts both within 0.1 %",
+    "Left out of the source: propdisc and propblur (the translucent propeller discs), trous (thin strips along the hinge lines, no thickness), the whip aerial (one half of antennes; the blade aerial stays). The glazing (vitres, vitreporteG) has black COLOR_0: the paint shader draws near-black skin as glass. Four triangles wound against their normals were turned. The fixed gear stays in the mesh (no gear layout, no gear.glb)"
+  ]
+}

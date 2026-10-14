@@ -1,0 +1,31 @@
+{
+  "mesh": { "source": "flightairmap-glb/PC12.glb", "date": "2026-10-14", "drop": ["propdisc", "propblur", "bosse"] },
+  "stations": {
+    "lengthM": 14.4,
+    "doors": [
+      4.58,
+      7.84
+    ],
+    "cockpit": 3.96,
+    "source": "https://www.pilatus-aircraft.com/assets/files/Model-Building-Plans/PC-12-NGX-Model-Building-Plan.pdf"
+  },
+  "gear": {
+    "noseAftM": 2.52,
+    "wheelbaseM": 3.52,
+    "trackM": 4.53,
+    "mains": 1,
+    "mainTyre": [
+      0.56,
+      0.21
+    ],
+    "noseTyre": [
+      0.45,
+      0.14
+    ],
+    "noseWheels": 1,
+    "clearanceM": 0.34,
+    "mainsRetract": "inboard"
+  },
+  "flags": ["finBeacon", "noWindows"],
+  "finRootM": 11.7
+}

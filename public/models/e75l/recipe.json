@@ -1,4 +1,5 @@
 {
+  "mesh": { "source": "flightairmap-glb/E75L.glb", "date": "2026-10-14", "subdivide": 0 },
   "stations": {
     "lengthM": 31.68,
     "doors": [5.18, 23.45],

@@ -1,0 +1,37 @@
+{
+  "mesh": { "source": "fr24-blend/q400.blend", "date": "2026-10-14" },
+  "stations": {
+    "lengthM": 32.83,
+    "doors": [4.95, 21.88],
+    "cockpit": 3.51,
+    "source": "https://customer.aero.bombardier.com/webd/BAG/CustSite/BRAD/RACSDocument.nsf/51aae8b2b3bfdf6685256c300045ff31/ec63f8639ff3ab9d85257c1500635bd8/$FILE/ATTNBEOB.pdf/D8400-APM.pdf"
+  },
+  "gear": {
+    "noseAftM": 1.83,
+    "wheelbaseM": 13.94,
+    "trackM": 8.8,
+    "mains": 2,
+    "mainTyre": [0.81, 0.22],
+    "noseTyre": [0.56, 0.17],
+    "clearanceM": 0.56,
+    "mainsRetract": "forward"
+  },
+  "flags": ["finBeacon"],
+  "windowPitchM": 0.53,
+  "windowRowM": [5.72, 21.09, 1.44],
+  "wingRootOffsetM": 4.75,
+  "sources": [
+    "[APM] Bombardier, Dash 8 Series 400 Airport Planning Manual, PSM 1-84-13, Revision 4 (Dec 05/2014), https://customer.aero.bombardier.com/webd/BAG/CustSite/BRAD/RACSDocument.nsf/51aae8b2b3bfdf6685256c300045ff31/ec63f8639ff3ab9d85257c1500635bd8/$FILE/ATTNBEOB.pdf/D8400-APM.pdf. Figure 2-2 (chapter 2, p.5): overall length 32.83 m (107 ft 9 in), nose to the fuselage's end 31.04 m, span 28.42 m, tailplane span 9.27 m, propeller diameter 4.11 m, track 8.80 m. Figure 2-11 (p.20): fuselage 2.69 m across.",
+    "Mesh: third_party/aircraft-models/source/fr24-blend/q400.blend, the unchanged file of Flightradar24/fr24-3d-models (git blob 2f8baebd5011558ee76f2a3e15cb8f78b9c72c18), which Flightradar24 made on 2016-11-28 from the FlightGear Q400 (FGMEMBERS/Q400 at 7385541792c0d34dc06839a76862d92610c863a9). Licence: that repository's LICENSE.txt is the GPL version 2 text and its README.txt says 'Licensed under GPL v2.0'; the fr24-3d-models README says 'All other models are licensed under GPLv2'. Neither says 'or later': GPL-2.0-only.",
+    "Build (Blender 5.2.2, the steps of third_party/aircraft-models/scripts/bl_join_blend.py, then canonicalise.py and embed_copyright.py unchanged): 33 of the file's 35 mesh objects joined into one mesh with one material, no textures, no decimation (12,597 triangles; the file has no landing gear, no pilots and no cockpit interior). Each object's own 'Auto Smooth' modifier (what Blender 5 makes of the file's auto-smooth angle) is applied before the join, so the edges of the doors, the panels and the control surfaces stay sharp; bl_join_blend.py drops it, and the mesh is then smooth all over. Three changes before the join. 1: the objects 'stairs' and 'stairhandle1' are left out (the folded airstair inside the forward door). 2: the objects 'hstab' and 'elevator' are 1.1293 times as wide about the centre plane: the file's tailplane spans 8.21 m, the aircraft's 9.27 m [APM]. 3: the model is turned 0.944 degrees nose-up: the file stands as the aircraft does on the ground (its ground at z = 0, the fuselage 0.94 degrees nose-down; [APM] figure 2-4: the door sills 1.34 m and 1.58 m above the ground, 16.9 m apart), and the package's fuselage is level, as the other models' are.",
+    "Size, measured on the mesh: span 28.45 m ([APM] 28.42 m); length 32.59 m in the file's ground attitude ([APM] 32.83 m, 0.7 % more) and 32.69 m with the fuselage level; nose to the fuselage's end 30.97 m ([APM] 31.04 m); fuselage 2.62 m across ([APM] 2.69 m); propellers 4.10 m ([APM] 4.11 m), their axes 8.73 m apart ([APM] 8.80 m). Within 2 % but the fuselage's width: the mesh is not scaled.",
+    "Doors [APM]: the forward passenger (airstair) door's centre line is station FS 16.70, 4.95 m (16 ft 3 in) from the nose (figure 2-18, p.29); the aft passenger door's is FS 683.45, 21.88 m (71 ft 9 in) (figure 2-19, p.30). The forward baggage door on the right (figure 2-21) and the aft baggage door (figure 2-22) are not passenger doors. On the mesh the two doors are 4.87 m and 21.74 m aft of the nose.",
+    "Cockpit [APM] figure 2-18, measured at 300 dpi (5.55 mm to a pixel, from the 16 ft 3 in dimension): the side windows' aft edge is 3.51 m aft of the nose. On the mesh: 3.42 m.",
+    "Gear [APM] figure 7-1 (chapter 7, p.2): wheelbase 13.94 m (45 ft 9 in), track 8.8 m, two wheels on each leg, nose tyres 22 x 6.50-10 (0.56 x 0.17 m), main tyres 32 x 8.8-16 (0.81 x 0.22 m). No figure prints the nose gear's distance from the nose. The main axle is at station X 443.05 in (figure 4-3) and the nose is at station -178 in (FS 16.70 is 16 ft 3 in from it, FS 683.45 is 71 ft 9 in): the main axle is 15.77 m and the nose axle 1.83 m aft of the nose. The side view of figure 2-2, measured at 300 dpi: 1.85 m. On the mesh the nose gear's doors end 1.82 m aft of the nose and the main gear's doors, under the nacelles, are 14.0 m to 17.3 m aft of it.",
+    "Gear, mainsRetract: the main legs are in the nacelles and retract aft into them ([APM] figure 2-2, side view). The gear tool has 'inboard' and 'forward' only. 'forward' is the nearest: the leg swings fore and aft in the nacelle, the other way round.",
+    "Gear, clearanceM [APM] figures 2-4 and 2-5 (p.7, p.8): above the ground, the nacelle's lower surface 2.07 m to 2.18 m, the fuselage 0.76 m to 0.93 m, the propeller 1.02 m to 1.13 m. With 0.56 the mesh's nacelles are 2.12 m, its belly 0.96 m and its propeller tips 1.26 m above the ground. The mesh's lowest point is a belly aerial, 0.39 m under the belly. The aircraft stands 0.8 to 0.9 degrees nose-down; the model stands level.",
+    "Windows, measured on the mesh: 29 on the left (26 on the right, where the forward baggage door is), 0.53 m apart, 0.24 m wide and 0.34 m tall; the first one's forward edge 5.86 m and the last one's aft edge 20.95 m aft of the nose; their middle 1.44 m above the keel. [APM] figure 2-2: also 0.53 m apart. windowRowM gives the row because the tool's rule does not hold here: 13 % of the length is on the forward door (15 %), the row ends 5 m ahead of the fin (the aft passenger door and the baggage hold are between them), and the dorsal fin and the wing over the cabin mislead the rule's centre line. The aircraft's windows are about 0.1 m higher on the fuselage than the mesh's ([APM] figures 2-2 and 2-11: 0.26 m to 0.32 m above its centre line; the mesh: 0.16 m).",
+    "Lights, seen on photos. C-GJZF from the side (https://commons.wikimedia.org/wiki/File:Air_Canada_Express_Bombardier_Q400_C-GJZF_on_final_approach_to_Boston_December_2025_1.jpg): a light on top of the bullet fairing at the fin's top, thus finBeacon, and one at that fairing's aft end. OE-LGB head-on (https://commons.wikimedia.org/wiki/File:Austrian_Arrows_DHC-8-402Q_Dash_8_OE-LGB_01.jpg): the lit wing lights are just outboard of each nacelle. On the mesh their glass is 5.14 m to 5.60 m from the centre line, in the wing's leading edge, and the propeller blades reach 6.16 m: wingRootOffsetM 4.75 puts the wing lights 6.25 m out, clear of the blades (0.9 m further out than the glass).",
+    "Paint map, measured on the mesh (paint frame, metres): fuselage 1.31 m from the centre line (1.40 m at the strakes behind the wing), keel -3.35, crown -0.75; fin leading edge from -11.26 (where it leaves the dorsal fin, at y 0.44) to its top at 3.74; nacelles 3.88 to 4.84 from the centre line, z -2.01 to 6.07; propeller plane z 5.33 (11.0 m aft of the nose); forward door's aft edge 5.26 m aft of the nose. The title sits between that door and the propellers. The fin logo is at the middle of the fin's chord, 55 % up it."
+  ]
+}

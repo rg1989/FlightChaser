@@ -35,7 +35,8 @@ export interface GearSpec {
   noseWheels?: 1 | 2
   clearanceM: number // the wheels' bottom this far below the model's lowest point
   mainsRetract: 'inboard' | 'forward'
-  body?: { aftM: number; trackM: number } // 747 body gear: this far behind the wing gear, this far apart
+  /** Body gear (747, A380): this far behind the wing gear, this far apart (0: one leg on the centre line, node bodyC: A340, MD-11); wheels per leg (4 without it); 'aft': it swings back and up (forward without it). */
+  body?: { aftM: number; trackM: number; wheels?: 2 | 4 | 6; retract?: 'forward' | 'aft' }
 }
 
 export interface Part {
@@ -113,7 +114,7 @@ function wheel(p: Part, [cx, cy, cz]: V, r: number, halfW: number): void {
 
 const STRUT: Omit<Part, 'pos' | 'nrm'> = { name: 'strut', color: [0.55, 0.57, 0.6], metallic: 0.6, roughness: 0.45 }
 const TYRE: Omit<Part, 'pos' | 'nrm'> = { name: 'tyre', color: [0.045, 0.045, 0.05], metallic: 0, roughness: 0.9 }
-const INSET_M = 0.3 // the strut's top this far inside the skin
+export const INSET_M = 0.3 // the strut's top this far inside the skin
 
 /**
  * One leg hinged at (x, y, top): its strut down to the axle, the axle's wheels (1 central, 2 either side of the strut,
@@ -141,7 +142,7 @@ function leg(node: string, x: number, y: number, top: number, groundZ: number, w
 }
 
 /** Highest z below which a ray from under the model at (x, y) first meets its skin; null when it misses. */
-function skinAbove(m: Mesh, x: number, y: number, fromZ: number): number | null {
+export function skinAbove(m: Mesh, x: number, y: number, fromZ: number): number | null {
   const t = ray(m, [x, y, fromZ], [0, 0, 1])
   return t === null ? null : fromZ + t
 }
@@ -183,7 +184,8 @@ export function gearFor(e: ModelManifestEntry, spec: GearSpec, m: Mesh): Gear {
   }
   if (spec.body) {
     const xb = xMain - spec.body.aftM
-    for (const [node, y] of [['bodyL', spec.body.trackM / 2], ['bodyR', -spec.body.trackM / 2]] as const) legs.push(at(node, xb, y, 4, spec.mainTyre, fwd, -90))
+    const bodyLegs: Array<[string, number]> = spec.body.trackM === 0 ? [['bodyC', 0]] : [['bodyL', spec.body.trackM / 2], ['bodyR', -spec.body.trackM / 2]]
+    for (const [node, y] of bodyLegs) legs.push(at(node, xb, y, spec.body.wheels ?? 4, spec.mainTyre, fwd, spec.body.retract === 'aft' ? 90 : -90))
   }
   return { legs, heightM: -groundZ * e.scale }
 }
@@ -282,6 +284,7 @@ export function gearLine(g: NonNullable<ModelManifestEntry['gear']>): string {
 }
 
 if (import.meta.main) {
+  process.getBuiltinModule('node:os').setPriority(19) // gives way to whatever else runs on this machine
   const manifest = readManifest()
   const write = process.argv.includes('--write')
   const ids = new Set(asked(manifest).map((e) => e.id))
@@ -291,8 +294,10 @@ if (import.meta.main) {
     if (!write) continue
     writeFileSync(fileOf(e.id, 'gear.glb'), bytes)
     // gearHeightM: the model stands on its wheels. The fields keep their places (gear after scale in a new entry).
-    const { gear: _old, ...rest } = e
-    const at = Object.keys(rest).indexOf('scale') + 1
-    writeModel(Object.fromEntries([...Object.entries({ ...rest, gearHeightM: entry.heightM }).slice(0, at), ['gear', entry], ...Object.entries(rest).slice(at)]) as ModelManifestEntry)
+    const { gear: _old, gearHeightM: _h, ...rest } = e
+    const fields: Array<[string, unknown]> = Object.entries(rest)
+    fields.splice(Object.keys(rest).indexOf('forwardAxisFix') + 1, 0, ['gearHeightM', entry.heightM])
+    fields.splice(fields.findIndex(([k]) => k === 'scale') + 1, 0, ['gear', entry])
+    writeModel(Object.fromEntries(fields) as unknown as ModelManifestEntry)
   }
 }

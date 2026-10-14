@@ -110,6 +110,7 @@ async function main(): Promise<void> {
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) main().catch((err: unknown) => {
+  process.getBuiltinModule('node:os').setPriority(19) // gives way to whatever else runs on this machine
   console.error(err)
   process.exit(1)
 })

@@ -23,7 +23,7 @@ These rules have no exceptions.
 3. **A scenario is portable.** Copy the folder into another Flight Chaser and it plays there. Do not name a file
    outside the folder. Do not name an absolute path.
 4. **The package uses only what each Flight Chaser has:** the loader (format 1) and the aircraft models in
-   `public/models/manifest.json`. Do not add a model, a livery design or app code for one scenario.
+   `public/models/` (one folder each). Do not add a model, a livery design or app code for one scenario.
 5. **Every fact has a source.** Each row names a source id from `scenario.json`. Do not invent a time, a quote or a
    number.
 6. **Do not invent speech.** Captions are words that somebody said, from a record or a real recording. Write your own

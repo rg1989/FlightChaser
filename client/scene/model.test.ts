@@ -308,7 +308,7 @@ test("b744 manifest: body box, wing tip, damage cut and gear lie on the GLB's bo
   assert.ok(c.tailHalfWidth > p.fin.halfWidth && c.tailHalfWidth < p.bodyHalfWidth)
   const g = measureGlb(readFileSync(new URL(`public/${b744.gear!.uri}`, root)))
   near(g.belowOriginM * b744.scale, b744.gear!.heightM, 0.05, 'gear heightM = origin → wheel bottom')
-  near(b744.gear!.heightM, 11.6, 0.01, 'belly −8.6 less 3.0 m of gear')
+  near(b744.gear!.heightM, 11.57, 0.01, 'belly −8.57 less 3.0 m of gear')
   assert.equal(b744.gear!.heightM, b744.gearHeightM, 'it stands on its wheels')
   inside(-g.max.x, Z, 'gear front') // raw frame: the gear sits under the aircraft
   inside(-g.min.x, Z, 'gear back')

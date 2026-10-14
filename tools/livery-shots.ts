@@ -14,8 +14,9 @@ import { join } from 'node:path'
 import { parseArgs } from 'node:util'
 
 const CHROME = process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-// Linux (a headless QA machine): no display, so the GPU is reached through Vulkan.
-const GPU = process.platform === 'darwin' ? ['--use-angle=metal'] : ['--no-sandbox', '--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan']
+// Linux (a headless QA machine): no display, so the GPU is reached through Vulkan; without the keyring and the proxy
+// lookup a fresh profile's first page never loads there.
+const GPU = process.platform === 'darwin' ? ['--use-angle=metal'] : ['--no-sandbox', '--use-gl=angle', '--use-angle=vulkan', '--enable-features=Vulkan', '--password-store=basic', '--no-proxy-server']
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 /** "a21n:WZZ" → [model, livery]; the livery may be empty ("a21n:") for plain white. */

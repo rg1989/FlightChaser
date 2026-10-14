@@ -100,20 +100,22 @@ function cutText(c: NonNullable<Paint['cut']>, finHalfWidth: number): string {
 
 /**
  * The cabin window row (the paint map's windows, turned frame), 0…1 on the skin: rounded windows 0.45 pitch wide and
- * 0.34 m tall (taller with a wider pitch), antialiased by the skin's footprint in a pixel, and, once a window is
- * smaller than a few pixels, its average share of the row instead of shimmering. Only on skin facing sideways.
+ * 0.34 m tall (taller with a wider pitch), or the paint map's windowSize, antialiased by the skin's footprint in a pixel,
+ * and, once a window is smaller than a few pixels, its average share of the row instead of shimmering. Only on skin
+ * facing sideways.
  */
-function windowsText([y, zAft, zFore, pitch]: NonNullable<Paint['windows']>): string {
-  const hh = 0.17 * Math.min(1.4, Math.max(1, pitch / 0.51))
+function windowsText([y, zAft, zFore, pitch]: NonNullable<Paint['windows']>, size?: Paint['windowSize']): string {
+  const hw = size ? size[0] / 2 : 0.225 * pitch
+  const hh = size ? size[1] / 2 : 0.17 * Math.min(1.4, Math.max(1, pitch / 0.51))
   return `
 float windowRow(vec3 p, vec3 n) {
   if (abs(n.x) < 0.35 || p.z < ${f(zAft)} || p.z > ${f(zFore)}) return 0.0;
   float px = max(max(fwidth(p.z), fwidth(p.y)), 1e-4);
-  vec2 hs = vec2(${f(0.225 * pitch)}, ${f(hh)});
+  vec2 hs = vec2(${f(hw)}, ${f(hh)});
   vec2 q = vec2(abs(fract((p.z - ${f(zAft)}) / ${f(pitch)}) - 0.5) * ${f(pitch)}, abs(p.y - ${f(y)}));
   float d = length(max(q - hs + 0.07, 0.0)) - 0.07;
   float one = 1.0 - smoothstep(-px, px, d);
-  float row = (1.0 - smoothstep(hs.y - px, hs.y + px, q.y)) * ${f((2 * 0.225 * pitch) / pitch)};
+  float row = (1.0 - smoothstep(hs.y - px, hs.y + px, q.y)) * ${f((2 * hw) / pitch)};
   return mix(one, row, smoothstep(0.08, 0.25, px / ${f(pitch)}));
 }`
 }
@@ -185,7 +187,7 @@ export function paintShaderText(p: Paint, prof: ModelProfile, detail = 1): strin
     // in the nacelle box: everything but the wing's lower skin over it (facing down, in the box's upper part)
     ? `abs(p.x) > ${f(e[0])} && abs(p.x) < ${f(e[1])} && p.z > ${f(e[2])} && p.z < ${f(e[3])} && p.y > ${f(e[4])} && p.y < ${f(e[5])} && (n.y > -0.8 || p.y < ${f(e[4] + 0.6 * (e[5] - e[4]))})`
     : `abs(p.x) > ${f(ex0)} && abs(p.x) < ${f(ex1)} && p.z > ${f(ez0)} && p.z < ${f(ez1)} && abs(n.y) < 0.8`
-  return `${atlasText('skin', prof.box, size.skin[1])}${bellyText(prof.box, bellyHalf(p), size.belly[1])}${e ? atlasText('nacelle', [e[2], e[3], e[4], e[5]], size.nacelle[1]) : ''}${w ? atlasText('tip', [w[2], w[3], w[4], w[5]], size.tip[1]) : ''}${LIGHTING_GLSL}${p.windows ? windowsText(p.windows) : ''}
+  return `${atlasText('skin', prof.box, size.skin[1])}${bellyText(prof.box, bellyHalf(p), size.belly[1])}${e ? atlasText('nacelle', [e[2], e[3], e[4], e[5]], size.nacelle[1]) : ''}${w ? atlasText('tip', [w[2], w[3], w[4], w[5]], size.tip[1]) : ''}${LIGHTING_GLSL}${p.windows ? windowsText(p.windows, p.windowSize) : ''}
 void fragmentMain(FragmentInput fsInput, inout czm_modelMaterial material) {
   vec3 turn = vec3(${p.noseMinusZ ? '-1.0, 1.0, -1.0' : '1.0'});
   vec3 p = fsInput.attributes.positionMC * turn;${p.cut ? cutText(p.cut, p.fin.halfWidth) : ''}

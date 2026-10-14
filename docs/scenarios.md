@@ -88,14 +88,14 @@ The JAL 123 file is a complete example. The fields:
 | Field | Required | Meaning |
 |---|---|---|
 | `registration`, `type`, `callsign`, `operator` | no | Shown on the card. Example: `JA8119`, `Boeing 747SR-46`, `JAL123`, `Japan Air Lines`. |
-| `model` | yes | A model id from `public/models/manifest.json`. Today: `a320 a20n a321 a21n a333 a359 b738 b38m b744 b773 b789 e75l e190 crj9 at75 c550 c182 ec135`. Take the nearest one. `node tools/scenarios/new.ts` prints the list. |
+| `model` | yes | A model id: a folder in `public/models/`. Today: `a20n a21n a319 a320 a321 a332 a333 a343 a359 a35k a388 at45 at75 b38m b39m b737 b738 b739 b744 b752 b763 b772 b773 b788 b789 b78x bcs3 c182 c550 crj7 crj9 dh8d e145 e170 e190 e195 e75l ec135 p28a pc12 sr22`. Take the nearest one. `node tools/scenarios/new.ts` prints the list. |
 | `shape.halfSpanM` | no | Folds the wing tips in to this half-span in metres, when the real aircraft is shorter than the model (a 747SR on the 747-400 model: `29.8`). |
 | `livery.base`, `belly`, `fin`, `engine` | `base` and `fin` | sRGB hex colours: upper body, lower body, fin, engine nacelles. |
 | `livery.body` | no | A body-wrap decal (stripes, titles, registration), path relative to the folder, normally `livery/body.png`. |
 | `livery.finLogo` | no | A fin logo image. Put a logo under trademark in `local/`. If the file is missing, the fin stays plain. |
 
 The body decal, the damage and a separate gear model need measurements of the model. They are in the model's
-entry in `public/models/manifest.json` (`paint.body`, `paint.cut`, `gear`). Today `b744` has all three, and `b738` and `b38m` have
+`public/models/<id>/model.json` (`paint.body`, `paint.cut`, `gear`). Today `b744` has all three, and `b738` and `b38m` have
 `paint.cut`. For another
 model, ask for the measurements to be added. That is a code change, not a package change.
 

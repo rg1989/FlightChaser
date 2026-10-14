@@ -1,0 +1,26 @@
+{
+  "base": "b789",
+  "name": "Boeing 787-8",
+  "types": ["B788"],
+  "date": "2026-10-13",
+  "fuselage": { "foreM": -3.05, "aftM": -3.05, "fore": [13, 18.5], "aft": [41, 46.2] },
+  "gear": {
+    "noseAftM": 5.1,
+    "wheelbaseM": 22.55,
+    "trackM": 9.8,
+    "mains": 4,
+    "mainTyre": [1.27, 0.51],
+    "noseTyre": [1.02, 0.41],
+    "clearanceM": 0.9,
+    "mainsRetract": "inboard"
+  },
+  "sources": [
+    "[787] Boeing D6-58333 Rev O (February 2023), 787 Airplane Characteristics for Airport Planning, https://www.boeing.com/content/dam/boeing/v2/airports/acaps/787.pdf. Overall length: 787-8 186 ft 1 in (56.72 m), p.2-5; 787-9 206 ft 1 in (62.81 m), p.2-6: 20 ft shorter (6.10 m; 6.09 m between the rounded metric figures). The same on both (p.2-5, p.2-6): span 60.12 m, tailplane span 19.81 m, fuselage 5.77 m wide and 5.94 m tall, nose gear 5.41 m aft of the nose, track 9.80 m, the tailplane tips 0.81 m aft of the tail cone (fuselage 55.91 m and 62.00 m).",
+    "Fuselage [787] p.2-16 (2.7.1 Door Locations), metres aft of the nose, 787-8 / 787-9: door 1 6.30 / 6.30; forward cargo door 11.00 / 11.00; door 2 15.32 / 18.36; door 3 32.39 / 35.43; aft cargo door 37.21 / 43.31; bulk cargo door 41.66 / 47.75; door 4 43.56 / 49.66. Doors 2 and 3, with the wing between them, are 10 ft (3.05 m) further forward and 17.07 m apart on both; all aft of door 3 is 20 ft (6.10 m) further forward. Thus the 787-8 has 3.05 m less ahead of the wing, between the forward cargo door and door 2, and 3.05 m less behind it, between door 3 and the aft cargo door. The same 3.05 m ahead of the wing: engine inlet 17.76 / 20.80 m aft of the nose, wheelbase 22.78 / 25.83 m (p.2-5, p.2-6). foreM + aftM = -6.10 m; the overall lengths give -6.09 m: the 1 cm is the rounding of 240 in (6.096 m).",
+    "fore and aft: where the length comes out, metres aft of the base's nose on the base's mesh. Without them the tool works in the whole constant section each side of the wing, and door 2 comes out at 16.17 m and door 3 at 31.61 m (published 15.32 m and 32.39 m). The base's mesh is 65.79 m long against the document's 62.81 m, and the tool puts the stations on it in proportion (x 1.047). fore: on the 787-9 the length lies between the forward cargo door's aft edge (11.00 m + half of its 2.69 m opening, p.2-18: 12.35 m) and door 2's forward edge (18.36 m less half of a door drawn 1.05 m wide, p.2-6: 17.83 m); a little inside, 12.4 to 17.7 m, which is 13.0 to 18.5 m on the mesh. aft: on the aircraft the length lies between door 3 and the aft cargo door. But the base's mesh has its aft cargo door (the recess on the right side, 40.27 to 42.97 m) 19.95 m behind the engine inlet, where the 787-8 has it (19.45 m; the 787-9 22.51 m). So the length comes out behind the recess, which stays, and ahead of the tail's first vertices (46.25 m): 41.0 to 46.2 m, which is 39.1 to 44.1 m on the document's length, between door 3 (35.43 m) and door 4 (49.66 m). Result on the document's length: doors 6.30, 15.31, 32.38 and 43.55 m; the cargo door recess centred 36.65 m (published 37.21 m).",
+    "The model's length: 59.69 m, the base's 65.79 m less 6.10 m. The base's mesh is 2.98 m longer than the 787-9 (62.81 m), so this model is 2.97 m longer than the 787-8 (56.72 m). The span (59.52 m on the mesh, 60.12 m published) and the fuselage's section are right. The correction belongs in the base; fore and aft then need the new mesh's stations.",
+    "Doors [787] p.2-16: four each side on both, the base's doors moved with the fuselage (door 1 not moved, doors 2 and 3 by the forward 3.05 m, door 4 by 6.10 m). No stations of its own.",
+    "Wingtip and nacelles: no change. One wing with the same tips: span 60.12 m, the tip 22.37 m (787-8) and 22.33 m (787-9) aft of door 2 (tip 37.69 / 40.69 m aft of the nose, p.2-5, p.2-6). The same engines: 6.1.25 Inlet Hazard Areas, p.6-26, has one table for the General Electric engines and one for the Rolls Royce engines, for all models. The engine centre line is drawn 9.73 m from the aircraft centre line on the 787-8 (p.2-5), 9.91 m on the 787-9 (p.2-6), 9.71 m on the 787-10 (p.2-7): the 787-8 and the 787-10 agree, so the nacelles stay where the base has them.",
+    "Gear [787] p.7-4 (7.2 Landing Gear Footprint): 4 wheels on each main leg and track 9.8 m on both; main tyres 50 x 20.0 R22 on the 787-8 (1.27 x 0.51 m), 54 x 21.0 R23 on the 787-9 (1.37 x 0.53 m); nose tyres 40 x 16.0 R16 on both (1.02 x 0.41 m). The 787-8's bogie is also smaller (wheels 1.30 m apart across, axles 1.46 m apart; 787-9 1.52 m and 1.51 m): the gear tool draws each 4-wheel bogie with its axles 1.46 m apart and has no setting for it. wheelbaseM 22.55 is the base's 25.6 less the forward 3.05 m, and noseAftM is the base's: the legs stay where the base has them under the nose and the wing (published wheelbase 22.78 m = 25.83 m - 3.05 m). clearanceM 0.9: the nacelle is 0.71 to 1.07 m above the ground on the 787-8 (p.2-8, dimension F)."
+  ]
+}

@@ -7,6 +7,7 @@ import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ModelManifest, ModelManifestEntry } from '../../client/types.ts'
+import type { MeshRecipe } from './detail.ts'
 import type { GearSpec } from './gear-glb.ts'
 import type { NacelleOp, Wingtip } from './variants.ts'
 
@@ -31,10 +32,17 @@ export interface Recipe {
   fuselage?: { foreM?: number; aftM?: number; fore?: [number, number]; aft?: [number, number] } // fuselage.ts
   stations?: Stations // profile.ts: the doors and the cockpit windows
   gear?: GearSpec // gear-glb.ts: the landing gear's layout
-  /** rotor: a helicopter (profile.ts, light-anchors.ts); finBeacon: the upper beacon on the fin tip; noBellyBeacon; noWindows: no cabin window row to find. */
-  flags?: Array<'rotor' | 'finBeacon' | 'noBellyBeacon' | 'noWindows'>
+  /**
+   * rotor: a helicopter (profile.ts, light-anchors.ts); finBeacon: the upper beacon on the fin tip; noBellyBeacon; noWindows: no cabin window row to find;
+   * lowEngines: the profile's engines box ends at the lowest pylon's top, not the highest (profile.ts: four engines under a wing with much dihedral).
+   */
+  flags?: Array<'rotor' | 'finBeacon' | 'noBellyBeacon' | 'noWindows' | 'lowEngines'>
   windowPitchM?: number // the cabin windows' pitch (light-anchors.ts; an airliner's 0.51 m without it)
+  /** The cabin window row where light-anchors.ts's rule does not hold (13 % of the length to the fin, a dense band above the centre line): its ends, metres aft of the nose, and its middle, metres above the keel. */
+  windowRowM?: [foreM: number, aftM: number, upM: number]
   wingRootOffsetM?: number // the wing-root lights this far outboard of the fuselage side (0.8 m without it)
+  finRootM?: number // profile.ts: the fin's root leading edge, metres aft of the nose: a dorsal ridge or a blade antenna ahead of it is not the fin (without it: anything aft of the middle of the model)
+  mesh?: MeshRecipe // detail.ts: the source file model.glb is rebuilt from, and how it is shaded
   sources?: string[] // where the numbers come from
 }
 
@@ -66,7 +74,7 @@ export function recipeOf(id: string, dir = MODELS): Recipe {
 }
 
 /** A recipe's setting, or its base's: a derived model is its base in all it does not say. */
-export function setting<K extends 'flags' | 'windowPitchM' | 'wingRootOffsetM'>(id: string, key: K, dir = MODELS): Recipe[K] {
+export function setting<K extends 'flags' | 'windowPitchM' | 'windowRowM' | 'wingRootOffsetM' | 'finRootM'>(id: string, key: K, dir = MODELS): Recipe[K] {
   const r = recipeOf(id, dir)
   return r[key] ?? (r.base === undefined ? undefined : setting(r.base, key, dir))
 }

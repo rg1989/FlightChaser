@@ -1,0 +1,10 @@
+{
+  "mesh": { "source": "flightairmap-glb/SR22.glb", "date": "2026-10-14" , "drop": ["propdisc", "propblur"] },
+  "stations": {
+    "lengthM": null,
+    "doors": [],
+    "cockpit": 3.25,
+    "source": "the mesh: the aft edge of the front door's window (the door is the cockpit's own: no passenger door behind it)"
+  },
+  "flags": ["finBeacon", "noBellyBeacon", "noWindows"]
+}

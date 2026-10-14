@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs'
 import { Cartesian3, Matrix3, Matrix4, Quaternion } from 'cesium'
 import { GLTF_TO_CESIUM, fixMatrix } from '../../client/scene/model.ts'
 import type { ModelManifest } from '../../client/types.ts'
-import { allGear, gearFor, rootMatrix, type GearSpec } from './gear-glb.ts'
+import { allGear, gearFor, INSET_M, rootMatrix, skinAbove, type GearSpec } from './gear-glb.ts'
 import { loadBody } from './light-anchors.ts'
 import { readManifest, recipeOf } from './packages.ts'
 
@@ -66,13 +66,12 @@ test('each gear: its wheels touch heightM below the origin; its struts start ins
     const mainL = gltf.nodes.find((n: any) => n.name === 'mainL').translation
     near(nose[0] - mainL[0], GEAR[e.id].wheelbaseM, 1e-6, `${e.id} wheelbase`)
     assert.ok(mainL[1] > 0.6 * GEAR[e.id].trackM / 2 && mainL[1] <= GEAR[e.id].trackM / 2 + 1e-9, `${e.id} left main on the left, at most the published track`)
-    // the hinge sits just inside the skin: above the lowest skin within 3 m of it, by no more than 2 m
+    // the hinge sits just inside the skin: straight under it, the skin it hangs from, INSET_M down (a wing's underside, the belly)
     const m = loadBody(e)
     for (const node of gltf.nodes.slice(1)) {
       const [x, y, z] = node.translation
-      let skin = Infinity
-      for (let k = 0; k < m.p.length; k += 3) if (Math.hypot(m.p[k] - x, m.p[k + 1] - y) < 3) skin = Math.min(skin, m.p[k + 2])
-      assert.ok(skin < Infinity && z >= skin - 0.05 && z <= skin + 2, `${e.id} ${node.name}: hinge ${z.toFixed(2)} vs the skin ${skin.toFixed(2)}`)
+      const skin = skinAbove(m, x, y, z - 2)
+      assert.ok(skin !== null && Math.abs(z - INSET_M - skin) < 0.05, `${e.id} ${node.name}: hinge ${z.toFixed(2)} vs the skin above ${skin?.toFixed(2)}`)
     }
   }
 })

@@ -1,92 +1,152 @@
 {
-  "a320.glb": {
+  "a320": {
     "license": "GPL-2.0-only",
-    "author": "FlightGear A320-family authors (fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a320/glTF2/A320.glb"
+    "author": "FlightGear A320-family authors (fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a320/glTF2/A320.glb",
+    "file": "source/flightairmap-glb/A320.glb"
   },
-  "a321.glb": {
+  "a321": {
     "license": "GPL-2.0-only",
-    "author": "FlightGear A320-family authors (fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a320/glTF2/A321.glb"
+    "author": "FlightGear A320-family authors (fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a320/glTF2/A321.glb",
+    "file": "source/flightairmap-glb/A321.glb"
   },
-  "b738.glb": {
+  "a333": {
     "license": "GPL-2.0-only",
-    "author": "Innis Cunningham (3D) and the FlightGear 737-800 authors; converted by Flightradar24; simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b738/737.blend"
+    "author": "Narendran Muraleedharan (FlightGear A330-300)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a333/glTF2/A333.glb",
+    "file": "source/flightairmap-glb/A333.glb"
   },
-  "b773.glb": {
+  "a343": {
     "license": "GPL-2.0-only",
-    "author": "Syd Adams (3D) and the FlightGear 777 authors; converted by Flightradar24; simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b773/777-300.blend"
+    "author": "Andino and the FlightGear A340-313X authors (Skyop, Ampere K. Hardraade, Isaias V Prestes, Gijs de Rooy, Simon; kept up by it0uchpods)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a343/glTF2/A343.glb",
+    "file": "source/flightairmap-glb/A343.glb"
   },
-  "b789.glb": {
-    "license": "GPL-2.0-only",
-    "author": "Jonathan Redpath and MSA-S23 (787-9 3D), after the FlightGear 787-8 by Joshua W and others; converted by Flightradar24; simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b789/787-900.blend"
-  },
-  "a333.glb": {
-    "license": "GPL-2.0-only",
-    "author": "Narendran Muraleedharan (FlightGear A330-300); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a333/glTF2/A333.glb"
-  },
-  "a359.glb": {
+  "a359": {
     "license": "GPL-2.0-or-later",
-    "author": "Juuso Tapaninen (jormapaappa1235), Brendan O'Gara (Sbyx), Chris Leung, Chris Andrews, Joshua Davidson (FlightGear A350XWB); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a350/glTF2/A350.glb"
+    "author": "Juuso Tapaninen (jormapaappa1235), Brendan O'Gara (Sbyx), Chris Leung, Chris Andrews, Joshua Davidson (FlightGear A350XWB)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a350/glTF2/A350.glb",
+    "file": "source/flightairmap-glb/A350.glb"
   },
-  "e75l.glb": {
+  "a388": {
     "license": "GPL-2.0-only",
-    "author": "Narendran Muraleedharan (FlightGear E-jet-family); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/e190/glTF2/E75L.glb"
+    "author": "K. Ampere, I. Cunningham, F. Dalvi and S. Hamilton (exterior 3D), with edits by J. Tapaninen, S. Toryx and Narendran Muraleedharan (FlightGear A380-omega)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a380/glTF2/A380.glb",
+    "file": "source/flightairmap-glb/A380.glb"
   },
-  "e190.glb": {
-    "license": "GPL-2.0-only",
-    "author": "Narendran Muraleedharan (FlightGear E-jet-family); glTF by FlightAirMap (Ysurac); simplified by FlightHopper with the GoLocalNear/livetaiwan scripts",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/e190/glTF2/E190.glb"
-  },
-  "crj9.glb": {
-    "license": "GPL-2.0-or-later",
-    "author": "Ryan Miller (FlightGear CRJ700-family 3D and FDM); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/crj9/glTF2/CRJ9.glb"
-  },
-  "at75.glb": {
+  "at75": {
     "license": "GPL-3.0-only",
-    "author": "Narendran Muraleedharan, Donald Belcham, Dwayne Gable, Oliver (ot-666), camelon (FlightGear ATR72); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/atr72/glTF2/AT75.glb"
+    "author": "Narendran Muraleedharan, Donald Belcham, Dwayne Gable, Oliver (ot-666), camelon (FlightGear ATR72)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/atr72/glTF2/AT75.glb",
+    "file": "source/flightairmap-glb/AT75.glb"
   },
-  "b744.glb": {
+  "b738": {
     "license": "GPL-2.0-only",
-    "author": "Gijs de Rooy and the FlightGear 747-400 authors; converted by Flightradar24; simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b744/747.blend"
+    "author": "Innis Cunningham (3D) and the FlightGear 737-800 authors",
+    "upstream": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b738/737.blend",
+    "file": "source/fr24-blend/b738.blend"
   },
-  "c550.glb": {
+  "b744": {
     "license": "GPL-2.0-only",
-    "author": "Curtis L. Olson, Ludovic Brenta, chris_blues (FlightGear Citation II); converted by Flightradar24; simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/citation/citation.blend"
+    "author": "Gijs de Rooy and the FlightGear 747-400 authors",
+    "upstream": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b744/747.blend",
+    "file": "source/fr24-blend/b744.blend"
   },
-  "c182.glb": {
-    "license": "GPL-2.0-only",
-    "author": "Heiko Schulz (3D) and the FlightGear c182s authors; glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/c182/glTF2/C182.glb"
+  "b752": {
+    "license": "GPL-2.0-or-later",
+    "author": "Liam Gathercole, Skyop, Isais Prestes (FlightGear 757-200), exterior reworked by Juuso Tapaninen, further models by John Williams (tikibar)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/b752/glTF2/B752.glb",
+    "file": "source/flightairmap-glb/B752.glb"
   },
-  "ec135.glb": {
+  "b763": {
     "license": "GPL-2.0-only",
-    "author": "Heiko Schulz (3D) and the FlightGear ec135 authors; converted by Flightradar24; simplified by GoLocalNear/livetaiwan",
-    "source": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/ec135/ec135.blend"
+    "author": "Liam Gathercole and Isaias V. Prestes (3D), Peter Brendt (FlightGear 767)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/b767/glTF2/B763.glb",
+    "file": "source/flightairmap-glb/B763.glb"
   },
-  "a20n.glb": {
+  "b773": {
     "license": "GPL-2.0-only",
-    "author": "FlightGear A320-family authors (fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan; modified by FlightHopper (tools/models/variants.ts)",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a320/glTF2/A320.glb; modified by FlightHopper (tools/models/variants.ts), recipe a20n in tools/models/variants.json"
+    "author": "Syd Adams (3D) and the FlightGear 777 authors",
+    "upstream": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b773/777-300.blend",
+    "file": "source/fr24-blend/b773.blend"
   },
-  "a21n.glb": {
+  "b789": {
     "license": "GPL-2.0-only",
-    "author": "FlightGear A320-family authors (fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner); glTF by FlightAirMap (Ysurac); simplified by GoLocalNear/livetaiwan; modified by FlightHopper (tools/models/variants.ts)",
-    "source": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/a320/glTF2/A321.glb; modified by FlightHopper (tools/models/variants.ts), recipe a21n in tools/models/variants.json"
+    "author": "Jonathan Redpath and MSA-S23 (787-9 3D), after the FlightGear 787-8 by Joshua W and others",
+    "upstream": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b789/787-900.blend",
+    "file": "source/fr24-blend/b789.blend"
   },
-  "b38m.glb": {
+  "bcs3": {
+    "license": "GPL-2.0-or-later",
+    "author": "FlightGear CSeries authors (ACJZA, Joshua Davidson (it0uchpods/411), Jonathan Redpath, D-ECHO, Pakistan-1, Gabriel Hernandez)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/bcs1/glTF2/BCS3.glb",
+    "file": "source/flightairmap-glb/BCS3.glb"
+  },
+  "c182": {
     "license": "GPL-2.0-only",
-    "author": "Innis Cunningham (3D) and the FlightGear 737-800 authors; converted by Flightradar24; simplified by GoLocalNear/livetaiwan; modified by FlightHopper (tools/models/variants.ts)",
-    "source": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/b738/737.blend; modified by FlightHopper (tools/models/variants.ts), recipe b38m in tools/models/variants.json"
+    "author": "Heiko Schulz (3D) and the FlightGear c182s authors",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/c182/glTF2/C182.glb",
+    "file": "source/flightairmap-glb/C182.glb"
+  },
+  "c550": {
+    "license": "GPL-2.0-only",
+    "author": "Curtis L. Olson, Ludovic Brenta, chris_blues (FlightGear Citation II)",
+    "upstream": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/citation/citation.blend",
+    "file": "source/fr24-blend/citation.blend"
+  },
+  "crj9": {
+    "license": "GPL-2.0-or-later",
+    "author": "Ryan Miller (FlightGear CRJ700-family 3D and FDM)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/crj9/glTF2/CRJ9.glb",
+    "file": "source/flightairmap-glb/CRJ9.glb"
+  },
+  "dh8d": {
+    "license": "GPL-2.0-only",
+    "author": "Alex Park (MaverickAlex), Florian K, D-ECHO, Andreas Spiekermann (FlightGear Q400)",
+    "upstream": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/q400/q400.blend",
+    "file": "source/fr24-blend/q400.blend"
+  },
+  "e145": {
+    "license": "GPL-2.0-only",
+    "author": "Emmanuel Baranger (FlightGear Embraer-ERJ-145 3D and FDM)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/e145/glTF2/E145.glb",
+    "file": "source/flightairmap-glb/E145.glb"
+  },
+  "e190": {
+    "license": "GPL-2.0-only",
+    "author": "Narendran Muraleedharan (FlightGear E-jet-family)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/e190/glTF2/E190.glb",
+    "file": "source/flightairmap-glb/E190.glb"
+  },
+  "e75l": {
+    "license": "GPL-2.0-only",
+    "author": "Narendran Muraleedharan (FlightGear E-jet-family)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/e190/glTF2/E75L.glb",
+    "file": "source/flightairmap-glb/E75L.glb"
+  },
+  "ec135": {
+    "license": "GPL-2.0-only",
+    "author": "Heiko Schulz (3D) and the FlightGear ec135 authors",
+    "upstream": "https://github.com/Flightradar24/fr24-3d-models/blob/dd53267690c6a4ecbb290a3acf0284333a5d68a9/source/ec135/ec135.blend",
+    "file": "source/fr24-blend/ec135.blend"
+  },
+  "p28a": {
+    "license": "GPL-2.0-only",
+    "author": "Emmanuel Baranger (FlightGear Piper PA-28, 3D and FDM) and 5H1N0B1 (systems)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/pa28/glTF2/PA28.glb",
+    "file": "source/flightairmap-glb/PA28.glb"
+  },
+  "pc12": {
+    "license": "GPL-2.0-only",
+    "author": "Emmanuel Baranger (FlightGear PC-12, 3D and FDM)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/pc12/glTF2/PC12.glb",
+    "file": "source/flightairmap-glb/PC12.glb"
+  },
+  "sr22": {
+    "license": "GPL-2.0-only",
+    "author": "Emmanuel Baranger (FlightGear Cirrus-SR22 3D and FDM)",
+    "upstream": "https://github.com/Ysurac/FlightAirMap-3dmodels/blob/0906d9ba1bdd906ce45807e45ed706c09912db19/sr22/glTF2/SR22.glb",
+    "file": "source/flightairmap-glb/SR22.glb"
   }
 }

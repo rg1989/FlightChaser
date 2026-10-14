@@ -11,7 +11,7 @@ import type { FleetEntry, ModelManifest } from '../types.ts'
 import { measureGlb, noseAzimuthDeg } from './model.ts'
 import { ModelPicker } from './modelFor.ts'
 import { placeholderShader } from './placeholder.ts'
-import { BOX_CENTRE, BOX_HALF, MIN_PX, RANGE_NM, Traffic, flightId, hitAt, isOccluded, minScale, shownLabels, nearestInRange, scaleFor, squarePx, trafficHpr, trafficMatrix, trafficRangeNm } from './traffic.ts'
+import { BOX_CENTRE, BOX_HALF, FULL_PX, fullMesh, MIN_PX, RANGE_NM, Traffic, flightId, hitAt, isOccluded, minScale, shownLabels, nearestInRange, scaleFor, squarePx, trafficHpr, trafficMatrix, trafficRangeNm } from './traffic.ts'
 import type { Box } from './traffic.ts'
 import { readManifest } from '../../tools/models/packages.ts'
 
@@ -195,7 +195,7 @@ test('traffic: a climbing type model (its nose on glTF −Z) raises its nose, no
 interface FakeModel { id: string; show: boolean; ready: boolean; modelMatrix: Matrix4; customShader: CustomShader | undefined; backFaceCulling: boolean; imageBasedLighting: { imageBasedLightingFactor: unknown }; getNode(): undefined }
 const fakeModel = (id: string): FakeModel => ({ id, show: true, ready: true, modelMatrix: new Matrix4(), customShader: undefined, backFaceCulling: true, imageBasedLighting: { imageBasedLightingFactor: null }, getNode: () => undefined })
 
-function fakeTraffic(): { traffic: Traffic; models: FakeModel[]; gears: FakeModel[] } {
+function fakeTraffic(man: ModelManifest = manifest): { traffic: Traffic; models: FakeModel[]; gears: FakeModel[] } {
   const here = Cartesian3.fromDegrees(-0.1, 51.5, 9_000)
   const viewer = {
     scene: {
@@ -208,7 +208,7 @@ function fakeTraffic(): { traffic: Traffic; models: FakeModel[]; gears: FakeMode
   } as unknown as Viewer
   const models: FakeModel[] = []
   const gears: FakeModel[] = []
-  const traffic = new Traffic(viewer, new ModelPicker(manifest), {} as HTMLElement, {
+  const traffic = new Traffic(viewer, new ModelPicker(man), {} as HTMLElement, {
     load: async (e) => (models.push(fakeModel(e.id)), models[models.length - 1] as unknown as Model),
     loadGear: async (uri) => (gears.push(fakeModel(uri)), gears[gears.length - 1] as unknown as Model),
   })
@@ -220,10 +220,11 @@ const settle = async (): Promise<void> => {
 }
 
 test('Traffic: an aircraft on its own model flies its airline\'s livery; on a stand-in or the generic model it is a placeholder with no livery, gear and all', async () => {
-  const { traffic, models, gears } = fakeTraffic()
+  // T752 and T753: two types that no model is of, with the A321 as their nearest shape (whatever the packages cover today)
+  const { traffic, models, gears } = fakeTraffic({ ...manifest, models: manifest.models.map((m) => (m.id === 'a321' ? { ...m, standIns: ['T752', 'T753'] } : m)) })
   const info = (hex: string, flight: string, t?: string): FleetEntry['info'] => toInfo({ hex, flight, t, category: 'A3' } as ReadsbAircraft)
   const parked = (hex: string, nm: number, flight: string, t?: string): FleetEntry => at(hex, nm, 45, { onGround: true, hM: 0, gsKt: 0, info: info(hex, flight, t) })
-  const entries = [parked('own', 1, 'ELY321', 'A321'), parked('standin', 2, 'ELY752', 'B752'), parked('generic', 3, 'ELY000')]
+  const entries = [parked('own', 1, 'ELY321', 'A321'), parked('standin', 2, 'ELY752', 'T752'), parked('generic', 3, 'ELY000')]
   const here = { lat: 51.5, lon: -0.1 }
   const placed = { positionOf: (hex: string): Cartesian3 | undefined => { const e = entries.find((x) => x.hex === hex); return e && Cartesian3.fromDegrees(e.lon, e.lat, e.hM) } }
   const shaderOf = (hex: string): { id: string; shader: CustomShader | undefined; gear: CustomShader | undefined } => {
@@ -243,16 +244,41 @@ test('Traffic: an aircraft on its own model flies its airline\'s livery; on a st
   assert.equal(own.id, 'a321')
   assert.ok(own.shader !== undefined && own.shader !== placeholderShader(), 'its own model: painted')
   assert.equal(own.gear, undefined, 'and its gear as it is')
-  assert.deepEqual(shaderOf('standin'), { id: 'a321', shader: placeholderShader(), gear: placeholderShader() }, 'a 757 on the A321: a placeholder, though El Al has a livery')
+  assert.deepEqual(shaderOf('standin'), { id: 'a321', shader: placeholderShader(), gear: placeholderShader() }, 'another type on the A321: a placeholder, though El Al has a livery')
   assert.deepEqual(shaderOf('generic'), { id: 'a320', shader: placeholderShader(), gear: placeholderShader() }, 'no type: its category\'s model, a placeholder')
 
   // The type arrives, or was wrong: the same model is now the aircraft's own, and the other way round.
   entries[1].info = info('standin', 'ELY752', 'A321')
-  entries[0].info = info('own', 'ELY321', 'B753')
+  entries[0].info = info('own', 'ELY321', 'T753')
   traffic.select(entries, 'chased', here)
   traffic.update(placed, undefined, 0.016)
   const now = shaderOf('standin')
   assert.ok(now.shader !== undefined && now.shader !== placeholderShader() && now.gear === undefined, 'its own model after all: painted, its gear as it is')
   assert.deepEqual(shaderOf('own'), { id: 'a321', shader: placeholderShader(), gear: placeholderShader() })
+  traffic.destroy()
+})
+
+test('fullMesh: the full mesh from FULL_PX on screen; under it the light copy, but a full one stays down to 0.8 of FULL_PX', () => {
+  assert.equal(fullMesh(0, false), false, 'behind the camera')
+  assert.equal(fullMesh(FULL_PX - 1, false), false)
+  assert.equal(fullMesh(FULL_PX, false), true)
+  assert.equal(fullMesh(0.85 * FULL_PX, true), true, 'no flip at the line')
+  assert.equal(fullMesh(0.79 * FULL_PX, true), false)
+})
+
+test('Traffic: a model with a light copy loads both meshes and draws the light one while the aircraft is small (here: behind the camera)', async () => {
+  const man = { ...manifest, models: manifest.models.map((m) => (m.id === 'a321' ? { ...m, lod: { uri: 'models/a321/lod.glb', triangles: 6000 } } : m)) }
+  const { traffic, models } = fakeTraffic(man)
+  const uris: string[] = []
+  const e = at('x', 0.5, 45, { onGround: true, hM: 0, gsKt: 0, info: toInfo({ hex: 'x', flight: 'ELY321', t: 'A321', category: 'A3' } as ReadsbAircraft) })
+  const here = { lat: 51.5, lon: -0.1 }
+  traffic.select([e], 'chased', here)
+  await settle()
+  traffic.select([e], 'chased', here)
+  traffic.update({ positionOf: () => Cartesian3.fromDegrees(e.lon, e.lat, 0) }, undefined, 0.016)
+  traffic.forEachDrawn((_, mm) => uris.push(models.indexOf(models.find((x) => x.modelMatrix === mm)!) === 1 ? 'light' : 'full'))
+  assert.equal(models.length, 2, 'model.glb, then lod.glb')
+  assert.deepEqual(uris, ['light'])
+  assert.equal(models.filter((x) => x.show).length, 1, 'one of the two is drawn')
   traffic.destroy()
 })

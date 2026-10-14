@@ -1,0 +1,29 @@
+{
+  "mesh": { "source": "flightairmap-glb/BCS3.glb", "date": "2026-10-14" },
+  "stations": {
+    "lengthM": 38.69,
+    "doors": [5.27, 29.93],
+    "cockpit": 3.13,
+    "source": "https://aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-05/A220-ACP-Issue009-00-24Apr2025.PDF"
+  },
+  "gear": {
+    "noseAftM": 3.4,
+    "wheelbaseM": 15.23,
+    "trackM": 6.73,
+    "mains": 2,
+    "mainTyre": [1.07, 0.38],
+    "noseTyre": [0.69, 0.22],
+    "clearanceM": 0.6,
+    "mainsRetract": "inboard"
+  },
+  "windowPitchM": 0.54,
+  "sources": [
+    "Airbus A220 Aircraft Characteristics Publication BD500-3AB48-13800-00, issue 009 (2025-04-24), the address in stations.source; the A220-300 is applicability 55001-59999",
+    "length, gear: general aircraft dimensions, table 3 and figure 1 (PDF pages 146-150): overall length A 1523.2 in (38.69 m); nose to nose gear W 133.92 in (3.40 m); wheelbase Z 599.7 in (15.23 m); track Y 265.0 in (6.73 m). The pavement data's figure 13 (PDF page 602) prints 576.1 in for the wheelbase; 599.7 in agrees with the A220-100's 515.7 in plus the 84 in forward plug (wing and engine stations M and K in the same tables)",
+    "tyres: landing gear footprint, table 17 (PDF page 601): nose 27 x 8.5 R12 (0.69 x 0.22 m), main H42 x 15.0 R21 (1.07 x 0.38 m). clearanceM: ground clearances, table 7 (PDF page 113): nacelle 22.9 to 25.9 in (0.58 to 0.66 m)",
+    "doors: door distance from nose, figure 11 (PDF page 135): forward passenger door H 4.8 m, aft passenger door C 29.46 m, each to the door's forward edge; the doors are 0.93 m wide in the figure, so the centre lines are 5.27 m and 29.93 m. cockpit: the side window's aft edge in the same figure, scaled against H: 3.13 m (the source mesh's own: 3.06 m of 38.17 m)",
+    "windowPitchM: the source mesh's cabin windows are 0.536 m apart (the median of 39 gaps on one side)",
+    "model.glb, 2026-10-13: FlightAirMap's BCS3.glb (third_party/aircraft-models/source/flightairmap-glb/BCS3.glb, unchanged; 31,980 triangles, 8 materials, 2 textures) without its cabin and cockpit liner, window glass, two cargo-hold panels, four probes and 72 stator vanes; the fuselage skin's left half replaced with the mirror image of its right half (the left had flipped and overlapping triangles round the cabin windows behind the wing); each cabin window opening's rim thinned from 34 to 12 vertices; all 80 cabin and 4 cockpit window openings closed flush with fans of triangles; the right pylon moved 0.108 m outboard onto its nacelle's axis. No decimation: 17,172 triangles, the parts kept apart, the source's own normals. Then third_party/aircraft-models/scripts/canonicalise.py (axes, centre, COLOR_0) and embed_copyright.py, both unchanged",
+    "The mesh against the publication: length 38.17 m (38.69), span 35.17 m (35.09 with fuel), tailplane span 12.25 m (12.26), fuselage 3.69 m wide and 3.73 m high (3.51 and 3.72), nacelle 2.48 m wide (2.48). Its wing is in its flight shape: the winglet tips stand 1.3 m over the fuselage top (0.5 m on the ground, table 7)"
+  ]
+}

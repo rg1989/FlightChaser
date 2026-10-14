@@ -1,0 +1,26 @@
+{
+  "mesh": { "source": "flightairmap-glb/B763.glb", "date": "2026-10-14" },
+  "stations": {
+    "lengthM": 54.94,
+    "doors": [5.7, 42.55],
+    "cockpit": 3.1,
+    "source": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/767.pdf"
+  },
+  "gear": {
+    "noseAftM": 4.55,
+    "wheelbaseM": 22.76,
+    "trackM": 9.3,
+    "mains": 4,
+    "mainTyre": [1.17, 0.46],
+    "noseTyre": [0.94, 0.36],
+    "clearanceM": 0.84,
+    "mainsRetract": "inboard"
+  },
+  "windowPitchM": 0.5545,
+  "windowRowM": [7.1, 40.93, 3.17],
+  "sources": [
+    "Boeing D6-58328 Rev I (July 2021), 767 Airplane Characteristics for Airport Planning, https://www.boeing.com/content/dam/boeing/v2/airports/acaps/767.pdf. 2.2.2 (p. 2-9), 767-300 and -300ER: length 54.94 m, span 47.57 m, tailplane span 18.62 m, fuselage 5.03 m wide and 5.41 m tall, engines 7.92 m from the centre line, nose gear 4.55 m aft of the nose, wheelbase 22.76 m. 7.2.2 (p. 7-4): track 9.30 m, four wheels a main leg, main tyres H46x18-20 (1.17 m x 0.46 m), nose tyres H37x14-15 (0.94 m x 0.36 m). 2.3.2 (p. 2-13): the nacelle 0.56 m to 1.12 m off the ground (K): 0.84 m, the middle. 2.7.1 (p. 2-30): door centre lines 5.70 m and 42.55 m aft of the nose; a mid door at 15.96 m is an option on the -300 and -300ER (this mesh has a window there, so it is not listed). The cockpit side windows' aft edge, 3.1 m: read off the drawings of 2.2.2 and 2.7.1, scaled by door 1.",
+    "windowPitchM, windowRowM: the mesh models its cabin windows: the first 7.38 m and the last 40.65 m aft of the nose (60 pitches), their middle 3.17 m above the keel. The row ends ahead of the aft door, 2.5 m ahead of where the rule would end it.",
+    "model.glb, from third_party/aircraft-models/source/flightairmap-glb/B763.glb (FlightGear's 767: github.com/FGMEMBERS/767 at a31798b2f666e04d11ad2d94e904a7426523cc64), 2026-10-13. Before the join, 31 nodes removed: the landing gear left in the file (LBtrimTire2.001, LFtrimTire1.001, LFtrimTire2.001, RBtrimTire1.001, RBtrimTire2.001, LiEixo1.001, LiEixo2.001, RiEixo1.001, RiEixo2.001, Rtrimpiece5, FFbarNG.001, FL1barNG.001, FR1barNG.001), two stray fragments behind the tail (Ltrimpiece5, Ltrimpiece6), the gear bay's edge slivers (Mesh17, Mesh19, Mesh20, Mesh21, Mesh22, Mesh23, Mesh24, Mesh24.001, Mesh25, Mesh25.001, Mesh26, Mesh26.001) and the inboard spoiler plates, which face down over a closed wing skin (speedbrakel, speedbrakel.001, speedbraker, speedbraker.001); the right half of enginerear (the right engine's core cowl, mirrored without turning its faces) turned the right way. Then third_party/aircraft-models/scripts: bl_join.py with ratio 1.0 (no triangle removed; Blender 5.2.2), canonicalise.py. Then: 16 triangles without area dropped; all of it scaled by 1.0000575 to Boeing's length; the wing outboard of 9.5 m from the centre line stretched 4.61 % along the span (the source's span is 46.31 m; Boeing's 47.57 m); the normals computed again from the faces (by area and angle, smooth under 40 degrees, and over the faces within 0.45 m: the join left wrong ones on the forward fuselage, and the door and cockpit panels showed as dents), COLOR_0 from them as canonicalise.py does; asset.copyright written."
+  ]
+}

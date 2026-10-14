@@ -1,0 +1,21 @@
+{
+  "base": "b38m",
+  "name": "Boeing 737 MAX 9",
+  "types": ["B39M", "B3XM"],
+  "date": "2026-10-13",
+  "fuselage": { "foreM": 1.57, "aftM": 1.07 },
+  "stations": {
+    "lengthM": 42.11,
+    "doors": [5.03, 26.7, 34.52],
+    "cockpit": 2.92,
+    "source": "https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737MAX_RevH.pdf"
+  },
+  "sources": [
+    "[MAX] Boeing D6-38A004 Rev H (March 2023), 737 MAX Airplane Characteristics for Airport Planning https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737MAX_RevH.pdf, 2.2.2 (p. 2-10) and 2.2.3 (p. 2-11): overall length 39.52 m (129 ft 8 in) for the 737-8, 42.11 m (138 ft 2 in) for the 737-9; nose to the tail cone's end 39.12 m and 41.76 m (+104 in, 2.64 m); span 35.92 m and the AT winglet 2.92 m tall on both; nose to the engine inlet 13.00 m and 14.58 m (+62 in, 1.57 m); engines 4.82 m from the centre line on both; nose to the wingtip 23.74 / 25.34 m and 25.32 / 26.92 m (+62 in); nose gear 4.09 m from the nose on both; wheelbase 15.60 m and 17.17 m (+62 in); track 5.72 m on both.",
+    "Fuselage [MAX] 2.7.1 (p. 2-26), door centre lines from the nose, 737-8 then 737-9: forward entry door 5.03 m, 5.03 m; forward cargo door 8.53 m, 8.53 m; overwing exits 16.71 and 17.68 m, 18.29 and 19.25 m (+62 in); aft cargo door 27.97 m, 30.61 m (+104 in); aft entry door 31.88 m, 34.52 m (+104 in). So the plug ahead of the wing is 62 in (1.57 m), between the forward cargo door and the wing, and the plug behind the wing is 104 - 62 = 42 in (1.07 m), ahead of the aft cargo door. No plug length is printed.",
+    "Doors [MAX] 2.7.1 (p. 2-26): the 737-9 has a mid exit door on each side, 26.70 m (87 ft 7 in) from the nose, which the 737-8 does not have (note 1); the other two are the base's doors moved with the fuselage. Measured on the 2.2.3 side view at 400 dpi (40.16 px/m): mid exit door 26.72 m, forward door 5.06 m, aft door 34.55 m. Cockpit 2.92 m: the base's value, the nose is the same; the windows' aft edge is drawn at 3.16 m (2.2.3) and 3.17 m (2.2.2), and is 3.15 m from the nose on the mesh.",
+    "Wingtip, nacelles and gear: the base's. [MAX] 2.3.2 and 2.3.3 (p. 2-14, 2-15): the engine 0.43 to 0.56 m and the winglet's blades 2.79 to 3.15 m and 5.72 to 6.07 m above the ground on both. [MAX] 7.2.1 (p. 7-4): two wheels on each leg, nose tyres 27 x 7.75 R15 and main tyres H44.5 x 16.5 R21 on both (30 PR on the 737-8, 32 PR on the 737-9: the same size), track 5.72 m; only the wheelbase differs, by the plug ahead of the wing.",
+    "The rest: the two overall lengths differ by 2.59 m (102 in) and the plugs add 2.64 m (104 in), 0.05 m more. Each station behind the aft plug and the nose-to-tail-cone length differ by 104 in, and the tail is the same; the drawings are 'accurate within +/- 6 inches' (p. 2-10, 2-11). The 737-800 and the 737-900ER differ the same way, [NG] Boeing D6-58325-7 Rev C https://www.boeing.com/content/dam/boeing/v2/airports/acaps/737NG_REV_C.pdf 2.2.6 (p. 2-14) and 2.2.8 (p. 2-16): wheelbase 15.60 m and 17.17 m; overall 39.47 m (129 ft 6 in) and 42.11 m (138 ft 2 in), nose to tail cone 38.02 m and 40.67 m, both 104 in apart. Boeing's 737 MAX page https://www.boeing.com/commercial/737max gives 129 ft 6 in and 138 ft 2 in for the 737-8 and the 737-9: 104 in apart.",
+    "The 737-10 (B3XM) is drawn on this model. [MAX] 2.2.4 (p. 2-12), 2.7.1 and 7.2.1: overall length 43.79 m, 66 in (1.68 m) more than the 737-9: 40 in ahead of the wing (inlet 15.60 m, overwing exits 19.30 and 20.27 m) and 26 in behind it (aft entry door 36.20 m); mid exit door 28.06 m; wheelbase 18.34 m (18.30 m in 7.2.1); the same span, winglets, engines and tyre sizes."
+  ]
+}

@@ -20,17 +20,17 @@
 // a lower blade from under the tip. Closed, smooth-shaded (normals from the loft's faces), the wing's COLOR_0 shade.
 // nacelle: scales each nacelle's parts (profile.ts engineParts) about its axis, from the inlet lip aft, and moves them
 // forward and up; its pylon follows by height (the nacelle's top all the way, the wing's underside not at all).
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
-import { measureGlb } from '../../client/scene/model.ts'
 import type { ModelManifest, ModelManifestEntry, ModelProfile } from '../../client/types.ts'
 import { readGlb, writeGlb, type Glb } from './glb.ts'
 import { applyFuselage } from './fuselage.ts'
 import { gearEntry, gearFor, glb as gearGlb, rootMatrix, type GearSpec } from './gear-glb.ts'
 import { lightsFor, loadBody, type Mesh } from './light-anchors.ts'
-import { outlineFor } from './outline.ts'
+import { LOD_TRIANGLES, lodOf, smoothDegOf } from './lod.ts'
+import { boxOf, outlineFor } from './outline.ts'
 import { MODELS, fileOf, readManifest, recipeOf, writeModel, type Recipe as PackageRecipe, type Stations } from './packages.ts'
 import { engineParts, partBoxes, parts, profileOf, section } from './profile.ts'
 
@@ -595,8 +595,7 @@ export function build(id: string, r: Recipe, manifest: ModelManifest): Built {
   delete entry.profile
   delete entry.lights
   delete entry.outline
-  const axes = measureGlb(bytes)
-  entry.box = { centre: [cm(axes.centre.x), cm(axes.centre.y), cm(axes.centre.z)], half: Math.ceil(108 * Math.max(axes.spanM, axes.lengthM) / 2) / 100 }
+  entry.box = boxOf(bytes)
   // The doors and the gear follow the fuselage, unless the recipe gives its own (a door more or less, another bogie).
   const [stations, gear] = [nearest(r.base, 'stations'), nearest(r.base, 'gear')]
   return {
@@ -607,7 +606,7 @@ export function build(id: string, r: Recipe, manifest: ModelManifest): Built {
 }
 
 /** What is measured on a built variant's mesh (its model.glb is on disk): the lights, the outline, the profile; and its own gear. */
-export function measure(b: Built): { entry: ModelManifestEntry; gear: Uint8Array | null } {
+export function measure(b: Built): { entry: ModelManifestEntry; gear: Uint8Array | null; lod: Uint8Array | null } {
   const entry = structuredClone(b.entry)
   let gear: Uint8Array | null = null
   if (b.gear !== undefined) {
@@ -619,7 +618,16 @@ export function measure(b: Built): { entry: ModelManifestEntry; gear: Uint8Array
   entry.lights = lightsFor(entry)
   entry.outline = outlineFor(entry)
   entry.profile = profileOf(entry, undefined, b.stations).profile
-  return { entry, gear }
+  // its own light copy for the traffic (lod.ts), not the base's
+  delete entry.lod
+  const full = readGlb(b.bytes)
+  let lod: Uint8Array | null = null
+  if (full.idx.length / 3 > LOD_TRIANGLES) {
+    const l = lodOf(full, smoothDegOf(entry.id))
+    lod = writeGlb(l)
+    entry.lod = { uri: `models/${entry.id}/lod.glb`, triangles: l.idx.length / 3 }
+  }
+  return { entry, gear, lod }
 }
 
 /** Builds a recipe's package: model.glb, gear.glb (its own, or a copy of its base's), model.json. */
@@ -627,7 +635,9 @@ export function writePackage(id: string, r: Recipe, manifest: ModelManifest): Mo
   const built = build(id, r, manifest)
   mkdirSync(join(MODELS, id), { recursive: true })
   writeFileSync(fileOf(id, 'model.glb'), built.bytes)
-  const { entry, gear } = measure(built)
+  const { entry, gear, lod } = measure(built)
+  if (lod !== null) writeFileSync(fileOf(id, 'lod.glb'), lod)
+  else rmSync(fileOf(id, 'lod.glb'), { force: true })
   if (gear !== null) writeFileSync(fileOf(id, 'gear.glb'), gear)
   else if (entry.gear) copyFileSync(fileOf(r.base, 'gear.glb'), fileOf(id, 'gear.glb'))
   writeModel(entry)
@@ -666,6 +676,7 @@ export function variantPng(e: ModelManifestEntry, dir: string): string {
 }
 
 if (import.meta.main) {
+  process.getBuiltinModule('node:os').setPriority(19) // gives way to whatever else runs on this machine
   const png = process.argv.indexOf('--png')
   const dir = png >= 0 ? process.argv[png + 1] : null
   const ids = process.argv.slice(2).filter((a, i, all) => !a.startsWith('--') && all[i - 1] !== '--png')

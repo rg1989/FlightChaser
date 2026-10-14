@@ -1,4 +1,5 @@
 {
+  "mesh": { "source": "fr24-blend/b789.blend", "date": "2026-10-13" },
   "stations": {
     "lengthM": 62.81,
     "doors": [6.3, 18.36, 35.43, 49.66],

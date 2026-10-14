@@ -1,4 +1,5 @@
 {
+  "mesh": { "source": "flightairmap-glb/C182.glb", "date": "2026-10-14" },
   "stations": {
     "lengthM": null,
     "doors": [2.85],

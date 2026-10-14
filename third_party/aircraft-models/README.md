@@ -1,23 +1,23 @@
 # Aircraft models: GPL corresponding source
 
-This folder is the corresponding source for 18 aircraft models in `public/models/`:
+This folder is the corresponding source for the aircraft models in `public/models/`: 25 built from the files here,
+and 16 derived from those by a recipe (see [Derived](#derived)).
 
-`a320.glb`, `a321.glb`, `a333.glb`, `a359.glb`, `at75.glb`, `b738.glb`, `b744.glb`, `b773.glb`, `b789.glb`, `c182.glb`, `c550.glb`, `crj9.glb`, `e190.glb`, `e75l.glb`, `ec135.glb`, and `a20n.glb`, `a21n.glb`, `b38m.glb`, which FlightHopper derived from three of them (see [Modified](#modified)).
+The models are GPL-licensed. The GPL says that whoever distributes the models must also make the source available. This
+folder keeps that source in this repository, next to the models, so Flight Chaser meets that obligation itself.
 
-The models are GPL-licensed. The GPL says that whoever distributes the models must also make the source available. This folder keeps that source in this repository, next to the models, so FlightHopper meets that obligation itself.
-
-`public/models/Cesium_Air.glb` is not part of this set. It comes from CesiumJS under Apache-2.0.
+`public/models/cesium-air/` is not part of this set. It comes from CesiumJS under Apache-2.0.
 
 ## Contents
 
 | Path | What it is |
 |---|---|
-| `source/flightairmap-glb/` | The 9 upstream glTF 2.0 files from FlightAirMap-3dmodels that 9 of the models were built from. Unchanged. |
-| `source/fr24-blend/` | The 6 upstream Blender files from fr24-3d-models that the other 6 models were built from. Unchanged. |
-| `scripts/` | All the conversion scripts from livetaiwan-aircraft-models. Unchanged. |
+| `source/flightairmap-glb/` | The 18 upstream glTF 2.0 files from FlightAirMap-3dmodels. Unchanged. |
+| `source/fr24-blend/` | The 7 upstream Blender files from fr24-3d-models. Unchanged. |
+| `scripts/` | The conversion scripts from livetaiwan-aircraft-models, which made the first versions of the models. Unchanged. |
 | `LICENSE-GPL-2.0` | The GPL version 2 text (from livetaiwan-aircraft-models). |
-| `LICENSE-GPL-3.0` | The GPL version 3 text (from https://www.gnu.org/licenses/gpl-3.0.txt). `at75.glb` is GPL-3.0. |
-| `licences.json` | Licence, authors and upstream URL for each model. The app copies these into the model manifest. |
+| `LICENSE-GPL-3.0` | The GPL version 3 text (from https://www.gnu.org/licenses/gpl-3.0.txt). `at75` is GPL-3.0. |
+| `licences.json` | Licence, authors, upstream file and source file of each model built here. |
 
 Every file in `source/` is byte-identical to the upstream file. We checked this with git blob hashes against the upstream repositories.
 
@@ -29,26 +29,33 @@ Upstream commits:
 - FR24 = [Flightradar24/fr24-3d-models](https://github.com/Flightradar24/fr24-3d-models) at `dd53267690c6a4ecbb290a3acf0284333a5d68a9`.
 - livetaiwan = [GoLocalNear/livetaiwan-aircraft-models](https://github.com/GoLocalNear/livetaiwan-aircraft-models) at `00d6a934afba5314e81d5b40a99f5aacdb51b953`.
 
-| FlightHopper file | livetaiwan file | Upstream file | Licence | Original FlightGear authors |
-|---|---|---|---|---|
-| `a320.glb` | `models/flightairmap/A320.glb` | FAM `a320/glTF2/A320.glb` (FGMEMBERS/A320-family) | GPL-2.0-only | fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner |
-| `a321.glb` | `models/flightairmap/A321.glb` | FAM `a320/glTF2/A321.glb` (FGMEMBERS/A320-family) | GPL-2.0-only | as `a320.glb` |
-| `a333.glb` | `models/flightairmap/A333.glb` | FAM `a333/glTF2/A333.glb` (FGMEMBERS/A330-300) | GPL-2.0-only | Narendran Muraleedharan |
-| `a359.glb` | `models/flightairmap/A350.glb` | FAM `a350/glTF2/A350.glb` (FGMEMBERS/A350XWB) | GPL-2.0-or-later | Juuso Tapaninen, Brendan O'Gara (Sbyx), Chris Leung, Chris Andrews, Joshua Davidson |
-| `e75l.glb` | `models/flightairmap/E75L.glb` | FAM `e190/glTF2/E75L.glb` (FGMEMBERS/E-jet-family) | GPL-2.0-only | Narendran Muraleedharan |
-| `e190.glb` | none: FlightHopper built it (see [Modified](#modified)) | FAM `e190/glTF2/E190.glb` (FGMEMBERS/E-jet-family) | GPL-2.0-only | Narendran Muraleedharan |
-| `crj9.glb` | `models/flightairmap/CRJ9.glb` | FAM `crj9/glTF2/CRJ9.glb` (FGMEMBERS/CRJ700-family) | GPL-2.0-or-later | Ryan Miller |
-| `at75.glb` | `models/flightairmap/AT75.glb` | FAM `atr72/glTF2/AT75.glb` (FGMEMBERS/ATR72) | GPL-3.0-only | Narendran Muraleedharan, Donald Belcham, Dwayne Gable, Oliver (ot-666), camelon |
-| `c182.glb` | `models/flightairmap/C182.glb` | FAM `c182/glTF2/C182.glb` (FGMEMBERS/c182s) | GPL-2.0-only | Heiko Schulz (3D) and the c182s authors |
-| `b738.glb` | `models/fr24/b738.glb` | FR24 `source/b738/737.blend` (FGMEMBERS/737-800) | GPL-2.0-only | Innis Cunningham (3D) and the 737-800 authors |
-| `b773.glb` | `models/fr24/b773.glb` | FR24 `source/b773/777-300.blend` (FGMEMBERS/777) | GPL-2.0-only | Syd Adams (3D) and the 777 authors |
-| `b789.glb` | `models/fr24/b789.glb` | FR24 `source/b789/787-900.blend` (FGMEMBERS/787-9) | GPL-2.0-only | Jonathan Redpath, MSA-S23, after the 787-8 by Joshua W and others |
-| `b744.glb` | `models/fr24/b744.glb` | FR24 `source/b744/747.blend` (FGMEMBERS/747-400) | GPL-2.0-only | Gijs de Rooy and the 747-400 authors |
-| `c550.glb` | `models/fr24/citation.glb` | FR24 `source/citation/citation.blend` (FGMEMBERS/Citation) | GPL-2.0-only | Curtis L. Olson, Ludovic Brenta, chris_blues |
-| `ec135.glb` | `models/fr24/ec135.glb` | FR24 `source/ec135/ec135.blend` (FGMEMBERS/ec135) | GPL-2.0-only | Heiko Schulz (3D) and the ec135 authors |
-| `a20n.glb` | none: FlightHopper derived it from `a320.glb` (see [Modified](#modified)) | as `a320.glb` | GPL-2.0-only | as `a320.glb` |
-| `a21n.glb` | none: FlightHopper derived it from `a321.glb` | as `a321.glb` | GPL-2.0-only | as `a321.glb` |
-| `b38m.glb` | none: FlightHopper derived it from `b738.glb` | as `b738.glb` | GPL-2.0-only | as `b738.glb` |
+| Package | Aircraft | Upstream file | Here | Licence | Original FlightGear authors |
+|---|---|---|---|---|---|
+| `a320` | Airbus A320 | FAM `a320/glTF2/A320.glb` | `flightairmap-glb/A320.glb` | GPL-2.0-only | FlightGear A320-family authors (fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner) |
+| `a321` | Airbus A321 | FAM `a320/glTF2/A321.glb` | `flightairmap-glb/A321.glb` | GPL-2.0-only | FlightGear A320-family authors (fredb, curt, mfranz, Ryan Miller, Durk Talsma, janodesbois, F-JJTH, James Turner) |
+| `a333` | Airbus A330-300 | FAM `a333/glTF2/A333.glb` | `flightairmap-glb/A333.glb` | GPL-2.0-only | Narendran Muraleedharan (FlightGear A330-300) |
+| `a343` | Airbus A340-300 | FAM `a343/glTF2/A343.glb` | `flightairmap-glb/A343.glb` | GPL-2.0-only | Andino and the FlightGear A340-313X authors (Skyop, Ampere K. Hardraade, Isaias V Prestes, Gijs de Rooy, Simon; kept up by it0uchpods) |
+| `a359` | Airbus A350-900 | FAM `a350/glTF2/A350.glb` | `flightairmap-glb/A350.glb` | GPL-2.0-or-later | Juuso Tapaninen (jormapaappa1235), Brendan O'Gara (Sbyx), Chris Leung, Chris Andrews, Joshua Davidson (FlightGear A350XWB) |
+| `a388` | Airbus A380-800 | FAM `a380/glTF2/A380.glb` | `flightairmap-glb/A380.glb` | GPL-2.0-only | K. Ampere, I. Cunningham, F. Dalvi and S. Hamilton (exterior 3D), with edits by J. Tapaninen, S. Toryx and Narendran Muraleedharan (FlightGear A380-omega) |
+| `at75` | ATR 72 | FAM `atr72/glTF2/AT75.glb` | `flightairmap-glb/AT75.glb` | GPL-3.0-only | Narendran Muraleedharan, Donald Belcham, Dwayne Gable, Oliver (ot-666), camelon (FlightGear ATR72) |
+| `b738` | Boeing 737-800 | FR24 `source/b738/737.blend` | `fr24-blend/b738.blend` | GPL-2.0-only | Innis Cunningham (3D) and the FlightGear 737-800 authors |
+| `b744` | Boeing 747-400 | FR24 `source/b744/747.blend` | `fr24-blend/b744.blend` | GPL-2.0-only | Gijs de Rooy and the FlightGear 747-400 authors |
+| `b752` | Boeing 757-200 | FAM `b752/glTF2/B752.glb` | `flightairmap-glb/B752.glb` | GPL-2.0-or-later | Liam Gathercole, Skyop, Isais Prestes (FlightGear 757-200), exterior reworked by Juuso Tapaninen, further models by John Williams (tikibar) |
+| `b763` | Boeing 767-300 | FAM `b767/glTF2/B763.glb` | `flightairmap-glb/B763.glb` | GPL-2.0-only | Liam Gathercole and Isaias V. Prestes (3D), Peter Brendt (FlightGear 767) |
+| `b773` | Boeing 777-300 | FR24 `source/b773/777-300.blend` | `fr24-blend/b773.blend` | GPL-2.0-only | Syd Adams (3D) and the FlightGear 777 authors |
+| `b789` | Boeing 787-9 | FR24 `source/b789/787-900.blend` | `fr24-blend/b789.blend` | GPL-2.0-only | Jonathan Redpath and MSA-S23 (787-9 3D), after the FlightGear 787-8 by Joshua W and others |
+| `bcs3` | Airbus A220-300 | FAM `bcs1/glTF2/BCS3.glb` | `flightairmap-glb/BCS3.glb` | GPL-2.0-or-later | FlightGear CSeries authors (ACJZA, Joshua Davidson (it0uchpods/411), Jonathan Redpath, D-ECHO, Pakistan-1, Gabriel Hernandez) |
+| `c182` | Cessna 182 | FAM `c182/glTF2/C182.glb` | `flightairmap-glb/C182.glb` | GPL-2.0-only | Heiko Schulz (3D) and the FlightGear c182s authors |
+| `c550` | Cessna Citation II | FR24 `source/citation/citation.blend` | `fr24-blend/citation.blend` | GPL-2.0-only | Curtis L. Olson, Ludovic Brenta, chris_blues (FlightGear Citation II) |
+| `crj9` | Bombardier CRJ900 | FAM `crj9/glTF2/CRJ9.glb` | `flightairmap-glb/CRJ9.glb` | GPL-2.0-or-later | Ryan Miller (FlightGear CRJ700-family 3D and FDM) |
+| `dh8d` | De Havilland Canada Dash 8-400 | FR24 `source/q400/q400.blend` | `fr24-blend/q400.blend` | GPL-2.0-only | Alex Park (MaverickAlex), Florian K, D-ECHO, Andreas Spiekermann (FlightGear Q400) |
+| `e145` | Embraer ERJ-145 | FAM `e145/glTF2/E145.glb` | `flightairmap-glb/E145.glb` | GPL-2.0-only | Emmanuel Baranger (FlightGear Embraer-ERJ-145 3D and FDM) |
+| `e190` | Embraer 190 | FAM `e190/glTF2/E190.glb` | `flightairmap-glb/E190.glb` | GPL-2.0-only | Narendran Muraleedharan (FlightGear E-jet-family) |
+| `e75l` | Embraer 175 | FAM `e190/glTF2/E75L.glb` | `flightairmap-glb/E75L.glb` | GPL-2.0-only | Narendran Muraleedharan (FlightGear E-jet-family) |
+| `ec135` | Eurocopter EC135 | FR24 `source/ec135/ec135.blend` | `fr24-blend/ec135.blend` | GPL-2.0-only | Heiko Schulz (3D) and the FlightGear ec135 authors |
+| `p28a` | Piper PA-28 | FAM `pa28/glTF2/PA28.glb` | `flightairmap-glb/PA28.glb` | GPL-2.0-only | Emmanuel Baranger (FlightGear Piper PA-28, 3D and FDM) and 5H1N0B1 (systems) |
+| `pc12` | Pilatus PC-12 | FAM `pc12/glTF2/PC12.glb` | `flightairmap-glb/PC12.glb` | GPL-2.0-only | Emmanuel Baranger (FlightGear PC-12, 3D and FDM) |
+| `sr22` | Cirrus SR22 | FAM `sr22/glTF2/SR22.glb` | `flightairmap-glb/SR22.glb` | GPL-2.0-only | Emmanuel Baranger (FlightGear Cirrus-SR22 3D and FDM) |
 
 Authors come from the `AUTHORS`, `README` or `-set.xml` files of each FGMEMBERS repository.
 
@@ -61,87 +68,73 @@ livetaiwan labels every file "GPL-2.0-or-later". That label is wrong for some fi
   - `a350`: the file is the plain GPL-2.0 text. The upstream FGMEMBERS/A350XWB README says "Released under GPL2+", so we record GPL-2.0-or-later.
   - `crj9`: the file says "GNU General Public License, version 2 or above", so we record GPL-2.0-or-later.
   - `atr72`: the English part of the file is the GPL-3.0 text. The upstream FGMEMBERS/ATR72 README says "This aircraft is released under the GNU GPL v3 License". Neither says "or later", so we record GPL-3.0-only. (FAM's `atr72/LICENCE.txt` is the same file as its `b707/LICENCE.txt`. Its Portuguese part is a translation of GPL-2.0. The README statement is the one we rely on.)
-- **FR24 files.** The FR24 `LICENSE` is the GPL-2.0 text. The FR24 README says "All other models are licensed under GPLv2", with no "or later". So all 6 are GPL-2.0-only. This includes `c550.glb`, although its FlightGear upstream (FGMEMBERS/Citation) is GPL-2.0-or-later.
-- **Gaps upstream of FR24.** The FGMEMBERS/777 mirror has no licence file. For `b773.glb` we rely on the FR24 statement. The FlightGear FGAddon copy of the 777 has a GPL-2.0 `LICENSE`.
+- **FR24 files.** The FR24 `LICENSE` is the GPL-2.0 text. The FR24 README says "All other models are licensed under GPLv2", with no "or later". So all 7 are GPL-2.0-only. This includes `c550`, although its FlightGear upstream (FGMEMBERS/Citation) is GPL-2.0-or-later.
+- **Gaps upstream of FR24.** The FGMEMBERS/777 mirror has no licence file. For `b773` we rely on the FR24 statement. The FlightGear FGAddon copy of the 777 has a GPL-2.0 `LICENSE`.
 
 Each GLB that came from livetaiwan still has livetaiwan's `asset.copyright` string, "GPL-2.0-or-later, derived from FlightGear / FGMEMBERS / Flightradar24 fr24-3d-models". We did not change these files. `licences.json` and this README have the correct licence for each file.
 
 `e190.glb` did not come from livetaiwan. FlightHopper built it and wrote the correct licence in its `asset.copyright`: "GPL-2.0-only, derived from FlightGear E-jet-family (Narendran Muraleedharan) via FlightAirMap-3dmodels".
 
+- **The models added on 2026-10-13.** `a343`, `a388`, `b763`, `e145`, `p28a`, `pc12`, `sr22`: the FAM folder's licence file
+  is the plain GPL-2.0 text, so we record GPL-2.0-only. `b752`: the FAM folder's `LICENSE` says "either version 2 of the
+  License, or any later version": GPL-2.0-or-later. `bcs3`: the FAM folder has no licence file; it pins FGMEMBERS/CSeries,
+  whose `COPYING` is the GPL-2.0 text and whose README says "GPL2+": GPL-2.0-or-later. `dh8d`: FR24, as above, GPL-2.0-only.
+
 ## Modified
 
-These models are modified versions of the upstream files.
+Each model is a modified version of its upstream file.
 
-- **livetaiwan (2026-08-19, commit `00d6a934`)** made these changes to each upstream file, with Blender 5.2 and Python:
-  1. Joined all objects into one mesh with one material.
-  2. Decimated the mesh to about 20% of the original triangles.
-  3. Removed all textures.
-  4. Rotated the model to one axis convention: `+X` right wing, `+Y` up, `-Z` nose.
-  5. Moved the origin to the centre of the airframe.
-  6. Added a `COLOR_0` shade attribute from the vertex normals.
-- **FlightHopper (2026-09-23)** copied the 14 files unchanged from livetaiwan commit `00d6a934`. Only the file names changed (for example, `A350.glb` became `a359.glb` and `citation.glb` became `c550.glb`).
-- **FlightHopper (2026-09-28)** built `e190.glb` itself from FAM `E190.glb`, because livetaiwan has no E190. It used the pipeline in [How to rebuild](#how-to-rebuild) with Blender 5.2.2, so the file has the same 6 changes as the others. The only difference is the `asset.copyright` string (see above). The same commands rebuild `e75l.glb` from `E75L.glb` byte for byte. We checked this, so the process is the one livetaiwan used.
+- **livetaiwan (2026-08-19)** made the first web versions of 14 of them: all objects joined into one mesh with one
+  material, decimated to about 20 % of the triangles, textures removed, turned to one axis convention (`+X` right wing,
+  `+Y` up, `-Z` nose), the origin moved to the centre, a `COLOR_0` shade added from the normals. Flight Chaser built the
+  others the same way with the scripts here (2026-09-28 and 2026-10-13).
+- **Flight Chaser (2026-10-14)** rebuilt every model from its unchanged source here with `tools/models/detail.ts`: the
+  whole surface, laid over the earlier mesh in the same frame and size, without what that mesh left out (a part far from
+  it, and the objects its `recipe.json` names: propeller discs, a wing-tip pod, the 757's winglets), subdivided where
+  the source is coarse, shaded as one smooth skin, and simplified where the file would be over 1 MB. The see-through
+  cockpit glass is drawn dark. Each GLB's `asset.copyright` says what it was made from and when; the licence does not change.
+- **Light copies.** `lod.glb` in each package is its `model.glb` simplified to at most 6,000 triangles
+  (`tools/models/lod.ts`), for the traffic far from the camera.
 
-- **FlightHopper (2026-09-29)** derived three type models from three of these files, by the recipes in `tools/models/variants.json`, with `tools/models/variants.ts` (the recipes and the tool are the corresponding source of the change):
+### Derived
 
-  | Modified file | Derived from | Recipe | The change |
-  |---|---|---|---|
-  | `a20n.glb` (A320neo) | `a320.glb` | `a20n` | The wing cut 0.76 m inboard of its tip and a sharklet lofted on (2.4 m tall, 6° cant); the nacelles 24 % wider, 11 % taller and 15 % longer about their axis, 0.05 m forward. |
-  | `a21n.glb` (A321neo) | `a321.glb` | `a21n` | The same sharklets and nacelles, 0.06 m forward. |
-  | `b38m.glb` (737 MAX 8) | `b738.glb` | `b38m` | The blended winglet removed and an AT winglet lofted on (an upper blade 2.1 m tall canted 29° outboard, a lower blade 1.25 m long 32° down); the nacelles 16 % wider, 17 % taller and 17 % longer, 0.36 m forward and 0.2 m up. |
+These models are made from another package by its `recipe.json` (a longer or shorter fuselage, a wingtip device, larger
+nacelles) with `tools/models/variants.ts`. They have the licence and the authors of their base.
 
-  The new parts are closed meshes with normals from their faces and the `COLOR_0` shade livetaiwan's `canonicalise.py` computes from the normals. Each file's `asset.copyright` says what it was derived from, and that FlightHopper modified it, when and by which recipe. The sources of each recipe's dimensions (Airbus and Boeing airport planning documents) are in `tools/models/variants.json`.
+| Package | Aircraft | Base |
+|---|---|---|
+| `a20n` | Airbus A320neo | `a320` |
+| `a21n` | Airbus A321neo | `a321` |
+| `a319` | Airbus A319 | `a320` |
+| `a332` | Airbus A330-200 | `a333` |
+| `a35k` | Airbus A350-1000 | `a359` |
+| `at45` | ATR 42 | `at75` |
+| `b38m` | Boeing 737 MAX 8 | `b738` |
+| `b39m` | Boeing 737 MAX 9 | `b38m` |
+| `b737` | Boeing 737-700 | `b738` |
+| `b739` | Boeing 737-900 | `b738` |
+| `b772` | Boeing 777-200 | `b773` |
+| `b788` | Boeing 787-8 | `b789` |
+| `b78x` | Boeing 787-10 | `b789` |
+| `crj7` | Bombardier CRJ700 | `crj9` |
+| `e170` | Embraer 170 | `e75l` |
+| `e195` | Embraer 195 | `e190` |
 
 ## How to rebuild
 
-You need Blender 4.x or 5.x with the glTF exporter, and Python 3. Run these commands in this folder. For the full notes, see the README of livetaiwan-aircraft-models.
-
-1. Join, decimate and remove materials. Do this once for each source file:
-
-   ```bash
-   blender -b --python scripts/bl_join.py -- source/flightairmap-glb/A320.glb out/ 0.20
-   blender -b --python scripts/bl_join_blend.py -- source/fr24-blend/b738.blend out/ 0.20
-   ```
-
-2. Rotate, recentre and add the shade attribute:
-
-   ```bash
-   python3 scripts/canonicalise.py out/ models/ --report report.json
-   ```
-
-3. If you changed the files, write the licence string again into `asset.copyright`:
-
-   ```bash
-   python3 scripts/embed_copyright.py models/
-   ```
-
-4. Rename each output to its FlightHopper name (see the table). Copy it to `public/models/`.
-
-Keep the livetaiwan file names until step 4. `canonicalise.py` finds the helicopter orientation by file name (`ec135`). `bl_join.py` names its output `<name>.single.glb`. Remove `.single` before step 2: `canonicalise.py` names the mesh after the file (for example `E75L`).
-
-`e190.glb` was built with these commands, in this folder:
+From the repository root, with Node.js 24 and Blender 4.x or 5.x (`BLENDER=<path>` if it is not on the path):
 
 ```bash
-blender -b --python scripts/bl_join.py -- source/flightairmap-glb/E190.glb out/ 0.20
-mkdir -p in && mv out/E190.single.glb in/E190.glb
-python3 scripts/canonicalise.py in/ models/ --report report.json
-python3 -c "import sys; sys.path.insert(0, 'scripts'); import embed_copyright as e; e.COPYRIGHT = 'GPL-2.0-only, derived from FlightGear E-jet-family (Narendran Muraleedharan) via FlightAirMap-3dmodels'; print(e.stamp('models/E190.glb'))"
-cp models/E190.glb ../../public/models/e190/model.glb
+node tools/models/detail.ts <id>      # a model from its source here: model.glb, model.json measured again, lod.glb
+node tools/models/variants.ts         # the derived models
+node tools/models/gear-glb.ts --write # the landing gear
 ```
 
-The last Python command uses `embed_copyright.py` unchanged, with the correct licence string for this file.
+`detail.ts` lays the source over the earlier mesh, which it keeps in `.work/shipped-models/` (not in git: the earlier
+mesh is `git show <commit before the re-mesh>:public/models/<id>/model.glb`). `docs/liveries.md` Part 2 says how to add a model.
 
-`a20n.glb`, `a21n.glb` and `b38m.glb` are rebuilt from `a320.glb`, `a321.glb` and `b738.glb` in `public/models/`, from the repository root (Node.js 24):
-
-```bash
-node tools/models/variants.ts
-```
-
-It writes the three files and their entries in `public/models/manifest.json`. `tools/models/variants.test.ts` checks that the files are up to date.
-
-`scripts/contact_sheet.py` draws a preview image of the models. It needs `numpy` and `Pillow`. The other scripts need only Python 3 or Blender.
-
-The FAM upstream folders also contain Blender files (for example `a320/a320.blend`). FAM made its glTF files from those. livetaiwan built from the glTF files, so this folder has the glTF files.
+The FAM upstream folders also contain Blender files (for example `a320/a320.blend`). FAM made its glTF files from those,
+and the models here are built from the glTF files.
 
 ## Credits
 
@@ -149,6 +142,6 @@ The aircraft are the work of the FlightGear community. Thanks to:
 
 - [FlightGear](https://www.flightgear.org/) and the authors of each aircraft (see the table).
 - [FGMEMBERS](https://github.com/FGMEMBERS), who keep the FlightGear aircraft repositories.
-- [Flightradar24](https://github.com/Flightradar24/fr24-3d-models), who converted 6 of the models and published the Blender files.
-- [Ysurac / FlightAirMap](https://github.com/Ysurac/FlightAirMap-3dmodels), who converted 9 of the models to glTF 2.0.
-- [GoLocalNear / livetaiwan-aircraft-models](https://github.com/GoLocalNear/livetaiwan-aircraft-models), who made 14 of the web-ready versions and wrote the scripts.
+- [Flightradar24](https://github.com/Flightradar24/fr24-3d-models), who converted 7 of the models and published the Blender files.
+- [Ysurac / FlightAirMap](https://github.com/Ysurac/FlightAirMap-3dmodels), who converted 18 of the models to glTF 2.0.
+- [GoLocalNear / livetaiwan-aircraft-models](https://github.com/GoLocalNear/livetaiwan-aircraft-models), who made the first web-ready versions of 14 of them and wrote the scripts.

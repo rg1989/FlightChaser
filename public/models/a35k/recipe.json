@@ -1,0 +1,30 @@
+{
+  "base": "a359",
+  "name": "Airbus A350-1000",
+  "types": ["A35K"],
+  "date": "2026-10-13",
+  "fuselage": { "foreM": 3.81, "aftM": 3.18, "fore": [13.2, 18.1], "aft": [38.7, 45.8] },
+  "stations": {
+    "lengthM": 73.79,
+    "doors": [6.82, 23.3, 42.38, 59.53],
+    "cockpit": 3.69,
+    "source": "https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-07/AC_A350_20250715.pdf"
+  },
+  "gear": {
+    "noseAftM": 4.63,
+    "wheelbaseM": 32.48,
+    "trackM": 10.73,
+    "mains": 6,
+    "mainTyre": [1.27, 0.51],
+    "noseTyre": [1.05, 0.4],
+    "clearanceM": 0.9,
+    "mainsRetract": "inboard"
+  },
+  "sources": [
+    "[AC] Airbus A350 Aircraft Characteristics - Airport and Maintenance Planning, Revision 15 (2025-07-15) https://www.aircraft.airbus.com/sites/g/files/jlcbta126/files/2025-07/AC_A350_20250715.pdf (p. = the page of the PDF). General Aircraft Dimensions, 2-2-0: A350-900 (p.49, p.50) overall length 66.80 m, fuselage 65.26 m, span 64.75 m, wheelbase 28.66 m, nose gear 4.63 m aft of the nose, engine inlet 21.97 m aft of the nose; A350-1000 (p.51, p.52) 73.79 m, 72.25 m, 64.75 m, 32.48 m, 4.63 m, 25.78 m.",
+    "Fuselage [AC]: no plug length is printed. Ahead of the wing: the engine inlet is 3.81 m further from the nose (25.78 - 21.97), and the wheelbase is 3.82 m longer with the nose gear where it was: foreM 3.81. Behind the wing: the overall length and the fuselage are each 6.99 m longer, so aftM = 6.99 - 3.81 = 3.18. foreM + aftM = 6.99 m = 73.79 - 66.80: no rest.",
+    "Doors [AC] Door Identification and Location, 2-7-0, left doors from the nose: A350-900 (p.108) 6.82, 18.86, 37.93, 52.55 m; A350-1000 (p.110) 6.82, 23.30, 42.38, 59.53 m. Doors 2 and 3 are 4.44 m and 4.45 m further aft, the wing only 3.81 m, so they are not the base's doors moved with the fuselage (the tool alone puts door 2 near 21.7 m): the stations are given. Cockpit windows 3.69 m, the base's: the nose is the same (door 1 at 6.82 m, the cockpit escape hatch at 4.12 m and the nose gear at 4.63 m on both).",
+    "Gear [AC]: each main leg has a six-wheel bogie (the A350-900: four wheels) and retracts sideways into the fuselage (Landing Gear, 2-9-0, p.138). Landing Gear Footprint, 7-2-0, A350-1000 (p.472): wheelbase 32.484 m, track 10.734 m, the three axles 1.400 m apart, main tyres 50x20R22 (1.27 m by 0.51 m), nose tyres 1050x395R16 (1.05 m by 0.40 m); A350-900 (p.468): 28.665 m, 10.600 m, two axles 2.040 m apart, main tyres 1400x530R23, the same nose tyres. clearanceM 0.9: the nacelle is 0.76 m above the ground at maximum ramp weight and 0.88 m to 0.93 m at 160 t (Ground Clearances, 2-3-0, p.64, N1), the same as the A350-900 within 2 cm (p.56).",
+    "Not changed [AC]: the wingtip (span 64.75 m; the tip 9.45 m and the wing 7.02 m above the ground on both, W1 and W2, p.56 and p.64; 2.88 m across on both, 5.18 m fore and aft on the A350-900 and 5.27 m on the A350-1000, p.50 and p.52: 9 cm, not modelled); the nacelle (one Engine and Nacelle figure for both, 2-12-0, p.189); the fin and the tailplane (the same sizes, p.49 to p.52)."
+  ]
+}

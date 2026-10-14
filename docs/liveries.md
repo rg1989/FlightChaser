@@ -50,9 +50,10 @@ the folder. There is no list to edit.
 | File | What it is |
 |---|---|
 | `model.json` | what the app reads: the name, the licence, the author, the source, the types, the calibration, the paint map, and what the tools measure (`box`, `lights`, `outline`, `profile`) |
-| `model.glb` | the mesh: one mesh, no textures, metres |
+| `model.glb` | the mesh: one mesh, no textures, metres, smooth-shaded, 1 MB at most |
+| `lod.glb` | the light copy the traffic draws while the aircraft is small on screen (at most 6,000 triangles; `tools/models/lod.ts` makes it) |
 | `gear.glb` | the landing gear (a tool builds it) |
-| `recipe.json` | what the tools build from: the door and cockpit stations, the gear's layout, flags; for a derived model, its base and the changes |
+| `recipe.json` | what the tools build from: the source file (`mesh`), the door and cockpit stations, the gear's layout, flags; for a derived model, its base and the changes |
 
 `public/models/defaults.json` names the model for an aircraft of unknown type and the model for each category.
 
@@ -121,10 +122,10 @@ Use a GPL model from FlightAirMap-3dmodels, Flightradar24's fr24-3d-models or Fl
 `.planning/reports/aircraft-model-sources.md` (which model, where, which licence, how much work). Read the licence
 file of the model yourself before you use it.
 
-1. Keep the unchanged source file in `third_party/aircraft-models/source/<collection>/`. Convert and simplify it with
-   the scripts in `third_party/aircraft-models/scripts/` (`third_party/aircraft-models/README.md` gives the commands;
-   Blender: `/opt/homebrew/bin/blender -b`). The result is `public/models/<id>/model.glb`: one mesh, no textures, in
-   metres, at the real aircraft's size, 1 MB at most.
+1. Keep the unchanged source file in `third_party/aircraft-models/source/<collection>/`, and add its licence, authors and
+   upstream address to `third_party/aircraft-models/README.md` and `licences.json`. Make a first coarse mesh with the
+   scripts in `third_party/aircraft-models/scripts/` (the README there gives the commands) as `model.glb`: it sets the
+   frame, the size and the parts. Step 5 replaces it with the whole source, smooth-shaded.
 2. Write `public/models/<id>/model.json`. Copy a similar package's and change: `id`, `name`, `uri`
    (`models/<id>/model.glb`), `license`, `author`, `source` (the address of the source file at a fixed commit),
    `forwardAxisFix`, `lengthM` (the real length), `scale`, `types`, and `paint` (the region map: `Paint` in
@@ -148,8 +149,13 @@ node tools/models/outline.ts --write <id>         # the spheres over the mesh: w
 node tools/models/profile.ts --png <dir> <id>     # the profile drawn on the mesh: each outline must sit on it
 ```
 
-5. Run the tests (`client/scene/model.test.ts` checks the size, the wheels and the nose direction from the geometry).
-6. Look at it in the lab, plain and in a livery (3.5): `…/tools/livery-lab/?model=<id>` and `?model=<id>&livery=RYR`.
+5. Rebuild the mesh from the whole source: `"mesh": { "source": "<collection>/<file>" }` in `recipe.json`, then
+   `node tools/models/detail.ts <id>` (Blender; its header says what each option does: `drop` leaves out objects by name,
+   such as a propeller disc; `scale` if the first mesh was built larger than its source; `subdivide: 0` where the
+   subdivision bends long thin triangles). It writes `model.glb`, measures the package again and writes `lod.glb`; run
+   `gear-glb.ts --write <id>` again after it. `node tools/models/smoothness.ts <id>` says how smooth the mesh is.
+6. Run the tests (`client/scene/model.test.ts` checks the size, the wheels and the nose direction from the geometry).
+7. Look at it in the lab, plain and in a livery (3.5): `…/tools/livery-lab/?model=<id>` and `?model=<id>&livery=RYR`.
 
 ### 2.4 The profile
 
