@@ -231,7 +231,10 @@ export interface TrafficOpts {
   openLayer?: HTMLElement // where the open aircraft's brackets go (layout.css: over the flight-data frame); else layer
 }
 
-const PROBES_PER_FRAME = 2 // depth reads (each a GPU sync) per frame: every square is re-checked every n / 2 frames
+const PROBES_PER_FRAME = 2 // depth reads (each a GPU sync) per probing frame: every square is re-checked every n / 2 of them
+// Probing frames at most this often, ms: each read makes the page wait for the graphics card to finish the frame (a laptop's card
+// is 75–80 % busy in a chase), and a bracket that goes behind a hill a tenth of a second late is not seen.
+const PROBE_EVERY_MS = 100
 const FT = 0.3048
 const AGL_EVERY_S = 0.5 // a traffic aircraft's height above the drawn ground is read this often (globe.getHeight picks)
 
@@ -279,6 +282,8 @@ export class Traffic {
   readonly #p = new Cartesian3()
   #nBoxes = 0
   #probe = 0
+  #probeMs = -Infinity // the last probing frame, performance.now()
+  #probing = 0 // the squares this frame checks against the scene's depth (hidden ones too: they may come out again)
   #destroyed = false
   #openHex: string | null = null
   #openDistM: number | null = null
@@ -448,6 +453,14 @@ export class Traffic {
     for (const s of this.#slots) if (s.hex !== null && s.e !== null && s.model.show) f(s.hex, s.model.modelMatrix, s.m, s.e)
   }
 
+  /**
+   * Squares checked against the scene's depth this frame: while there are any, Cesium must copy its depth each frame for
+   * Scene.pickPosition (useDepthPicking, a full-screen copy the app sets from this); none, and the copy can go.
+   */
+  get probing(): number {
+    return this.#probing
+  }
+
   destroy(): void {
     this.#destroyed = true
     for (const s of this.#slots) {
@@ -463,12 +476,16 @@ export class Traffic {
   }
 
   /**
-   * Re-checks PROBES_PER_FRAME squares against the scene's depth (last frame's: Scene.pickPosition), in turn, then drops
+   * Re-checks PROBES_PER_FRAME squares against the scene's depth (last frame's: Scene.pickPosition), in turn, at most every
+   * PROBE_EVERY_MS (a square keeps its last answer meanwhile), then drops
    * the squares whose model is hidden. Returns the count left, compacted to the front.
    */
   #dropOccluded(n: number): number {
     const scene = this.#viewer.scene
-    if (n > 0 && scene.pickPositionSupported) {
+    this.#probing = n
+    const now = performance.now()
+    if (n > 0 && scene.pickPositionSupported && now - this.#probeMs >= PROBE_EVERY_MS) {
+      this.#probeMs = now
       const cam = scene.camera.positionWC
       for (let k = 0; k < PROBES_PER_FRAME && k < n; k++) {
         const i = (this.#probe + k) % n

@@ -1,11 +1,12 @@
 // client/scene/viewer.ts
-import { ImageryLayer, Viewer } from 'cesium'
+import { Color, ImageryLayer, Viewer } from 'cesium'
 import 'cesium/Build/Cesium/Widgets/widgets.css'
 import type { ClientConfig } from '../types.ts'
 import { fadeOffOnDestroy, imageryFade, installImageryFade } from './imageryFade.ts'
 import { makeImagery } from './imagery.ts'
 import { makeTerrain } from './terrain.ts'
 import { TileCache } from './tileCache.ts'
+import { keepCanvasSize } from './canvasSize.ts'
 
 /**
  * Scene options (the app passes none: the defaults). tileCache: globe.tileCacheSize, 'auto' (default: tileCache.ts sizes it
@@ -48,9 +49,14 @@ export async function createViewer(el: HTMLElement | string, cfg: ClientConfig, 
     requestRenderMode: false,
   })
   viewer.scene.globe.depthTestAgainstTerrain = true
+  // Ground whose picture has not come yet (the first seconds, a source swapped mid-flight) in a dark neutral, not Cesium's navy:
+  // navy squares over the land read as a broken picture (the user's chase over Israel, 2026-10-14).
+  viewer.scene.globe.baseColor = Color.fromCssColorString('#1e2428')
+  keepCanvasSize(viewer.canvas)
   fadeOffOnDestroy(viewer) // Viewer.destroy frees no globe tiles, so the running fades are ended first
   // Never both: a TileCache would overwrite a fixed size on its next change.
   if (typeof opts.tileCache === 'number') viewer.scene.globe.tileCacheSize = opts.tileCache
   else new TileCache(viewer)
   return viewer
 }
+

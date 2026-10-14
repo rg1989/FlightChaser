@@ -1,7 +1,7 @@
 // client/scene/renderGovernor.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { BUDGET_MS, FrameTimer, QUALITY, QualityPace, STEP_RATIO, frameRate, frameTimer, type Activity, type FrameTimerGl } from './renderGovernor.ts'
+import { BUDGET_MS, CLEAR_MS, FrameTimer, LINGER_MS, Linger, QUALITY, QualityPace, STEP_RATIO, STRAIN_MS, STRAIN_OFF_MS, Strain, frameRate, frameTimer, type Activity, type FrameTimerGl } from './renderGovernor.ts'
 
 const HZ60 = 1000 / 60
 /**
@@ -26,16 +26,17 @@ const SMALL = [8.9, 7.4, 5.9, 4.8, 4.0]
 const LARGE = [17, 10.7, 8.4, 6.6, 5.3]
 
 test('the levels: the first is the view as designed (4× MSAA, every pixel); each one after gives up something more and takes nothing back', () => {
-  assert.deepEqual(QUALITY[0], { msaa: 4, fxaa: false, scale: 1 })
+  assert.deepEqual(QUALITY[0], { msaa: 4, fxaa: false, scale: 1, bloom: true })
   for (let k = 1; k < QUALITY.length; k++) {
     const [b, q] = [QUALITY[k - 1], QUALITY[k]]
-    assert.ok(q.msaa <= b.msaa && q.scale <= b.scale && (q.fxaa || q.msaa > 1), `level ${k} takes nothing back, and has some anti-aliasing`)
-    assert.ok(q.msaa < b.msaa || q.scale < b.scale, `level ${k} gives something up`)
+    assert.ok(q.msaa <= b.msaa && q.scale <= b.scale && (b.bloom || !q.bloom) && (q.fxaa || q.msaa > 1), `level ${k} takes nothing back, and has some anti-aliasing`)
+    assert.ok(q.msaa < b.msaa || q.scale < b.scale || (b.bloom && !q.bloom), `level ${k} gives something up`)
   }
   assert.ok(QUALITY.at(-1)!.scale >= 0.6, 'never coarser than 0.6 of the canvas each way')
   assert.equal(STEP_RATIO.length, QUALITY.length - 1)
   assert.ok(STEP_RATIO.every((r) => r > 1))
   assert.equal(BUDGET_MS, 10)
+  assert.equal(STRAIN_MS, 13)
 })
 
 test('QualityPace: where the view as designed fits in the budget (the M2 in a small window), it stays as designed, for hours', () => {
@@ -93,6 +94,65 @@ test('QualityPace: without the card\'s word (a browser with no timer) slow frame
   const seen = run(p, LARGE, 600, false)
   assert.deepEqual(seen, [1, 0, 1, 0, 1, 0, 1], `it tries the view as designed again after 1, 2 and 4 minutes: ${seen.join(' ')}`)
   assert.deepEqual(run(new QualityPace(), SMALL, 3600, false), [0], 'on time as designed: as designed')
+})
+
+/** s seconds of frames as designed (level 0), the card taking ms each; the strain judge's verdicts, in turn. */
+function strain(j: Strain, ms: number, s: number, timer = true, seen: boolean[] = [j.on]): boolean[] {
+  let k = 0
+  for (let t = 0; t < s * 1000;) {
+    const dt = Math.max(1, Math.ceil(ms / HZ60 - 1e-9)) * HZ60
+    t += dt
+    const on = j.frame(dt, HZ60, timer && k++ % 5 === 0 ? [ms] : [])
+    if (on !== seen.at(-1)) seen.push(on)
+  }
+  return seen
+}
+
+test('Strain: the switch is offered where the view as designed costs the card more than it draws smoothly (the M2 at a 27" screen\'s size), within seconds; never in a small window; withdrawn when room comes back, and judged afresh after a reset', () => {
+  assert.deepEqual(strain(new Strain(), SMALL[0], 3600), [false], 'the M2 in a small window (8.9 ms): never offered')
+  assert.deepEqual(strain(new Strain(), 12, 3600), [false], '12 ms: busy, but smooth')
+  const j = new Strain()
+  assert.deepEqual(strain(j, LARGE[0], 7.9), [false], 'not in the first seconds, nor on one slow run')
+  assert.deepEqual(strain(j, LARGE[0], 3), [false, true], 'two runs over: offered')
+  assert.ok(Math.abs(j.gpuMs - LARGE[0]) < 1e-9, 'with what a frame costs, for the switch to start from')
+  assert.deepEqual(strain(j, LARGE[0], 600), [true], 'and it stays offered')
+  assert.deepEqual(strain(j, 12, 600), [true], 'between the two limits (12 ms): it stays as it is, it does not go')
+  assert.deepEqual(strain(j, 8, 7), [true, false], 'four runs clearly under (a smaller window): withdrawn')
+  assert.deepEqual(strain(j, 12, 600), [false], 'and between the two it does not come back either')
+  j.reset()
+  assert.equal(j.on, false)
+  assert.ok(Number.isNaN(j.gpuMs))
+  assert.deepEqual(strain(new Strain(), 25, 12, false), [false, true], 'without the timer: frames of 33 ms where 17 are due')
+})
+
+test('Linger: the card comes at once; once there it stays at least 45 s, and goes only 20 s after the last ask; a view on the line (asked one second in three) keeps it, never flickering; another view takes it at once', () => {
+  assert.equal(STRAIN_OFF_MS < STRAIN_MS, true)
+  assert.deepEqual([LINGER_MS, CLEAR_MS], [45_000, 20_000])
+  const l = new Linger()
+  assert.equal(l.update(0, false), false)
+  assert.equal(l.update(1000, true), true, 'at once')
+  assert.equal(l.update(2000, false), true)
+  assert.equal(l.update(40_000, false), true, 'under 45 s on screen')
+  assert.equal(l.update(46_000, false), false, '45 s on screen and 20 s unasked: gone')
+  const flick = new Linger()
+  const seen: boolean[] = []
+  for (let t = 0; t < 600_000; t += 1000) { const on = flick.update(t, Math.floor(t / 1000) % 3 === 0); if (on !== seen.at(-1)) seen.push(on) }
+  assert.deepEqual(seen, [true], 'asked on and off for ten minutes: on screen the whole time, one change')
+  const r = new Linger()
+  r.update(0, true)
+  r.reset()
+  assert.equal(r.update(1, false), false)
+})
+
+test('QualityPace.startAt: the switch turned on goes straight to the finest level that fits, by the steps\' prices; as designed where it already fits or nothing is known', () => {
+  const at = (ms: number): number => new QualityPace().startAt(ms)
+  assert.equal(at(LARGE[0]), 2, '16.3 ms: FXAA would still be 10.6 by the price; 0.85 of the pixels fits (8.2)')
+  assert.equal(at(9), 0)
+  assert.equal(at(Number.NaN), 0)
+  assert.equal(at(40), QUALITY.length - 1, 'never past the last')
+  const p = new QualityPace()
+  p.startAt(LARGE[0])
+  assert.deepEqual(run(p, LARGE, 600), [2], 'and the pace holds it there, as measured')
 })
 
 test('frameRate: every frame the display shows while something moves or the hand is on the view; fewer while only the map\'s aircraft move (30), a paused scenario holds still (15), the window is not in use (20, or 30 while the camera moves); the TV never held back', () => {

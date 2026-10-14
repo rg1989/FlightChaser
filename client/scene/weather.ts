@@ -396,6 +396,7 @@ export class Weather {
   }
 
   private tick(): void {
+    if (typeof document !== 'undefined' && document.hidden) return // a hidden tab shows nothing: no radar or SIGMET fetches for it
     const now = Date.now()
     if (now - this.slowMs >= SLOW_EVERY_MS) {
       this.slowMs = now

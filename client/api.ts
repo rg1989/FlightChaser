@@ -29,9 +29,13 @@ export class ApiClient {
     this.#nowMs = nowMs
   }
 
-  /** Samples in the circle received by the server after the last reply for this view (key: lat/lon to 2 decimals + nm). */
-  view(lat: number, lon: number, radiusNm: number): Promise<ViewResponse> {
-    const key = `view:${lat.toFixed(2)},${lon.toFixed(2)},${radiusNm}`
+  /**
+   * Samples in the circle received by the server after the last reply for this view (key: lat/lon to 2 decimals + nm).
+   * follow: the hex a chase's circle moves with: the key is that hex and the radius, so the circle may move without the whole
+   * circle coming again every kilometre (the server sends an aircraft's info when it flies into the circle, server/main.ts viewInfo).
+   */
+  view(lat: number, lon: number, radiusNm: number, follow: string | null = null): Promise<ViewResponse> {
+    const key = follow === null ? `view:${lat.toFixed(2)},${lon.toFixed(2)},${radiusNm}` : `view:follow:${follow},${radiusNm}`
     return this.#get(key, (since) => `${this.#base}/view?lat=${lat}&lon=${lon}&nm=${radiusNm}&since=${since}`)
   }
 

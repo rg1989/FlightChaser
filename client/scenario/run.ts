@@ -307,6 +307,11 @@ export class ScenarioRun {
     return this.player.scenario
   }
 
+  /** The street map lies over the era imagery (an opaque map on screen): the era layers are not drawn meanwhile (transparent, so their tiles stay). */
+  setCovered(covered: boolean): void {
+    for (const l of this.#layers) l.alpha = covered ? 0 : 1
+  }
+
   /** The view on screen, for the pill's buttons. */
   setView(topDown: boolean): void {
     this.#pill.setView(topDown)

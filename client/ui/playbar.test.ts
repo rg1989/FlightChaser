@@ -644,7 +644,9 @@ test('setBusy leaves the clock, the scrubber and update() alone (the dimming is 
   assert.equal(range.value, '63000.0')
   bar.update({ t: 63_010, playing: true, rate: 10, clock: '17:30:10', phase: null })
   assert.equal(text(one(root, 'fh-playbar-time')), '17:30:10')
-  assert.equal(range.value, '63010.0')
+  assert.equal(range.value, '63000.0', 'ten seconds of a day: under a thousandth of the bar, so the thumb is not written (each write is a layout)')
+  bar.update({ t: 63_100, playing: true, rate: 10, clock: '17:31:40', phase: null })
+  assert.equal(range.value, '63100.0', 'a thousandth of the bar on: written')
 })
 
 test('setTitle: the title and the bar\'s name; the same title writes nothing', () => {

@@ -283,6 +283,7 @@ export function mountPlaybar(root: HTMLElement, opts: PlaybarOpts): PlaybarHandl
   let shownPhase: string | null | undefined
   let shownRate = NaN
   let shownValue = ''
+  let shownStep = Number.NaN // the thumb's place in thousandths of the bar, as last written
   let shownFill = ''
   let shownSegs = ''
   let shownTitle = opts.title
@@ -321,6 +322,7 @@ export function mountPlaybar(root: HTMLElement, opts: PlaybarOpts): PlaybarHandl
       range.value = String(at) // the thumb stops at the floor or the limit, under the finger or not
     }
     shownValue = range.value
+    shownStep = Math.round(pct(at) * 10)
     fill(at)
     opts.onSeek(at)
   })
@@ -395,10 +397,13 @@ export function mountPlaybar(root: HTMLElement, opts: PlaybarOpts): PlaybarHandl
         rate.setAttribute('aria-label', `Playback speed ${v.rate}×`)
       }
       if (!dragging) {
-        const value = v.t.toFixed(1)
-        if (value !== shownValue) {
-          shownValue = value
-          range.value = value
+        // The thumb moves in thousandths of the bar, a pixel or less on any screen: each write lays the bar out again, and at 1×
+        // a tenth of a second is a few hundredths of a pixel.
+        const step = Math.round(pct(v.t) * 10)
+        if (step !== shownStep) {
+          shownStep = step
+          shownValue = v.t.toFixed(1)
+          range.value = shownValue
           fill(v.t)
         }
       }

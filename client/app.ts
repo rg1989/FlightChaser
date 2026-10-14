@@ -76,6 +76,7 @@ import { AircraftLights } from './scene/aircraftLights.ts'
 import { makeNightLayer } from './scene/nightLights.ts'
 import { Buildings } from './scene/buildings.ts'
 import { QUALITY, RenderGovernor } from './scene/renderGovernor.ts'
+import { PICTURE_KEY, mountPictureSwitch, readPicture } from './ui/pictureSwitch.ts'
 import { photoSource } from './scene/roofPhoto.ts'
 import { addRunways } from './scene/runways.ts'
 import { FlatTerrainProvider, areasFor, stripsFor, type AirfieldAirport } from './scene/flatTerrain.ts'
@@ -584,7 +585,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const sunAt = new Cartesian3() // the chased aircraft, where the sun's elevation is taken
   const aimAt = new Cartesian3() // the chased aircraft's middle, where the chase camera looks
   const wxAircraft: WxAircraft = { lat: 0, lon: 0, altM: 0, trackDeg: 0 } // the chased aircraft as the 3-D weather takes it, rewritten each frame
-  const onScreen: FleetEntry[] = [] // reused every frame
+  const onScreen: FleetEntry[] = [] // reused: the aircraft in view, four times a second (frame)
+  let inViewMs = -Infinity
+  let statusMs = -Infinity // the status panel's last paint
   // History, every frame (history/selected.ts placeSelected): the fleet's entries with the selected aircraft's own as its
   // day says (its track's state, or a ghost where it was last heard or is estimated to be in a hole of its leg, written into
   // histOwn), that entry, its card's numbers.
@@ -918,11 +921,14 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   buildings.setPhoto(texturesOn(prefs))
   // The city lights go right above the satellite base layer, under the street map added next (browse shows it on top).
   const day = viewer.imageryLayers.length > 0 ? viewer.imageryLayers.get(0) : null
+  let dayLayer = day // the satellite base layer: EOX in Esri's place after a failure (below)
   const night = makeNightLayer()
   viewer.imageryLayers.add(night)
   const sun = new Sun(viewer, { day, night })
   if (cfg.imagery === 'esri' && day) {
     eoxOnEsriFailure(viewer.imageryLayers, day, (eox, why) => {
+      dayLayer = eox
+      applyLayers() // (under the street map, transparent as Esri was)
       sun.setDay(eox)
       buildings.setPhotoSource(photoSource({ imagery: 'eox' })) // the roofs take the picture the ground now shows
       const v = badgeView({ source: 'eox', fallback: why })
@@ -1046,6 +1052,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const applyLayers = (): void => {
     const onMap = prefs[baseKey(chasing)]
     map.show = onMap
+    // Nothing shows through the street map: the satellite and a scenario's era photos under it are not drawn meanwhile (in the
+    // 2-D map they cost as many texture reads a pixel as the map). Fully transparent, not hidden: a hidden layer lets go of its
+    // tiles, and the chase would then open on empty ground (Cesium's base colour) until they came again.
+    if (dayLayer !== null) dayLayer.alpha = onMap ? 0 : 1
+    run?.setCovered(onMap)
     map.dark = prefs.dark
     reference.chase = chasing
     reference.roads.show = prefs.roads && !onMap
@@ -1108,7 +1119,16 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // How much the view draws (renderGovernor.ts): fewer frames while nothing moves, cheaper anti-aliasing and then fewer pixels
   // while a frame costs the graphics card more than its budget. The overlay says where it stands. ?governor=0: every frame, as
   // designed, whatever it costs (the before of a measurement).
-  const governor = new URLSearchParams(location.search).get('governor') === '0' ? null : new RenderGovernor(viewer, { tv })
+  const storedPicture = ((): string | null => { try { return localStorage.getItem(PICTURE_KEY) } catch { return null } })()
+  // ?strainms= and ?budgetms= (check aids): what a frame may cost before the switch is offered, and with it on, on a quick card.
+  const aidMs = (k: string): number | undefined => (Number(new URLSearchParams(location.search).get(k)) > 0 ? Number(new URLSearchParams(location.search).get(k)) : undefined)
+  const governor = new URLSearchParams(location.search).get('governor') === '0' ? null
+    : new RenderGovernor(viewer, { tv, picture: readPicture(storedPicture), strainMs: aidMs('strainms'), budgetMs: aidMs('budgetms') })
+  // The Performance mode switch beside the instrument layout button: the person's word on drawing the chase lighter (pictureSwitch.ts).
+  const pictureSwitch = governor === null || tv ? null : mountPictureSwitch(ui.querySelector<HTMLElement>('.fh-spot-bottom') ?? ui, (p) => {
+    governor.setPicture(p)
+    try { localStorage.setItem(PICTURE_KEY, p) } catch { /* private mode: for this visit only */ }
+  })
   const pictureBench = (): string => {
     if (governor === null) return 'picture as designed, every frame (?governor=0)'
     const { level, fps, gpuMs } = governor.state
@@ -2095,6 +2115,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
 
   function frame(): void {
     const now = performance.now()
+    // The flight-data frame's room is measured here, when due, before this frame writes to the page: the layout is still the last
+    // frame's, so reading it costs nothing (read after a write, it would lay the page out again); later calls get it back.
+    if (chasing) frameRoom(now)
     tf = topo.update(now) // first: the factor and plane drawn this frame, before any terrain reading
     const dtS = lastFrameMs === null ? 0 : Math.min(1, (now - lastFrameMs) / 1000)
     lastFrameMs = now
@@ -2199,12 +2222,17 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const tTable = measure === null ? 0 : performance.now()
     measure?.('fh:fleet', now)
     if (sf === null) { // a scenario leaves the list as it was
-      const inView = entriesIn(all, viewRect === undefined ? viewRectangleDeg(viewer) : viewRect, onScreen, selected)
+      // The aircraft in view feed the table (it refreshes every 10 s), the badge (every second) and the search's "in view": four
+      // times a second is plenty for all three (the view's rectangle and the walk over every aircraft are not free).
+      if (now - inViewMs >= 250) {
+        inViewMs = now
+        entriesIn(all, viewRect === undefined ? viewRectangleDeg(viewer) : viewRect, onScreen, selected)
+      }
       const anyData = status !== NO_STATUS || hist !== null
-      table.update(all, inView, selected, anyData) // refreshes every 10 s itself
+      table.update(all, onScreen, selected, anyData) // refreshes every 10 s itself
       if (now - lastBadgeMs > 1000) {
         lastBadgeMs = now
-        rail.setBadge('aircraft', anyData ? compactCount(inView.length) : null)
+        rail.setBadge('aircraft', anyData ? compactCount(onScreen.length) : null)
       }
     }
     if (!firstData && status !== NO_STATUS) {
@@ -2351,7 +2379,10 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const kind = outageFor({ online: navigator.onLine, failedPolls, degraded: status === NO_STATUS ? null : status.degraded, inScenario: sf !== null || hist !== null })
     outage.update(kind, sourceName(status === NO_STATUS ? 'adsbfi' : status.source), lastOkMs, Date.now())
     const known = status === NO_STATUS ? null : shown
-    statusPanel.update(known, api.ready ? api.serverNowMs() : null)
+    if (now - statusMs >= 250) { // its words change once a second at most ("updated 3 s ago"); building them is not free
+      statusMs = now
+      statusPanel.update(known, api.ready ? api.serverNowMs() : null)
+    }
     rail.setDot('aircraft', statusDot(known))
     // In trouble no answers come; in a scenario none are asked for.
     rail.setBusy('aircraft', sf === null && hist === null && (known === null || (known.degraded === null && (known.pendingAreas ?? 0) > 0)))
@@ -2391,7 +2422,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         : `${weather3d.look}, march at tier ${weather3d.tier} (size ${weather3d.sky.clouds.scale ?? '?'}), the pass ${Number.isFinite(pass) ? `${pass.toFixed(1)} ms on the GPU` : 'not timed'}, last draw ${weather3d.drawMs.toFixed(0)} ms, its field made in ${(weather3d.sky.clouds.madeMs ?? 0).toFixed(0)} ms, ${from}`
       console.warn(`Flight Chaser bench: frame p50 ${(1000 / b.fpsP50).toFixed(1)} ms, p95 ${b.frameMsP95.toFixed(1)} ms · weather ${wx}`)
     }
-    governor?.update({ paused: run !== null && !run.player.clock.playing })
+    // Cesium copies the scene's depth every frame for Scene.pickPosition (a full-screen pass): only the chase's traffic brackets ask
+    // for it, and only while there are any.
+    viewer.scene.useDepthPicking = chasing && (traffic?.probing ?? 0) > 0
+    governor?.update({ paused: run !== null && !run.player.clock.playing, chasing })
+    if (governor !== null) pictureSwitch?.update(governor.picture)
     measure?.('fh:frame', now)
   }
   const removeFrame = viewer.scene.preUpdate.addEventListener(frame)
@@ -2478,7 +2513,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const askTraffic = th !== null && (trafficAsked?.hex !== th || nowMs - trafficAsked.ms >= FOCUS_ASK_MS)
     if (askTraffic) trafficAsked = { hex: th, ms: nowMs }
     const [view, chase, trafficChase] = await Promise.allSettled([
-      api.view(v.lat, v.lon, v.nm), ask ? api.chase(hex) : noChase, askTraffic ? api.chase(th) : noChase,
+      api.view(v.lat, v.lon, v.nm, chasing ? hex : null), ask ? api.chase(hex) : noChase, askTraffic ? api.chase(th) : noChase,
     ])
     if (stopped || hist !== null) return // History began meanwhile: live answers are not its
     const t0 = measure === null ? 0 : performance.now()
@@ -2632,7 +2667,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   const pickHover = (): void => {
     hoverTimer = null
     lastPickMs = performance.now()
-    mapHover = fleetLayer.pick(mousePos)
+    // A pick draws the scene again and waits for the graphics card: none in the chase (no flat icons there; traffic is found by its
+    // brackets, runways by their markers' places) nor while the map is being dragged.
+    mapHover = chasing || moves.held ? null : fleetLayer.pick(mousePos)
     const bracket = flightFrame.editing ? null : (traffic?.hitAt(mousePos.x, mousePos.y) ?? null)
     const onRunway = runways.hover(mapHover === null && bracket === null ? mousePos : null)
     viewer.canvas.style.cursor = mapHover === null && bracket === null && !onRunway ? '' : 'pointer'
@@ -2749,6 +2786,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       mouse.destroy()
       bench?.destroy()
       governor?.destroy()
+      pictureSwitch?.destroy()
       document.removeEventListener('fullscreenchange', onFullscreen)
       run?.destroy()
       hist?.bar.destroy()

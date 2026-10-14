@@ -1756,9 +1756,12 @@ export class FlightFrame {
     this.#has = blocksShown(v)
     const phone = [this.#phone?.matches ?? false, u.alt, u.speed, u.vs].join('/') // the units change sizes too
     const len = (el: Element): number => el.textContent?.length ?? 0
+    // A figure within the room its CSS keeps for it (flightFrame.css: V/S to "↓ 9,950", AGL to "14,990", speeds to 3 digits) does
+    // not change the card's size: no re-measure (three forced layouts) as V/S goes 950 ↔ 1,000 several times a second.
+    const fit = (el: Element, room: number): number => Math.max(len(el), room)
     const keys: Record<BlockId, string> = {
-      left: [phone, v.alt !== null, v.vs !== null, v.agl !== null, this.#alt.leadLength, len(this.#vs.value), len(this.#agl.value), len(this.#altD.value)].join(),
-      right: [phone, v.speed?.kind, v.tas !== null, v.gs !== null, this.#spd.leadLength, len(this.#tas.value), len(this.#gs.value), len(this.#spdD.value)].join(),
+      left: [phone, v.alt !== null, v.vs !== null, v.agl !== null, this.#alt.leadLength, fit(this.#vs.value, 7), fit(this.#agl.value, 6), len(this.#altD.value)].join(),
+      right: [phone, v.speed?.kind, v.tas !== null, v.gs !== null, this.#spd.leadLength, fit(this.#tas.value, 3), fit(this.#gs.value, 3), len(this.#spdD.value)].join(),
       top: [phone, v.hdg?.kind, v.wind !== null, v.wind?.rel !== null, len(this.#windText)].join(),
       bottom: [
         phone, v.adi !== null, v.roll !== null, v.pitch !== null, v.g !== null, v.gear !== null, v.flaps !== null, len(this.#flaps),

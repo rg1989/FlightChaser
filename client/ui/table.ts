@@ -548,6 +548,10 @@ export function mountTable(body: HTMLElement, head: HTMLElement, opts: TableOpts
         refilter()
         return
       }
+      if (viewH === 0) { // the panel is closed: no copy, sort and draw every 10 s for nobody; on opening, fresh rows at once
+        isReady = false
+        return
+      }
       if (ready && !isReady) nextRefreshMs = -Infinity // the first data: at once
       if (now < nextRefreshMs) return
       nextRefreshMs = now + REFRESH_MS

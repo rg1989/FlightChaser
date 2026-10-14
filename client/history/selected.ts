@@ -313,6 +313,11 @@ export class MapMoves {
   recent(ms: number): boolean {
     return this.#held.size > 0 || ms - this.#lastMs < MOVED_MS
   }
+
+  /** A pointer is held on the map now (a drag). */
+  get held(): boolean {
+    return this.#held.size > 0
+  }
 }
 
 /**

@@ -1,0 +1,82 @@
+/* client/ui/pictureSwitch.css */
+/* The Performance mode card (pictureSwitch.ts), in the bottom spot beside the instrument layout button (rail.css .fh-spot-bottom):
+   the two stand in a row, at the bottom centre of a chase and over the play bar's left end in a scenario. Two lines: why it is
+   there, then the switch. */
+.fh-spot-bottom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.fh-picture {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 6px 6px 4px 10px;
+}
+
+.fh-picture[hidden] {
+  display: none;
+}
+
+.fh-picture-why {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 300px;
+  color: var(--fh-text);
+  font: 500 12px/1.3 var(--fh-font);
+}
+
+.fh-picture-why > svg {
+  flex: none;
+  color: var(--fh-warn, #f5b84a);
+}
+
+.fh-picture[data-on] .fh-picture-why > svg {
+  color: var(--fh-accent);
+}
+
+.fh-ibtn.fh-picture-btn {
+  align-self: flex-start;
+  width: auto;
+  height: 28px;
+  gap: 8px;
+  display: inline-flex;
+  margin-left: 14px;
+  padding: 0 4px 0 6px;
+  color: var(--fh-muted);
+  font: 600 12px/1 var(--fh-font);
+}
+
+.fh-picture-btn[aria-checked='true'] {
+  color: var(--fh-text);
+}
+
+/* In a scenario the card stands over the play bar's left end, where the captions' band begins (captions.css): while it is up the
+   band starts after the layout button and the card, so no caption line runs under it. */
+@media (min-width: 641px) {
+  .fh-ui[data-scenario]:has(.fh-picture:not([hidden])) .fh-captions {
+    left: calc(var(--fh-left) + 372px);
+  }
+}
+
+/* Phones: the bottom spot's buttons are tabs in the strip and the bottom holds the flight card or the play bar (rail.css), so the
+   card stands at the top centre, where the alerts' toasts come (alerts.css), alone (its emptied neighbour square stays hidden). */
+@media (max-width: 640px) {
+  .fh-spot-bottom:has(> .fh-picture:not([hidden])) {
+    display: flex;
+    top: calc(var(--fh-top) + 54px);
+    bottom: auto;
+    left: 50%;
+    z-index: 24;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: calc(100% - 16px);
+  }
+
+  .fh-spot-bottom > .fh-corner-b:not(.fh-picture) {
+    display: none;
+  }
+}

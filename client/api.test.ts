@@ -72,6 +72,23 @@ test('view key: lat/lon rounded to 2 decimals plus nm; the query keeps the exact
   ])
 })
 
+test('view key in a chase: the followed hex and nm, so the circle moves with the aircraft and keeps its since; another hex or nm starts again', async () => {
+  const f = fake()
+  f.replies.push({ samples: [sample('a', 5000)] }, { samples: [sample('a', 6000)] })
+  await f.api.view(37.6188, -122.3758, 40, 'abc123')
+  await f.api.view(37.7188, -122.4758, 40, 'abc123') // a kilometre or ten on: the same key
+  await f.api.view(37.7188, -122.4758, 40, 'def456') // another aircraft chased
+  await f.api.view(37.7188, -122.4758, 60, 'abc123') // another radius
+  await f.api.view(37.7188, -122.4758, 40) // the map's own key, untouched by the chase's
+  assert.deepEqual(f.urls, [
+    'http://host/api/view?lat=37.6188&lon=-122.3758&nm=40&since=0',
+    'http://host/api/view?lat=37.7188&lon=-122.4758&nm=40&since=5000',
+    'http://host/api/view?lat=37.7188&lon=-122.4758&nm=40&since=0',
+    'http://host/api/view?lat=37.7188&lon=-122.4758&nm=60&since=0',
+    'http://host/api/view?lat=37.7188&lon=-122.4758&nm=40&since=0',
+  ])
+})
+
 test('chase: exact query string, since per hex, independent of views', async () => {
   const f = fake()
   f.replies.push({ samples: [sample('abc123', 7000)] }, { samples: [sample('def456', 9000)] }, { samples: [sample('x', 8000)] })
