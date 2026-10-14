@@ -123,6 +123,7 @@ test('Strain: the switch is offered where the view as designed costs the card mo
   assert.equal(j.on, false)
   assert.ok(Number.isNaN(j.gpuMs))
   assert.deepEqual(strain(new Strain(), 25, 12, false), [false, true], 'without the timer: frames of 33 ms where 17 are due')
+  assert.deepEqual(strain(new Strain(), 900, 20), [false, true], 'a very slow machine (frames of nearly a second) is offered it too')
 })
 
 test('Linger: the card comes at once; once there it stays at least 45 s, and goes only 20 s after the last ask; a view on the line (asked one second in three) keeps it, never flickering; another view takes it at once', () => {
