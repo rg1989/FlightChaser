@@ -2425,7 +2425,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     // Cesium copies the scene's depth every frame for Scene.pickPosition (a full-screen pass): only the chase's traffic brackets ask
     // for it, and only while there are any.
     viewer.scene.useDepthPicking = chasing && (traffic?.probing ?? 0) > 0
-    governor?.update({ paused: run !== null && !run.player.clock.playing, chasing })
+    governor?.update({ paused: run !== null && !run.player.clock.playing, chasing, translucent: weather3d.show || (chasing && prefs.buildings && prefs.glass) })
     if (governor !== null) pictureSwitch?.update(governor.picture)
     measure?.('fh:frame', now)
   }

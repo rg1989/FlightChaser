@@ -18,9 +18,13 @@
 // (the card 73–80 % busy), 6.7 ms with FXAA for MSAA (MSAA's three resolves a frame go; 2× MSAA saves nothing); at 2560 × 1440 (a
 // 27" screen) 16.3 ms (the card 99 % busy, 49 fps), 9.6 ms at 0.72 with FXAA. An empty frame still costs 4–6 ms there: the
 // framebuffers' plumbing, not what is drawn.
-// ponytail: order-independent translucency (OIT) stays on: off where nothing needs it, it saves another 1–2 ms a frame with FXAA,
-// but Cesium has no switch for it after the start (View.oit, private) and a translucent command made while it is off has no
-// OIT twin to draw when it comes back on. Upgrade: a Cesium with a runtime switch, or rebuilding the derived commands.
+// With Performance mode on and nothing translucent that needs it (the 3-D weather's volumes, see-through buildings), Cesium's
+// order-independent translucency is off too: its resolve, clear and composite passes run in every frame even with nothing
+// translucent to draw, 1–2 ms on the M2 at a 27" screen's size with FXAA (measured). Billboards, labels and lines then blend
+// back to front, as Cesium draws them without it.
+// ponytail: Cesium has no switch for it after the start: the governor takes View.oit out and puts it back (private), and on
+// putting it back makes every command build its OIT twin again (FrameState.shadowState.lastDirtyTime, as Cesium does when shadows
+// change). Another Cesium without those fields: nothing is touched. Upgrade: Cesium's own switch, if it gets one.
 import type { Viewer } from 'cesium'
 
 /** What the view is drawn with at a level. */
@@ -420,6 +424,8 @@ export class RenderGovernor {
   #level = -1
   #fps: number | undefined
   #gpuMs = Number.NaN
+  #oitAside: unknown = undefined // Cesium's OIT while it is off (setOit)
+  #oitOff = false
 
   /** opts.strainMs, opts.budgetMs: STRAIN_MS and BUDGET_MS but in checks on a quick card (?strainms=, ?budgetms=). */
   constructor(viewer: Viewer, opts: { tv?: boolean; picture?: Picture; strainMs?: number; budgetMs?: number } = {}) {
@@ -475,7 +481,8 @@ export class RenderGovernor {
     if (level !== this.#level) this.#apply(level)
   }
 
-  update(o: { paused: boolean; chasing: boolean }): void {
+  /** o.translucent: something on screen needs order-independent translucency (the 3-D weather's volumes, see-through buildings). */
+  update(o: { paused: boolean; chasing: boolean; translucent?: boolean }): void {
     const now = performance.now()
     const v = this.#viewer
     const fps = frameRate({
@@ -505,7 +512,28 @@ export class RenderGovernor {
     if (o.chasing && this.#picture === 'smooth') level = this.#pace.frame(dt, due, came)
     else if (o.chasing) this.#strain.frame(dt, due, came)
     if (level !== this.#level) this.#apply(level)
+    this.#setOit(!(this.#level > 0 && o.translucent !== true))
     this.#offered = this.#linger.update(now, o.chasing && (this.#picture === 'smooth' ? this.#level > 0 : this.#strain.on))
+  }
+
+  /** Cesium's order-independent translucency on or off (see the header). */
+  #setOit(on: boolean): void {
+    if (on !== this.#oitOff) return // (already so)
+    const scene = this.#viewer.scene as unknown as { _defaultView?: { oit?: unknown }; frameState?: { shadowState?: { lastDirtyTime: number } } }
+    const view = scene._defaultView
+    const shadows = scene.frameState?.shadowState
+    if (view === undefined || shadows === undefined || typeof shadows.lastDirtyTime !== 'number' || !('oit' in view)) return
+    if (!on) {
+      if (view.oit === undefined) return // none to begin with (no depth textures)
+      this.#oitAside = view.oit
+      view.oit = undefined
+      this.#oitOff = true
+      return
+    }
+    view.oit = this.#oitAside
+    this.#oitAside = undefined
+    this.#oitOff = false
+    shadows.lastDirtyTime++ // every command builds its OIT twin again before it is next drawn
   }
 
   #cap(fps: number | undefined): void {
@@ -526,5 +554,6 @@ export class RenderGovernor {
 
   destroy(): void {
     for (const off of this.#off.splice(0)) off()
+    this.#setOit(true) // back where Cesium's own destroy frees it
   }
 }
