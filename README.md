@@ -181,7 +181,7 @@ Settings → Controls lists the keyboard shortcuts.
 | Path | What is in it |
 |---|---|
 | `client/` | The browser app: CesiumJS scene, UI, track smoothing, scenarios, history |
-| `server/` | The API server: polls the flight data source, weather, history, alerts, recordings |
+| `server/` | The API server: polls the flight data source, weather, history, alerts, recordings. It also draws the city-light and border map tiles, kept in `data/tiles/` |
 | `shared/` | Types and maths used by both |
 | `public/` | Aircraft models, liveries, airports, scenario packages, map overlays |
 | `tools/` | Scripts that build the data in `public/`, recorders and benchmarks |

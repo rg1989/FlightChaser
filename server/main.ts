@@ -34,6 +34,9 @@
 //                                       flies now; with scan=1 also when it flew before, read in the background while the page
 //                                       keeps asking (days: how far back, default 14; deep=1: also with none found yet). 400: q
 //                                       does not read as a flight; 503: the route lists did not answer
+//   GET /api/tiles/lamps/v1/{z}/{x}/{y}.png, /api/tiles/borders/v1/…   the city lights' and the borders' map tiles, drawn here at the
+//                                       first ask and kept in data/tiles (server/tiles.ts); kept a year by the browser. 404: no such
+//                                       tile; 502: a source of the lamps failed (nothing kept)
 //   GET /*                              dist/ (index.html for client routes): Vite's hashed assets/ kept a year by the browser, the
 //                                       rest asked again each time (ETag, 304 while unchanged); text over 1 KB gzipped once (serveStatic)
 // JSON, and a satellite frame's bytes, over 1 KB are gzipped when the client accepts it. ADSB_SOURCE=adsblol with ROUTES=1 also looks up flight routes;
@@ -79,6 +82,7 @@ import { RouteFetcher } from './routes.ts'
 import { makeSource, userAgent } from './sources/index.ts'
 import type { Source } from './sources/types.ts'
 import { SampleStore } from './store.ts'
+import { Tiles } from './tiles.ts'
 import { TraceStore } from './trace.ts'
 import { TypeDb } from './typeDb.ts'
 import { WxError, makeWx } from './wx.ts'
@@ -391,6 +395,7 @@ export function createServer(
     pushFetch?: typeof fetch
     flightsFetch?: typeof fetch
     historyFetch?: typeof fetch
+    tilesFetch?: typeof fetch // the city lights' sources (server/lamps.ts)
     rollHistory?: boolean
     historyMeta?: boolean
     types?: TypeDb
@@ -482,6 +487,18 @@ export function createServer(
   let askedMs = -Infinity // when a page last asked for traffic, live or past (WATCHES)
   let roll: (() => void) | null = null // the rolling fetch of the past, once listen() has armed it (deps.rollHistory)
   const packs: Packs = new Map() // the static files gzipped
+  const tiles = new Tiles({ dir: cfg.tilesDir, bordersFile: 'public/map/borders.json', get: deps.tilesFetch })
+  /** A map tile: drawn once, the same bytes for good (shared/tiles.ts versions the paths), so kept a year by the browser. */
+  async function sendTile(res: ServerResponse, pathname: string): Promise<void> {
+    try {
+      const png = await tiles.png(pathname)
+      if (png === null) return sendText(res, 404, `no such tile: ${pathname}\n`)
+      res.writeHead(200, { 'content-type': 'image/png', 'content-length': png.length, 'cache-control': IMMUTABLE }).end(png)
+    } catch (e) {
+      console.warn(`tile ${pathname}:`, e instanceof Error ? e.message : e)
+      res.writeHead(502, { 'content-type': 'text/plain; charset=utf-8', 'cache-control': 'no-store' }).end('a source of the tile failed\n')
+    }
+  }
   /** Loads the type table if it is due (TypeDb.tick: at once the first time, then a day after a good load). */
   const tickTypes = (): void => void ownTypes?.tick().catch((e: unknown) => console.error('types: tick failed:', e))
   /** Whether the newest hour of the past is kept fetched now: the alerts are on (they read each half hour), or a page asked for traffic in the last 10 min. */
@@ -779,6 +796,7 @@ export function createServer(
       return sendJson(req, res, 403, { error: 'a POST from a page on another site is refused' })
     }
     if (!isApi) return serveStatic(root, url.pathname, req, res, packs)
+    if (url.pathname.startsWith('/api/tiles/')) return sendTile(res, url.pathname)
     if (WATCHES.has(url.pathname)) asked()
     let status = 200
     let body: unknown

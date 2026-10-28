@@ -28,7 +28,7 @@ import { ChaseCamera } from '../client/scene/chaseCamera.ts'
 import { eoxOnEsriFailure, eoxProvider } from '../client/scene/imagery.ts'
 import { imageryFade } from '../client/scene/imageryFade.ts'
 import { makeMapLayer } from '../client/scene/mapLayer.ts'
-import { makeNightLayer } from '../client/scene/nightLights.ts'
+import { darkWhileCoarse, makeNightLayers } from '../client/scene/nightLights.ts'
 import { Buildings } from '../client/scene/buildings.ts'
 import { Sun, parseSunParam, sunTimeMs } from '../client/scene/sun.ts'
 import { Topography, groundMemo } from '../client/scene/topography.ts'
@@ -113,8 +113,9 @@ async function main(): Promise<void> {
   let imagerySource: string = cfg.imagery
   const topo = new Topography(scene, true)
   let day: ImageryLayer | null = viewer.imageryLayers.length > 0 ? viewer.imageryLayers.get(0) : null
-  const night = makeNightLayer()
-  viewer.imageryLayers.add(night)
+  const night = makeNightLayers(cfg.apiBase)
+  for (const l of night) viewer.imageryLayers.add(l)
+  darkWhileCoarse(viewer.scene, night)
   const sun = new Sun(viewer, { day, night })
   if (cfg.imagery === 'esri' && day) {
     eoxOnEsriFailure(viewer.imageryLayers, day, (eox, why) => {
@@ -429,7 +430,7 @@ async function main(): Promise<void> {
     const cp = cpuMs.toSorted((a, b) => a - b)
     const mem = (performance as Any).memory
     let imageryCache = 0
-    for (const l of [day, night]) if (l) imageryCache += Object.keys((l as Any)._imageryCache ?? {}).length
+    for (const l of [day, ...night]) if (l) imageryCache += Object.keys((l as Any)._imageryCache ?? {}).length
     return {
       ...c,
       replacementQueueCount: surface._tileReplacementQueue.count as number,

@@ -29,6 +29,7 @@ test('defaults: replay at 1 req/s on port 8787, no recording, no alerts, PIA/LAD
     showPiaLadd: false,
     routes: false,
     staticDir: 'dist',
+    tilesDir: 'data/tiles',
   })
 })
 

@@ -1,8 +1,19 @@
-// client/scene/mvt.ts
+// shared/mvt.ts
 // Just enough Mapbox Vector Tile 2.1 decoding for building footprints and roads: one layer's polygons + properties,
 // rings split into polygons with holes and clipped to the tile (neighbouring tiles repeat the buffer strip, which would
 // z-fight); or its lines.
 // ponytail: hand-rolled protobuf reader (~40 lines); take @mapbox/vector-tile + pbf if more layers or geometry types are needed.
+
+// OpenFreeMap's planet: keyless vector tiles (OpenMapTiles), read by the 3-D buildings (client) and the street lamps (server).
+export const OPENFREEMAP_TILEJSON = 'https://tiles.openfreemap.org/planet'
+const OPENFREEMAP_ORIGIN = 'https://tiles.openfreemap.org'
+
+/** The tile URL template ({z}/{x}/{y}) an OpenFreeMap TileJSON names. The TileJSON is outside data: its URL must stay on OpenFreeMap. */
+export function openFreeMapTemplate(json: { tiles?: unknown[] }): string {
+  const u = json.tiles?.[0]
+  if (typeof u !== 'string' || new URL(u).origin !== OPENFREEMAP_ORIGIN) throw new Error(`TileJSON: unexpected tile URL ${String(u)}`)
+  return u
+}
 
 type Val = string | number | boolean
 export type Pt = [number, number]

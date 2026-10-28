@@ -10,7 +10,7 @@
 import { Cartesian3, Cartographic, JulianDate, Math as CMath, sampleTerrainMostDetailed } from 'cesium'
 import { readConfig } from '../client/config.ts'
 import { Buildings, extentM, footprints, groundPoints, openFreeMapLayer, tilesAround, type Footprint } from '../client/scene/buildings.ts'
-import { makeNightLayer } from '../client/scene/nightLights.ts'
+import { darkWhileCoarse, makeNightLayers } from '../client/scene/nightLights.ts'
 import { photoSource } from '../client/scene/roofPhoto.ts'
 import { Sun } from '../client/scene/sun.ts'
 import { TerrainHeights } from '../client/scene/terrainHeights.ts'
@@ -52,8 +52,9 @@ async function main(): Promise<void> {
   const viewer = await createViewer('globe', cfg)
   const topo = new Topography(viewer.scene, q.get('topo') !== '0')
   const day = viewer.imageryLayers.length > 0 ? viewer.imageryLayers.get(0) : null
-  const night = makeNightLayer()
-  viewer.imageryLayers.add(night)
+  const night = makeNightLayers(cfg.apiBase)
+  for (const l of night) viewer.imageryLayers.add(l)
+  darkWhileCoarse(viewer.scene, night)
   const sun = new Sun(viewer, { day, night })
   sun.setEnabled(true)
   // ?ground=flat: no terrain reads (profiling their cost)

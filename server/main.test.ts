@@ -254,6 +254,22 @@ test('a view wider than 250 nm is served, not rejected', async (t) => {
   assert.equal(v.status, 200)
 })
 
+test('map tiles: drawn by the server, PNG, kept a year by the browser and on disk; 404 for no such tile; 502 when a source fails', async (t) => {
+  const dir = tmp()
+  const cfg = { ...readServerConfig({ REPLAY_FILES: FILE }), staticDir: join(dir, 'dist'), tilesDir: join(dir, 'tiles') }
+  const down = (async () => new Response(null, { status: 503 })) as unknown as typeof fetch
+  const app = createServer(cfg, { source: makeReplay({ files: cfg.replayFiles }), tilesFetch: down })
+  const base = await app.listen(0)
+  t.after(() => app.close())
+  const res = await fetch(`${base}/api/tiles/borders/v1/4/9/6.png`) // Israel's borders (public/map/borders.json)
+  assert.deepEqual([res.status, res.headers.get('content-type'), res.headers.get('cache-control')], [200, 'image/png', 'public, max-age=31536000, immutable'])
+  assert.deepEqual(Buffer.from(await res.arrayBuffer()), readFileSync(join(dir, 'tiles/borders/v1/4/9/6.png')))
+  assert.equal((await getText(`${base}/api/tiles/borders/v1/19/0/0.png`)).status, 404)
+  const lamps = await getText(`${base}/api/tiles/lamps/v1/9/300/200.png`)
+  assert.deepEqual([lamps.status], [502])
+  assert.equal(existsSync(join(dir, 'tiles/lamps')), false)
+})
+
 test('static: dist/ files with content types, index.html for client routes, 404 for missing assets and traversal', async (t) => {
   const dir = tmp()
   const dist = join(dir, 'dist')

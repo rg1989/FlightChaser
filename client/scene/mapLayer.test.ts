@@ -3,7 +3,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Event, ImageryLayer, ImageryLayerCollection, OpenStreetMapImageryProvider, Request, RequestState, UrlTemplateImageryProvider } from 'cesium'
 import type { Viewer } from 'cesium'
-import { BordersProvider } from './borders.ts'
 import {
   CHASE_ROADS_MIN_TERRAIN_LEVEL, InkOsmProvider, NIGHT_FILTER, NightOsmProvider, OSM_CREDIT_HTML, OSM_URL, PLACES_URL, ROADS_URL, inkAlpha, makeMapLayer,
   makeReferenceLayers, nightPixels, type StreetMap,
@@ -18,7 +17,7 @@ function fakeViewer() {
   return { imageryLayers, base, scene, render, viewer: { imageryLayers, scene } as unknown as Viewer }
 }
 
-const BORDERS_URL = 'https://app.invalid/map/borders.json'
+const API = 'https://app.invalid/api'
 /** Cesium keeps an imagery layer's minimumTerrainLevel to itself: no getter, so the constructor option is read where it put it. */
 const minTerrainLevel = (l: ImageryLayer): number | undefined => (l as unknown as { _minimumTerrainLevel?: number })._minimumTerrainLevel
 
@@ -135,7 +134,7 @@ test('the ink copies sit right after the dark map, light then dark, and a layer 
   const map = makeMapLayer(viewer)
   const [light, dark, lightInk, darkInk] = [1, 2, 3, 4].map((i) => imageryLayers.get(i))
   assert.equal(map.liftIndex, 3, 'the light ink\'s place')
-  makeReferenceLayers(viewer, BORDERS_URL)
+  makeReferenceLayers(viewer, API)
   const rain = new ImageryLayer(new UrlTemplateImageryProvider({ url: 'https://rain.invalid/{z}/{x}/{y}.png' }))
   imageryLayers.add(rain, map.liftIndex)
   const [roads, places] = [imageryLayers.get(6), imageryLayers.get(8)]
@@ -590,7 +589,7 @@ test('the ink: a tile waiting for its turn when its layer hides or the map is de
 test('the reference overlays: roads, the chase\'s roads, then places and the chase\'s borders above them, over every layer before them; each starts hidden', () => {
   const { imageryLayers, base, viewer } = fakeViewer()
   makeMapLayer(viewer)
-  makeReferenceLayers(viewer, BORDERS_URL)
+  makeReferenceLayers(viewer, API)
   assert.equal(imageryLayers.length, 9)
   assert.equal(imageryLayers.get(0), base)
   const [roads, chaseRoads, places, borders] = [5, 6, 7, 8].map((i) => imageryLayers.get(i))
@@ -599,21 +598,21 @@ test('the reference overlays: roads, the chase\'s roads, then places and the cha
   assert.match(PLACES_URL, /^https:\/\/services\.arcgisonline\.com\/.*\/Reference\/World_Boundaries_and_Places\/MapServer\/tile\/\{z\}\/\{y\}\/\{x\}$/)
   assert.deepEqual([url(roads), url(chaseRoads), url(places)], [ROADS_URL, ROADS_URL, PLACES_URL])
   assert.deepEqual([roads, chaseRoads, places].map((l) => l.imageryProvider.maximumLevel), [19, 19, 19])
-  assert.ok(borders.imageryProvider instanceof BordersProvider)
-  assert.equal((borders.imageryProvider as BordersProvider).url, BORDERS_URL)
+  assert.equal(url(borders), `${API}/tiles/borders/v1/{z}/{x}/{y}.png`) // drawn by our server (server/borders.ts)
+  assert.equal(borders.imageryProvider.maximumLevel, 18)
   assert.deepEqual([roads, chaseRoads, places, borders].map((l) => l.show), [false, false, false, false], 'a hidden layer loads nothing')
 })
 
 test('the chase\'s roads lie only on near terrain tiles (Esri\'s raster, drawn for top-down zooms, is wide bands on the far ones); the top-down roads on every tile', () => {
   const { imageryLayers, viewer } = fakeViewer()
-  makeReferenceLayers(viewer, BORDERS_URL)
+  makeReferenceLayers(viewer, API)
   assert.equal(CHASE_ROADS_MIN_TERRAIN_LEVEL, 12)
   assert.deepEqual([1, 2, 3, 4].map((i) => minTerrainLevel(imageryLayers.get(i))), [undefined, 12, undefined, undefined])
 })
 
 test('the reference overlays each have their own show: roads alone, places alone, both', () => {
   const { imageryLayers, viewer } = fakeViewer()
-  const over = makeReferenceLayers(viewer, BORDERS_URL)
+  const over = makeReferenceLayers(viewer, API)
   const [roads, places] = [imageryLayers.get(1), imageryLayers.get(3)]
   const shown = (): boolean[] => [over.roads.show, over.places.show, roads.show, places.show]
   assert.deepEqual(shown(), [false, false, false, false])
@@ -627,7 +626,7 @@ test('the reference overlays each have their own show: roads alone, places alone
 
 test('chase: the Roads switch shows the chase\'s roads in place of the top-down ones, Borders & places our borders in place of Esri\'s places raster', () => {
   const { imageryLayers, viewer } = fakeViewer()
-  const over = makeReferenceLayers(viewer, BORDERS_URL)
+  const over = makeReferenceLayers(viewer, API)
   const [roads, chaseRoads, places, borders] = [1, 2, 3, 4].map((i) => imageryLayers.get(i))
   const shown = (): boolean[] => [roads, chaseRoads, places, borders].map((l) => l.show)
   assert.equal(over.chase, false)
@@ -646,37 +645,9 @@ test('chase: the Roads switch shows the chase\'s roads in place of the top-down 
   assert.deepEqual(shown(), [false, false, true, false], 'back top-down: the places raster again')
 })
 
-test('the borders\' data is fetched at their first show in the chase, once; not top-down, not while hidden', async () => {
-  const { viewer } = fakeViewer()
-  const g = globalThis as unknown as { fetch: unknown }
-  const saved = g.fetch
-  const asked: string[] = []
-  g.fetch = async (url: string) => {
-    asked.push(url)
-    return { ok: true, json: async () => ({ lines: [] }) }
-  }
-  try {
-    const over = makeReferenceLayers(viewer, BORDERS_URL)
-    over.places.show = true // top-down: Esri's raster, not ours
-    over.places.show = false
-    over.chase = true // the chase with Borders & places off
-    over.roads.show = true
-    assert.deepEqual(asked, [], 'never shown yet')
-    over.places.show = true
-    over.places.show = false
-    over.places.show = true
-    over.chase = false
-    over.chase = true
-    await new Promise((r) => setTimeout(r, 0))
-    assert.deepEqual(asked, [BORDERS_URL], 'once, at the first show')
-  } finally {
-    g.fetch = saved
-  }
-})
-
 test('the reference overlays: destroy removes each alone (roads: both roads; places: the places raster and the borders), and twice is harmless', () => {
   const { imageryLayers, base, viewer } = fakeViewer()
-  const over = makeReferenceLayers(viewer, BORDERS_URL)
+  const over = makeReferenceLayers(viewer, API)
   const [roads, chaseRoads, places, borders] = [1, 2, 3, 4].map((i) => imageryLayers.get(i))
   over.roads.destroy()
   over.roads.destroy()

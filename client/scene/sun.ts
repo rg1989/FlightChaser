@@ -118,7 +118,7 @@ export function moonLook(look: SunLook, w: number): SunLook {
  * alike: its colour × czm_lightColor (the light's colour × intensity, scaled so no channel passes 1) × a Lambert term
  * (0.9 × cos + the vertex shadow floor, at most 1). This divides that out on flat ground, as luminance, so the Moon
  * lights the land but neither brightens nor dims the lamps. One number cannot undo the Moon's blue tint: the warm lamp
- * colours (nightLights.ts) take it.
+ * colours (server/lamps.ts) take it.
  */
 export function lampBrightness(light: DirectionalLight, upWC: Cartesian3, shadowFloor: number): number {
   const { red, green, blue } = light.color
@@ -200,7 +200,7 @@ export interface SunState {
 export class Sun {
   #viewer: Viewer
   #day: ImageryLayer | null
-  #night: ImageryLayer | null
+  #night: readonly ImageryLayer[]
   #model: Model | null = null
   #enabled = false
   #overcast = 0 // setOvercast's shade
@@ -218,7 +218,7 @@ export class Sun {
   #look = sunLook(90)
   #state: SunState = { elevDeg: 90, night: 0, golden: 0, intensity: DAY_INTENSITY, dayBrightness: DAY_BRIGHTNESS }
 
-  constructor(viewer: Viewer, layers: { day: ImageryLayer | null; night: ImageryLayer | null }) {
+  constructor(viewer: Viewer, layers: { day: ImageryLayer | null; night: readonly ImageryLayer[] }) {
     this.#viewer = viewer
     this.#day = layers.day
     this.#night = layers.night
@@ -239,7 +239,7 @@ export class Sun {
     this.#enabled = on
     this.#viewer.scene.globe.enableLighting = on
     if (on) return // the next update() applies the look
-    if (this.#night) this.#night.show = false
+    for (const l of this.#night) l.show = false
     if (this.#day) this.#day.brightness = DAY_BRIGHTNESS
     this.#light.intensity = DAY_INTENSITY
     Color.clone(Color.WHITE, this.#light.color)
@@ -306,10 +306,11 @@ export class Sun {
     light.color.blue = look.blue
     this.#viewer.scene.globe.vertexShadowDarkness = look.vertexShadowDarkness
     if (this.#day) this.#day.brightness = st.dayBrightness
-    if (this.#night) {
-      this.#night.alpha = look.nightAlpha
-      this.#night.show = look.nightAlpha > NIGHT_SHOW_ALPHA // hidden layers request no tiles: none by day
-      this.#night.brightness = lampBrightness(light, up, look.vertexShadowDarkness)
+    const lamps = lampBrightness(light, up, look.vertexShadowDarkness)
+    for (const l of this.#night) {
+      l.alpha = look.nightAlpha
+      l.show = look.nightAlpha > NIGHT_SHOW_ALPHA // hidden layers request no tiles: none by day
+      l.brightness = lamps
     }
     this.#setIbl(look.iblFactor)
     return st

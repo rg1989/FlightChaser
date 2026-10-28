@@ -1,7 +1,7 @@
 // harness/sun.ts
 // WP-E2 harness: /harness/sun.html. The chase model holds a point on the PoC's 6 km circle round LOWI (Innsbruck) at
 // 2,700 m HAE and the chase camera follows it (drag to orbit, wheel to zoom, double-click to reset). Re:Earth terrain
-// with vertex normals, EOX day imagery and the GIBS night layer; Sun lights it all from the sun time.
+// with vertex normals, EOX day imagery and the city lights (the server's tiles); Sun lights it all from the sun time.
 //   ?sun=2026-09-22T05:00:00Z | +6h | -30m   start time (default now; see parseSunParam)
 //   ?at=0      seconds into the circle where the aircraft holds (default 0: 6 km east, heading north: the PoC's view)
 //   ?light=0   start with the Sun off (the browse look)
@@ -16,7 +16,7 @@ import { readConfig } from '../client/config.ts'
 import { ChaseCamera } from '../client/scene/chaseCamera.ts'
 import { makeImagery } from '../client/scene/imagery.ts'
 import { ChaseModel } from '../client/scene/model.ts'
-import { makeNightLayer } from '../client/scene/nightLights.ts'
+import { darkWhileCoarse, makeNightLayers } from '../client/scene/nightLights.ts'
 import { Sun, parseSunParam, sunTimeMs, type SunState } from '../client/scene/sun.ts'
 import { REEARTH_TERRAIN_URL } from '../client/scene/terrain.ts'
 import type { ModelManifest, RenderState } from '../client/types.ts'
@@ -64,9 +64,11 @@ async function main(): Promise<void> {
     requestRenderMode: false,
   })
   viewer.scene.globe.depthTestAgainstTerrain = true
-  const night = makeNightLayer()
-  viewer.imageryLayers.add(night)
-  const sun = new Sun(viewer, { day, night })
+  const nights = makeNightLayers('/api')
+  for (const l of nights) viewer.imageryLayers.add(l)
+  darkWhileCoarse(viewer.scene, nights)
+  const night = nights[0] // the layers move together: the HUD reads the first
+  const sun = new Sun(viewer, { day, night: nights })
   const model = await ChaseModel.load(viewer, manifest.models.find((m) => m.id === manifest.default)!)
   model.model.enableVerticalExaggeration = false // design D6 (WP-E1 moves it into ChaseModel.load)
   sun.attachModel(model.model)

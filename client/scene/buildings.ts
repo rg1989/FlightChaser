@@ -30,7 +30,7 @@ import {
 } from 'cesium'
 import type { TerrainFrame } from '../types.ts'
 import { drawnHeightM } from './exaggeration.ts'
-import { decodeLayer, type Layer } from './mvt.ts'
+import { OPENFREEMAP_TILEJSON, decodeLayer, openFreeMapTemplate, type Layer } from '../../shared/mvt.ts'
 import { mosaic, photoTexture, releaseCanvas, type PhotoSource, type PhotoTexture } from './roofPhoto.ts'
 import { followExaggeration } from './runways.ts'
 import { TerrainHeights } from './terrainHeights.ts'
@@ -45,8 +45,6 @@ const MAX_IN_FLIGHT = 4
 const RETRY_MS = 30_000 // a failed tile is asked for again at the next plan after this
 const MIN_HEIGHT_M = 2 // walls, sheds and carports mapped as buildings
 const FLAT_HIDE_F = 0.02 // below this factor the relief is (nearly) flat: nothing to stand up
-export const OPENFREEMAP_TILEJSON = 'https://tiles.openfreemap.org/planet'
-const OPENFREEMAP_ORIGIN = 'https://tiles.openfreemap.org'
 
 const n2 = (): number => 2 ** BUILDINGS_Z
 /** The z14 slippy-map tile [x, y] of a point (Web Mercator, y down from the north). */
@@ -183,12 +181,7 @@ let tileUrl: Promise<string> | null = null
 export async function openFreeMapTiles(): Promise<string> {
   tileUrl ??= fetch(OPENFREEMAP_TILEJSON)
     .then((r) => (r.ok ? (r.json() as Promise<{ tiles?: unknown[] }>) : Promise.reject(new Error(`TileJSON: HTTP ${r.status}`))))
-    .then((j) => {
-      const u = j.tiles?.[0]
-      // the TileJSON is outside data: its URL must stay on OpenFreeMap
-      if (typeof u !== 'string' || new URL(u).origin !== OPENFREEMAP_ORIGIN) throw new Error(`TileJSON: unexpected tile URL ${String(u)}`)
-      return u
-    })
+    .then(openFreeMapTemplate)
   try {
     return await tileUrl
   } catch (e) {

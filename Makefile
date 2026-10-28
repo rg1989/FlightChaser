@@ -1,5 +1,5 @@
 # Quick start: API server in the background, Vite in the foreground; Ctrl+C stops both. The first run installs the
-# dependencies (npm ci).
+# dependencies (npm ci), and so does the first run after package-lock.json changes (npm writes node_modules/.package-lock.json).
 #   make / make live   live traffic from adsb.fi and adsb.lol at once, each at its own limit (adsb.lol needs CONTACT)
 #   make replay        replay the most recently modified recording (REC=data/recordings/<file>.jsonl to pick one)
 #   make live LIVE_SOURCE=adsbfi    live from adsb.fi alone (paced below its 1 req/s public limit)
@@ -40,7 +40,7 @@ replay:
 # vite.config.ts proxies /api to API_PORT.
 run:
 	@node -e 'const [a, b] = process.versions.node.split(".").map(Number); if (a < 24 || (a === 24 && b < 2)) { console.error("Flight Chaser needs Node 24.2 or newer; this is " + process.version); process.exit(1) }'
-	@[ -e node_modules ] || npm ci
+	@[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci
 	@if lsof -nP -iTCP:$(API_PORT) -sTCP:LISTEN >/dev/null 2>&1; then echo "Port $(API_PORT) is busy: stop the other API server first (two live servers would double the upstream rate from this IP)."; exit 1; fi
 	@env $(SRC) PORT=$(API_PORT) npm run --silent server & trap 'kill $$! 2>/dev/null' EXIT INT TERM; \
 	echo ""; echo "  Flight Chaser → http://localhost:$(FE_PORT)/"; echo ""; \

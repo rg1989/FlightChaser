@@ -9,6 +9,7 @@
     "node": ">=24.2"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.13",
     "cesium": "^1.145.0",
     "egm96-universal": "^1.1.1"
   },

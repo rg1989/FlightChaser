@@ -1,4 +1,4 @@
-// client/scene/mvt.test.ts
+// shared/mvt.test.ts
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { area, clip, decodeLayer, decodeLines, rings } from './mvt.ts'

@@ -15,6 +15,6 @@ Rules for every task:
 - `npm start` starts the app; `make` starts it for development (the client reloads as you edit). Neither needs a key or an account.
 - `npm run check` runs the type check and all tests. It must pass before you say that the work is done.
 - The user makes each account and pastes each key. Do not print a key. Do not read `.env.local` aloud.
-- Do not commit `.env.local`, `.work/`, `data/flights/`, `data/recordings/` or `public/scenarios/*/local/`. Git ignores
+- Do not commit `.env.local`, `.work/`, `data/flights/`, `data/recordings/`, `data/tiles/` or `public/scenarios/*/local/`. Git ignores
   them on purpose.
 - Write documents and on-screen text short and plain.

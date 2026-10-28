@@ -1,7 +1,7 @@
 // tools/build-map-overlays.ts
 // Builds the chase map's overlays (shared/mapOverlays.ts) in public/map/ from Natural Earth (public domain,
 // https://www.naturalearthdata.com/about/terms-of-use/):
-// - borders.json: every land border line (ne_10m_admin_0_boundary_lines_land), for client/scene/borders.ts to draw.
+// - borders.json: every land border line (ne_10m_admin_0_boundary_lines_land), for server/borders.ts to draw.
 // - seas.json: one label point per named ocean, sea, gulf and bay (ne_10m_geography_marine_polys), for
 //   client/scene/placeLabels.ts: the centre of the largest circle inside it (insidePoint), so the name sits well inside.
 // - countries.json: each country at Natural Earth's own label point (ne_10m_admin_0_countries), for placeLabels.ts: on

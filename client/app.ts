@@ -73,7 +73,7 @@ import { ModelPicker, placeholderWords } from './scene/modelFor.ts'
 import { asPlaceholder, parseGhost, setPlaceholderAid } from './scene/placeholder.ts'
 import { BOX_HALF, Traffic, minScale, trafficRangeNm } from './scene/traffic.ts'
 import { AircraftLights } from './scene/aircraftLights.ts'
-import { makeNightLayer } from './scene/nightLights.ts'
+import { darkWhileCoarse, makeNightLayers } from './scene/nightLights.ts'
 import { Buildings } from './scene/buildings.ts'
 import { QUALITY, RenderGovernor } from './scene/renderGovernor.ts'
 import { PICTURE_KEY, mountPictureSwitch, readPicture } from './ui/pictureSwitch.ts'
@@ -922,8 +922,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // The city lights go right above the satellite base layer, under the street map added next (browse shows it on top).
   const day = viewer.imageryLayers.length > 0 ? viewer.imageryLayers.get(0) : null
   let dayLayer = day // the satellite base layer: EOX in Esri's place after a failure (below)
-  const night = makeNightLayer()
-  viewer.imageryLayers.add(night)
+  const night = makeNightLayers(cfg.apiBase)
+  for (const l of night) viewer.imageryLayers.add(l)
+  const stopDarkWhileCoarse = darkWhileCoarse(viewer.scene, night)
   const sun = new Sun(viewer, { day, night })
   if (cfg.imagery === 'esri' && day) {
     eoxOnEsriFailure(viewer.imageryLayers, day, (eox, why) => {
@@ -941,7 +942,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // VITE_MAP_URL: another tile server ({z}/{x}/{y}.png is appended), as the OpenStreetMap tile policy asks to allow.
   const mapUrl: string | undefined = import.meta.env.VITE_MAP_URL?.trim() || undefined
   const map = makeMapLayer(viewer, mapUrl)
-  const reference = makeReferenceLayers(viewer, `${base}map/borders.json`) // over the map, the satellite and the night lights
+  const reference = makeReferenceLayers(viewer, cfg.apiBase) // over the map, the satellite and the night lights
   // The chase's place names, upright over the 3-D view (Esri's places raster lays them on the ground): under the traffic brackets.
   const placesLayer = div('fh-places', root)
   const placeLabels = new PlaceLabels(viewer, placesLayer, { placesUrl, countriesUrl: `${base}map/countries.json`, seasUrl: `${base}map/seas.json` })
@@ -2053,7 +2054,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       : recLivery ?? (scn.aircraft.callsign ? liveryOf(liveryCode(scn.aircraft.callsign, scn.aircraft.registration || null)) : null)
     liveGear = null
     dress = new Dresser(e, livery, scn.aircraft.shape?.halfSpanM ?? null, recPlaceholder) // a package names its own model
-    const playing = (run = ScenarioRun.start({ viewer, ui, scenario: scn, t: o.t, play: o.play, under: night, onExit: exitScenario, onView: () => setChase(!chasing) }))
+    const playing = (run = ScenarioRun.start({ viewer, ui, scenario: scn, t: o.t, play: o.play, under: night[0], onExit: exitScenario, onView: () => setChase(!chasing) }))
     scnRoute = scenarioRoute(scn)
     scnInfo = {
       hex: `scn-${scn.id}`, callsign: scn.aircraft.callsign || null, reg: scn.aircraft.registration || null, typeCode: scn.aircraft.model.toUpperCase() || null, // a model's id is its type's designator: the icon's shape
@@ -2821,7 +2822,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       placeLabels.destroy()
       placesLayer.remove()
       weather.destroy()
-      viewer.imageryLayers.remove(night) // and destroys it
+      stopDarkWhileCoarse()
+      for (const l of night) viewer.imageryLayers.remove(l) // and destroys it
       runways.destroy()
       airfield?.destroy()
       buildings.destroy()

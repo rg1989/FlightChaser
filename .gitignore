@@ -3,6 +3,7 @@ dist/
 data/recordings/
 data/flights/
 data/events/
+data/tiles/
 .env.local
 .env.*.local
 *.log

@@ -118,8 +118,10 @@ if (import.meta.main) {
     const r = spawnSync(windows ? 'npm.cmd' : 'npm', a, { stdio: 'inherit', shell: windows })
     if (r.status !== 0) process.exit(r.status ?? 1)
   }
-  if (!existsSync('node_modules')) {
-    console.log('Installing the dependencies (the first time only)…')
+  // The first start, and the first after package-lock.json changed: npm writes node_modules/.package-lock.json at each install.
+  const installed = 'node_modules/.package-lock.json'
+  if (!existsSync(installed) || statSync('package-lock.json').mtimeMs > statSync(installed).mtimeMs) {
+    console.log('Installing the dependencies…')
     npm('ci', '--no-audit', '--no-fund')
   }
   if (args.build || buildDue(root)) {

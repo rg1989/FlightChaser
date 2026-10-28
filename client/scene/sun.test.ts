@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { Cartesian3, Clock, Color, DirectionalLight, DynamicAtmosphereLightingType, ImageBasedLighting, JulianDate } from 'cesium'
 import type { ImageryLayer, Model, Viewer } from 'cesium'
-import { makeNightLayer } from './nightLights.ts'
+import { makeNightLayers } from './nightLights.ts'
 import { Sun, aimLight, lampBrightness, moonLook, parseSunParam, sunDirectionWC, sunElevationDeg, sunLook, sunTimeMs } from './sun.ts'
 import { moonPositionWC } from './moon.ts'
 
@@ -175,12 +175,13 @@ function fakeViewer() {
   const clock = new Clock({ shouldAnimate: true })
   const viewer = { scene, clock, camera: { positionWC: at(LOWI, 300_000), positionCartographic: { height: 300_000 } }, shadows: false }
   const day = { brightness: 1, alpha: 1, show: true }
-  const night = makeNightLayer()
+  const nights = makeNightLayers('/api')
+  const night = nights[0] // Sun sets every layer alike: the tests read the first
   const model = { environmentMapManager: { maximumPositionEpsilon: 1000 }, imageBasedLighting: new ImageBasedLighting() }
-  const sun = new Sun(viewer as unknown as Viewer, { day: day as unknown as ImageryLayer, night })
+  const sun = new Sun(viewer as unknown as Viewer, { day: day as unknown as ImageryLayer, night: nights })
   const light = scene.light as DirectionalLight
   const ibl = (): number[] => [model.imageBasedLighting.imageBasedLightingFactor.x, model.imageBasedLighting.imageBasedLightingFactor.y]
-  return { sun, viewer, globe, scene, clock, day, night, model, light, ibl, attach: () => sun.attachModel(model as unknown as Model) }
+  return { sun, viewer, globe, scene, clock, day, night, nights, model, light, ibl, attach: () => sun.attachModel(model as unknown as Model) }
 }
 const AIRCRAFT = at(LOWI, 2700)
 const T10 = Date.parse('2026-09-22T10:00:00Z') // LOWI 12:00 local, sun +41°
@@ -255,6 +256,7 @@ test('moonless night at LOWI (new moon, 10 Oct): a dim light from straight overh
   assert.equal(s.night.show, true)
   assert.equal(s.night.alpha, 0.9999) // never 1: APPLY_ALPHA stays on at full night
   near(s.night.brightness, 1 / 0.45, 1e-9) // the lamps undo the dim light the globe multiplies them by
+  for (const l of s.nights) assert.deepEqual([l.show, l.alpha, l.brightness], [s.night.show, s.night.alpha, s.night.brightness])
   near(s.ibl()[0], 0.15, 1e-12)
   near(s.ibl()[1], 0.15, 1e-12)
   assert.equal(s.globe.vertexShadowDarkness, 0.3)

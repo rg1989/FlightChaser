@@ -25,6 +25,7 @@ export interface ServerConfig {
   showPiaLadd: boolean // SHOW_PIA_LADD=1 serves PIA/LADD-flagged aircraft
   routes: boolean // ROUTES=1 looks up flight routes on adsb.lol (only used with ADSB_SOURCE=adsblol); default off
   staticDir: string // the built client (`npm run build` → dist/)
+  tilesDir: string | null // where the drawn map tiles are kept (server/tiles.ts): data/tiles; null: drawn at each ask (tests)
 }
 
 type Env = Record<string, string | undefined>
@@ -141,5 +142,6 @@ export function readServerConfig(env: Env): ServerConfig {
     showPiaLadd: flag(env, 'SHOW_PIA_LADD'),
     routes: flag(env, 'ROUTES'),
     staticDir: 'dist',
+    tilesDir: 'data/tiles',
   }
 }

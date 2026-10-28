@@ -1,6 +1,6 @@
 /**
  * The chase map's overlays, built by tools/build-map-overlays.ts into public/map/ from Natural Earth (public domain):
- * the land borders client/scene/borders.ts draws, and the country and sea names client/scene/placeLabels.ts shows.
+ * the land borders server/borders.ts draws, and the country and sea names client/scene/placeLabels.ts shows.
  */
 
 /** Integer units per degree in borders.json: 1e-4° (~11 m; the source is drawn for 1:10 M, ~1 km). */
