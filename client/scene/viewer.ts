@@ -62,6 +62,7 @@ export async function createViewer(el: HTMLElement | string, cfg: ClientConfig, 
   // navy squares over the land read as a broken picture (the user's chase over Israel, 2026-10-14).
   viewer.scene.globe.baseColor = Color.fromCssColorString('#1e2428')
   viewer.scene.fog.screenSpaceErrorFactor = FAR_GROUND_SSE
+  viewer.scene.useDepthPicking = false // nothing reads the depth back (Scene.pickPosition): no full-screen depth copy each frame
   keepCanvasSize(viewer.canvas)
   fadeOffOnDestroy(viewer) // Viewer.destroy frees no globe tiles, so the running fades are ended first
   // Never both: a TileCache would overwrite a fixed size on its next change.

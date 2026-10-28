@@ -45,8 +45,8 @@ the near ground too, so it was not used.
 
 ## Next, each a standard piece
 
-1. **Traffic behind hills without depth reads.** Cesium's `globe.pick(ray)` tests the line to each aircraft against the ground
-   already loaded, on the processor, with no wait and no per-frame depth copy. Buildings would no longer hide brackets.
+1. **Traffic brackets: done (2026-10-28).** The hill check and its depth reads are gone (the user: brackets may show behind
+   hills); `useDepthPicking` off for good; a plane that would be under 3 px at true size is drawn as its brackets alone.
 2. **Buildings as 3D Tiles from our server.** The OGC format Cesium streams itself: the server builds the tiles from the same OSM
    data and ground heights, with simpler parent tiles (big buildings as blocks) for far away. Cesium then picks levels by distance,
    decodes in workers and keeps to a memory budget. It replaces the per-tile building and roof-picture code in the page, which uses

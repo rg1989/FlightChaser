@@ -19,6 +19,9 @@ const FAR_RANGE_NM = 60
 const NEAR_CAMERA_M = 5000
 export const MAX_MODELS = 30
 export const MIN_PX = 24 // a far model is enlarged to keep this size on screen (minScale), and so is its square
+// Farther still, where it would need this much enlarging (under 3 px at its true size: an airliner about 5 nm off on a laptop
+// screen), the model is not drawn at all: its brackets alone show where it is.
+export const DOT_SCALE = 8
 // A model's light copy (manifest lod: at most 6,000 triangles, tools/models/lod.ts) is drawn while its square is smaller
 // than FULL_PX on screen, its full mesh from there (as many as 60,000 triangles: up to 30 of those would cost a laptop's
 // card more than the whole chase used to); back to the light one under LIGHT_BELOW of that, so no model flips at the line.
@@ -92,13 +95,6 @@ export interface Box { hex: string; x: number; y: number; side: number; depthM: 
 
 /** A screen rectangle, canvas CSS px from its top-left. */
 export interface Rect { x: number; y: number; w: number; h: number }
-
-/**
- * Whether a traffic model is hidden: the scene's depth under its square's centre (hitDistM from the camera; undefined:
- * sky) lies nearer than the model's near side (centreDistM − rM). A hit on the model itself or behind it is not.
- */
-export const isOccluded = (hitDistM: number | undefined, centreDistM: number, rM: number): boolean =>
-  hitDistM !== undefined && hitDistM < centreDistM - rM
 
 /** The hex whose square (of the first n boxes) holds (x, y); the nearest to the camera when squares overlap; else null. */
 export function hitAt(boxes: readonly Box[], n: number, x: number, y: number): string | null {
@@ -232,7 +228,6 @@ interface Slot {
   aglFt: number | null
   nodes?: Array<ModelNode | undefined>
   legsAt: number
-  occluded: boolean // its model hidden (isOccluded): no brackets
 }
 
 export interface TrafficOpts {
@@ -241,10 +236,6 @@ export interface TrafficOpts {
   openLayer?: HTMLElement // where the open aircraft's brackets go (layout.css: over the flight-data frame); else layer
 }
 
-const PROBES_PER_FRAME = 2 // depth reads (each a GPU sync) per probing frame: every square is re-checked every n / 2 of them
-// Probing frames at most this often, ms: each read makes the page wait for the graphics card to finish the frame (a laptop's card
-// is 75–80 % busy in a chase), and a bracket that goes behind a hill a tenth of a second late is not seen.
-const PROBE_EVERY_MS = 100
 const FT = 0.3048
 const AGL_EVERY_S = 0.5 // a traffic aircraft's height above the drawn ground is read this often (globe.getHeight picks)
 
@@ -254,7 +245,9 @@ const AGL_EVERY_S = 0.5 // a traffic aircraft's height above the drawn ground is
  * come from a pool per GLB that grows to the most ever needed of it (≤ MAX_MODELS drawn in all), and Cesium shares one
  * GLB's geometry between its models. A model loads async; an aircraft shows nothing until a ready model of its type is
  * free (chase shows no flat icons), and nor does one over MAX_MODELS. A GLB that fails to load leaves its aircraft undrawn.
- * Brackets hide while the model is hidden (isOccluded: buildings, terrain, the chased aircraft), and behind the camera;
+ * Brackets show wherever the model is on screen, behind a hill or a building too: they mark where a far aircraft is (the
+ * check for what stood in front read the depth back, and each read made the page wait for the graphics card); past DOT_SCALE,
+ * the brackets without the model. Behind the camera, none;
  * over each the flight ID, under it the distance from the chased aircraft (shownLabels keeps a crowd readable). A click
  * in a square opens that aircraft (open, one at most): app.ts shows its card, and its brackets are highlighted, its
  * labels always shown, until close() or it leaves the traffic.
@@ -279,9 +272,6 @@ export class Traffic {
   readonly #want = new Map<string, ModelManifestEntry>()
   readonly #placeholders = new Set<string>() // the hexes whose model is not their own: drawn as placeholders
   readonly #boxes: Box[] = []
-  readonly #boxSlot: Slot[] = [] // the slot of boxes[i]
-  readonly #camDist: number[] = [] // camera → square centre (m), for the depth probe
-  readonly #radius: number[] = [] // the square's radius (m) as drawn
   readonly #els: HTMLDivElement[] = []
   readonly #labelShown: boolean[] = []
   readonly #hpr = new HeadingPitchRoll()
@@ -289,11 +279,7 @@ export class Traffic {
   readonly #v = new Cartesian3()
   readonly #w = new Cartesian2()
   readonly #bc = new Cartesian3()
-  readonly #p = new Cartesian3()
   #nBoxes = 0
-  #probe = 0
-  #probeMs = -Infinity // the last probing frame, performance.now()
-  #probing = 0 // the squares this frame checks against the scene's depth (hidden ones too: they may come out again)
   #destroyed = false
   #openHex: string | null = null
   #openDistM: number | null = null
@@ -342,7 +328,6 @@ export class Traffic {
         s.motion.reset() // its gear as first seen, not swinging there
         s.want = null
         s.aglS = Infinity
-        s.occluded = false
         this.#byHex.set(e.hex, s)
       }
       s.e = e
@@ -404,8 +389,10 @@ export class Traffic {
       const g = depth0 > 1 ? minScale(rM, depth0, fovy, hPx) : 1
       const mm = trafficMatrix(pos, trafficHpr(e, s.headingDeg, this.#hpr), m, k * g, s.model.modelMatrix)
       if (ibl) s.model.imageBasedLighting.imageBasedLightingFactor = ibl // the setter copies it
-      s.model.show = true
-      this.#gear(s, pos, mm, ibl, dtS)
+      const far = g > DOT_SCALE
+      s.model.show = !far
+      if (!far) this.#gear(s, pos, mm, ibl, dtS)
+      else if (s.gear !== null) s.gear.show = false
       const bc = m.box ? Cartesian3.fromArray(m.box.centre, 0, this.#bc) : BOX_CENTRE
       const c = Matrix4.multiplyByPoint(mm, bc, this.#c)
       const toC = Cartesian3.subtract(c, cam.positionWC, this.#v)
@@ -421,16 +408,12 @@ export class Traffic {
       b.side = squarePx(rM * g, depthM, fovy, hPx)
       b.depthM = depthM
       b.distM = chasedWC ? Cartesian3.distance(pos, chasedWC) : 0
-      this.#boxSlot[n] = s
-      this.#camDist[n] = Cartesian3.magnitude(toC)
-      this.#radius[n] = rM * g
       n++
     }
-    n = this.#dropOccluded(n)
     shownLabels(this.#boxes, n, this.#labelShown, this.#openHex, this.keepOff)
     for (let i = 0; i < n; i++) this.#place(i, this.#boxes[i], this.#labelShown[i])
     this.#hideBoxes(n)
-    // Drawn or not (occluded, behind the camera, no model free yet), the open aircraft's card shows its distance.
+    // Drawn or not (far, behind the camera, no model free yet), the open aircraft's card shows its distance.
     const at = this.#openHex === null ? undefined : placed.positionOf(this.#openHex)
     this.#openDistM = at === undefined || chasedWC === undefined ? null : Cartesian3.distance(at, chasedWC)
   }
@@ -470,14 +453,6 @@ export class Traffic {
     for (const s of this.#slots) if (s.hex !== null && s.e !== null && s.model.show) f(s.hex, s.model.modelMatrix, s.m, s.e)
   }
 
-  /**
-   * Squares checked against the scene's depth this frame: while there are any, Cesium must copy its depth each frame for
-   * Scene.pickPosition (useDepthPicking, a full-screen copy the app sets from this); none, and the copy can go.
-   */
-  get probing(): number {
-    return this.#probing
-  }
-
   destroy(): void {
     this.#destroyed = true
     for (const s of this.#slots) {
@@ -491,40 +466,6 @@ export class Traffic {
     this.#els.length = 0
     this.#nBoxes = 0
     this.#openHex = null
-  }
-
-  /**
-   * Re-checks PROBES_PER_FRAME squares against the scene's depth (last frame's: Scene.pickPosition), in turn, at most every
-   * PROBE_EVERY_MS (a square keeps its last answer meanwhile), then drops
-   * the squares whose model is hidden. Returns the count left, compacted to the front.
-   */
-  #dropOccluded(n: number): number {
-    const scene = this.#viewer.scene
-    this.#probing = n
-    const now = performance.now()
-    if (n > 0 && scene.pickPositionSupported && now - this.#probeMs >= PROBE_EVERY_MS) {
-      this.#probeMs = now
-      const cam = scene.camera.positionWC
-      for (let k = 0; k < PROBES_PER_FRAME && k < n; k++) {
-        const i = (this.#probe + k) % n
-        const b = this.#boxes[i]
-        const hit = scene.pickPosition(Cartesian2.fromElements(b.x, b.y, this.#w), this.#p)
-        this.#boxSlot[i].occluded = isOccluded(hit === undefined ? undefined : Cartesian3.distance(cam, hit), this.#camDist[i], this.#radius[i])
-      }
-      this.#probe = (this.#probe + PROBES_PER_FRAME) % n
-    }
-    let j = 0
-    for (let i = 0; i < n; i++) {
-      if (this.#boxSlot[i].occluded) continue
-      if (i !== j) {
-        const t = this.#boxes[j]
-        this.#boxes[j] = this.#boxes[i]
-        this.#boxes[i] = t
-        this.#boxSlot[j] = this.#boxSlot[i]
-      }
-      j++
-    }
-    return j
   }
 
   /**
@@ -584,7 +525,7 @@ export class Traffic {
           if (this.#destroyed) return void model.destroy()
           model.show = false
           this.#viewer.scene.primitives.add(model)
-          const slot: Slot = { m, model, full: model, light: null, hex: null, e: null, headingDeg: 0, placeholder: false, gearPlaceholder: false, gear: null, motion: new GearMotion(), want: null, aglS: Infinity, aglFt: null, legsAt: -1, occluded: false }
+          const slot: Slot = { m, model, full: model, light: null, hex: null, e: null, headingDeg: 0, placeholder: false, gearPlaceholder: false, gear: null, motion: new GearMotion(), want: null, aglS: Infinity, aglFt: null, legsAt: -1 }
           this.#slots.push(slot)
           if (m.lod !== undefined) {
             this.#load({ ...m, uri: m.lod.uri }).then(

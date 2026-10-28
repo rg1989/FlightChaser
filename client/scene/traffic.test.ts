@@ -11,7 +11,7 @@ import type { FleetEntry, ModelManifest } from '../types.ts'
 import { measureGlb, noseAzimuthDeg } from './model.ts'
 import { ModelPicker } from './modelFor.ts'
 import { placeholderShader } from './placeholder.ts'
-import { BOX_CENTRE, BOX_HALF, FULL_PX, fullMesh, MIN_PX, RANGE_NM, Traffic, flightId, hitAt, isOccluded, minScale, shownLabels, nearestInRange, scaleFor, squarePx, trafficHpr, trafficMatrix, trafficRangeNm } from './traffic.ts'
+import { BOX_CENTRE, BOX_HALF, DOT_SCALE, FULL_PX, fullMesh, MIN_PX, RANGE_NM, Traffic, flightId, hitAt, minScale, shownLabels, nearestInRange, scaleFor, squarePx, trafficHpr, trafficMatrix, trafficRangeNm } from './traffic.ts'
 import type { Box } from './traffic.ts'
 import { readManifest } from '../../tools/models/packages.ts'
 
@@ -64,6 +64,11 @@ test('trafficRangeNm: 10 nm while the camera is within 5 km, then in proportion 
   for (let m = 25; m < 100_000; m *= 1.3) assert.ok(trafficRangeNm(m * 1.3) >= trafficRangeNm(m), 'never less farther out')
 })
 
+test('DOT_SCALE: an airliner about 5 nm off and farther (laptop screen) is its brackets alone; nearer, its model is drawn', () => {
+  assert.ok(minScale(19, 20_000, Math.PI / 3, 833) > DOT_SCALE, '20 km off')
+  assert.ok(minScale(19, 5_000, Math.PI / 3, 833) <= DOT_SCALE, '5 km off')
+})
+
 test('squarePx: the projected diameter, never under MIN_PX, capped when the camera is inside it', () => {
   // 60° fov over 1,000 px: at depth d a pixel is 2·d·tan 30° / 1000 m
   const mPerPx = (d: number): number => (2 * d * Math.tan(Math.PI / 6)) / 1000
@@ -105,13 +110,6 @@ test('hitAt: inside a square hits; overlapping squares → the nearest to the ca
   assert.equal(hitAt(boxes, 2, 70, 70), 'back')
   assert.equal(hitAt(boxes, 2, 141, 100), null, 'just right of both')
   assert.equal(hitAt(boxes, 2, 500, 500), null, 'only the first n boxes count')
-})
-
-test('isOccluded: something nearer than the model on the line to its centre hides it; the model itself or nothing does not', () => {
-  assert.equal(isOccluded(undefined, 500, 20), false, 'sky: nothing there')
-  assert.equal(isOccluded(300, 500, 20), true, 'a building 200 m in front')
-  assert.equal(isOccluded(485, 500, 20), false, "the model's own near side")
-  assert.equal(isOccluded(900, 500, 20), false, 'the ground behind it')
 })
 
 test('shownLabels: nearest first; a flight ID that would overlap one already shown hides (a far airport reads)', () => {
