@@ -795,20 +795,30 @@ void main() {
   vec2 size = vec2(textureSize(u_march, 0));
   vec2 g = v_textureCoordinates * size - 0.5;
   vec2 c = floor(g + 0.5), d = g - c; // the nearest march pixel, and how far this pixel is from its middle: -1/2 to 1/2
+  // Where the nine are all alike (clear air, the inside of a cloud: most of the view) any weighing gives them back as they are, so
+  // the scene's depth under them is not read and nothing is weighed (on an M2 at 2560 × 1440 this mix took longer than the march).
   vec2 lo = 0.25 - 0.5 * d, mid = vec2(0.5), hi = 0.25 + 0.5 * d;
-  vec4 sum = vec4(0.0);
-  float weights = 0.0;
+  vec4 m[9];
+  bool alike = true;
   for (int k = 0; k < 9; k++) {
-    ivec2 o = ivec2(k % 3, k / 3) - 1;
-    float w = (o.x < 0 ? lo.x : o.x > 0 ? hi.x : mid.x) * (o.y < 0 ? lo.y : o.y > 0 ? hi.y : mid.y);
-    if (w <= 0.0) continue;
-    vec2 uv = (c + vec2(o) + 0.5) / size;
-    float dd = (texture(depthTexture, uv).r - depth) / ${glsl(DEPTH_SAME)};
-    w /= 1.0 + dd * dd;
-    sum += w * texture(u_march, uv);
-    weights += w;
+    m[k] = texture(u_march, (c + vec2(ivec2(k % 3, k / 3) - 1) + 0.5) / size);
+    alike = alike && m[k] == m[0];
   }
-  vec4 cloud = sum / max(weights, 1.0e-9);
+  vec4 cloud = m[0];
+  if (!alike) {
+    vec4 sum = vec4(0.0);
+    float weights = 0.0;
+    for (int k = 0; k < 9; k++) {
+      ivec2 o = ivec2(k % 3, k / 3) - 1;
+      float w = (o.x < 0 ? lo.x : o.x > 0 ? hi.x : mid.x) * (o.y < 0 ? lo.y : o.y > 0 ? hi.y : mid.y);
+      if (w <= 0.0) continue;
+      float dd = (texture(depthTexture, (c + vec2(o) + 0.5) / size).r - depth) / ${glsl(DEPTH_SAME)};
+      w /= 1.0 + dd * dd;
+      sum += w * m[k];
+      weights += w;
+    }
+    cloud = sum / max(weights, 1.0e-9);
+  }
   vec3 col = scene.rgb * (1.0 - cloud.a) + cloud.rgb;
 
   // The track line, at this stage's own size, over the cloud.
