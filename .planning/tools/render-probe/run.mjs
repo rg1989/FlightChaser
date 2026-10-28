@@ -34,12 +34,12 @@ const settle = async (minS, maxS) => {
 }
 const results = []
 if (mode === 'static') {
-  console.log('settled after', await settle(+(process.env.SETTLE ?? 30), 90), 's')
+  console.log('settled after', await settle(+(process.env.SETTLE ?? 30), +(process.env.SETTLE_MAX ?? 90)), 's')
   await ev('__probe.since()')
   const exps = JSON.parse(process.env.EXPS ?? '[["base",""]]')
   for (const [name, js] of exps) {
     if (js) console.log(name, 'apply', await ev(js))
-    const settledS = js ? await settle(3, 45) : 0
+    const settledS = js ? await settle(+(process.env.EXP_MIN ?? 3), +(process.env.EXP_MAX ?? 45)) : 0
     const r = await ev('Promise.race([__probe.sample(90), new Promise((res) => setTimeout(() => res({ timedOut: true, total: {}, by: {}, globe: {} }), 60000))])')
     r.name = name; r.settledS = settledS; r.net = await ev('__probe.since()')
     results.push(r)
@@ -49,7 +49,8 @@ if (mode === 'static') {
 } else {
   await sleep(+(process.env.SETTLE ?? 20) * 1000)
   await ev('__probe.since()')
-  await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 500 }); await send('Profiler.start')
+  const profiling = process.env.PROFILE !== '0'
+  if (profiling) { await send('Profiler.enable'); await send('Profiler.setSamplingInterval', { interval: 500 }); await send('Profiler.start') }
   const n = Math.round(+(process.env.FLY_S ?? 60) / 10)
   for (let i = 0; i < n; i++) {
     const t0 = Date.now()
@@ -60,6 +61,7 @@ if (mode === 'static') {
     console.log(r.name, JSON.stringify({ frames: r.frames, gpu: r.gpuMs, gpuP95: r.gpuP95, cpu: r.cpuMs, cpuP95: r.cpuP95, total: r.total, tiles: r.globe?.tiles, net: Object.fromEntries(Object.entries(r.net.hosts).map(([h, x]) => [h.slice(0, 22), x.n])), long: [r.net.longTasks, r.net.longMs, r.net.longMax], gaps: [r.net.frames, r.net.over34, r.net.over50, r.net.over100, r.net.gapMax] }))
     if (i === 0 || i === n - 1) await shot(`${out}-${r.name}.jpg`)
   }
+  if (!profiling) { writeFileSync(`${out}.json`, JSON.stringify(results, null, 1)); ws.close(); process.exit(0) }
   const { profile } = await send('Profiler.stop')
   writeFileSync(`${out}.cpuprofile`, JSON.stringify(profile))
   // where the main thread goes: self time by our module (the deepest frame under /client/ on each sampled stack, else the top library frame),

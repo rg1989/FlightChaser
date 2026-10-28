@@ -25,6 +25,28 @@ The 4090 shows draw calls, triangles, tiles and processor time; it does not show
   ReadPixel"), and Cesium copies the whole depth buffer every frame for it (`useDepthPicking`). Each read makes the processor wait
   for the graphics chip: harmless on the 4090, a likely stutter on a chip that is the limit.
 
+## On the user's MacBook Air (M2), measured 2026-10-28 16:01–16:10
+
+London approach, live replay, every layer on, weather on (`wxdemo=30`), `governor=0` (4× MSAA, full size). Graphics time per frame:
+
+| Change | 1470×833 (laptop) | 2560×1440 (27") |
+|---|---|---|
+| As drawn | 15.1 ms | 45.9 ms (about 22 frames a second) |
+| Clouds off | 6.4 ms | 19.3 ms |
+| Cheaper edge filter (FXAA for 4× MSAA) | 10.7 ms | 30.0 ms |
+| Half the resolution | 6.1 ms | 11.3 ms |
+| Sun glow off | 14.7 ms | 43.8 ms |
+| Buildings hidden | 13.4 ms | 46.1 ms |
+| Traffic and own aircraft hidden | 14.6 ms | 46.1 ms |
+
+- A 40-second flight at 27": 47–49 ms a frame, 50–71 frames longer than 50 ms in every 10 seconds. That is the stutter.
+- The clouds were at their cheapest step already (march at 0.16 of the screen, 40 steps). Their own timer said 52 ms (march 23,
+  blend 30), more than the frame: Apple's timer reads high, but switching them off saved 26 ms. The blend runs at full size and
+  reads about 20 textures a pixel (nine from the scene's depth), cloud or no cloud; on the 4090 it is 0.07 ms.
+- Triangles cost the M2's chip nothing measurable. Far ground in steps (Mt Fuji, 2560×1440, no weather): graphics 22.8 → 21.0 ms,
+  processor 13.8 → 10.0 ms a frame, 169 → 103 tiles.
+- Processor time per frame at 27": 13–15 ms, near the 16.7 ms of a sixtieth by itself.
+
 ## Built: far ground in steps
 
 `client/scene/viewer.ts FAR_GROUND_SSE = 12`: Cesium's own setting (`scene.fog.screenSpaceErrorFactor`, default 2), no patch.
@@ -43,24 +65,19 @@ Fewer far tiles also means fewer satellite tiles fetched and uploaded. Pictures:
 little more (Fuji 41 tiles) and starts to soften the middle distance; Cesium's other knob (`globe.maximumScreenSpaceError`) blurs
 the near ground too, so it was not used.
 
-## Next, each a standard piece
+## Next
 
-1. **Traffic brackets: done (2026-10-28).** The hill check and its depth reads are gone (the user: brackets may show behind
-   hills); `useDepthPicking` off for good; a plane that would be under 3 px at true size is drawn as its brackets alone.
-2. **Buildings as 3D Tiles from our server.** The OGC format Cesium streams itself: the server builds the tiles from the same OSM
-   data and ground heights, with simpler parent tiles (big buildings as blocks) for far away. Cesium then picks levels by distance,
-   decodes in workers and keeps to a memory budget. It replaces the per-tile building and roof-picture code in the page, which uses
-   private Cesium classes.
-3. **Night lamps and borders as server tiles.** Today the page draws them, 3–25 ms a lamp tile and ~210 tiles for a fresh night
-   view. The server would draw each tile once and keep it on disk; the page only shows pictures.
-4. **Live aircraft pushed.** One WebSocket per page; the server sends each area's changes once a second in a compact binary form,
-   decoded in a worker. Today every page polls JSON and the server works out each view per request.
-5. **The Cesium patches out**: imagery cross-fade, the lamps' `endUpdate` wrap, the cloud pass timer, the canvas size getters.
-6. **The M2 numbers.** The same probe on the MacBook when it is free, to rank 1–4 by graphics time on the user's own chip.
+1. **The clouds on Apple chips** (the largest cost on the M2 by far): the blend skips pixels with no cloud near, and reads the
+   march's own small depth instead of the full-size one nine times; then measure again on the M2.
+2. **Traffic brackets: done** (`d485d41`). No depth reads (the user: brackets may show behind hills); `useDepthPicking` off for good;
+   a plane under 3 px at true size is its brackets alone.
+3. **Night lamps and borders drawn by the server: done** (`07eda21`, `.planning/reports/server-tiles/`).
+4. **Anti-aliasing at 27"**: 16 ms of the frame; Performance mode already trades it, at the user's word.
+5. Stopped at the user's word as little gain for the stutter: buildings as 3D Tiles, live aircraft over a WebSocket.
 
 ## How to measure again
 
 `.planning/tools/render-probe/` (`probe.js` in the page: draw calls and triangles by kind, graphics and processor time, tiles,
-network, long tasks; `run.mjs` drives Chrome; `remote.sh` runs on the Ubuntu desktop). Views used: `scenario=jal123&t=66973&cam=0,-6,400`,
+network, long tasks; `run.mjs` drives Chrome; `remote.sh` runs on the Ubuntu desktop, `mac.sh` on the Mac when it is idle). Views used: `scenario=jal123&t=66973&cam=0,-6,400`,
 `scenario=kc1388&t=48926&cam=0,-8,400`, `scenario=fz1073&t=15600&cam=0,-5,400`, live replay `hex=400960&chase=1&cam=0,-8,300`
 (Heathrow arrivals), each with `governor=0`.
