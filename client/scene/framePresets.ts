@@ -6,8 +6,8 @@
 import type { Look, PresetId } from '../ui/framePrefs.ts'
 import type { BlockId, BlockSize, Rect } from './flightFrame.ts'
 
-/** Where docked cards go: a cluster in the bottom left corner, one row along the bottom, or one card at each edge. */
-export type Dock = 'corner' | 'row' | 'edges'
+/** Where docked cards go: a cluster in the bottom left corner, one row along the bottom, one card at each edge, or one column at the right edge. */
+export type Dock = 'corner' | 'row' | 'edges' | 'side'
 export interface PresetOption { name: string; variant: number; dock: Dock | null; look: Look }
 export type ReadyId = Exclude<PresetId, 'custom'>
 
@@ -21,6 +21,7 @@ export const PRESETS: Record<ReadyId, readonly PresetOption[]> = {
     { name: 'Corner', variant: 2, dock: 'corner', look: 'glass' },
     { name: 'Strip', variant: 2, dock: 'row', look: 'glass' },
     { name: 'Small tapes', variant: 1, dock: null, look: 'glass' },
+    { name: 'Right edge', variant: 2, dock: 'side', look: 'glass' },
   ],
   // The full instruments in other colours.
   stylistic: [
@@ -37,10 +38,14 @@ export const PRESETS: Record<ReadyId, readonly PresetOption[]> = {
 }
 
 /** The option of a ready-made layout that prefs name (its first for none, or one out of range). */
+/** The Small instruments switch's layout: the figures alone, in a column at the right edge. */
+export const SMALL_OPTION = 3
+
 export const optionOf = (preset: ReadyId, option: Partial<Record<PresetId, number>> | undefined): PresetOption =>
   PRESETS[preset][option?.[preset] ?? 0] ?? PRESETS[preset][0]
 
 const ROW: readonly BlockId[] = ['left', 'top', 'bottom', 'right'] // as round the aircraft: altitude, heading, attitude, speed
+const COLUMN: readonly BlockId[] = ['top', 'left', 'right', 'bottom'] // the side's, from the top: heading, altitude, speed, attitude
 const GRID: readonly (readonly BlockId[])[] = [['top', 'bottom'], ['left', 'right']] // the corner's cluster, row by row
 
 /**
@@ -84,6 +89,23 @@ export function dockAt(
       return p.x < q.x + t.w + gap && q.x < p.x + s.w + gap && p.y < q.y + t.h + gap && q.y < p.y + s.h + gap
     }
     return ids.some((a, i) => ids.slice(i + 1).some((b) => meet(a, b))) ? null : out
+  }
+  if (dock === 'side') {
+    // One column at the frame's right edge (the rail is outside it), from the top of the view, under whatever covers the view there.
+    const ids = COLUMN.filter((id) => sizes[id] !== undefined)
+    const small = gap / 2
+    const w = Math.max(0, ...ids.map((id) => sizes[id]!.w))
+    const h = ids.reduce((n, id) => n + sizes[id]!.h, 0) + small * Math.max(0, ids.length - 1)
+    const x = safe.x + safe.w - w
+    let top = view.y
+    for (let c = meets(x, top, w, h); c !== undefined; c = meets(x, top, w, h)) top = c.y + c.h + gap
+    if (w > safe.w || top + h > view.y + view.h) return null
+    let y = top
+    for (const id of ids) {
+      out[id] = { x, y }
+      y += sizes[id]!.h + small
+    }
+    return out
   }
   if (dock === 'row') {
     const ids = ROW.filter((id) => sizes[id] !== undefined)

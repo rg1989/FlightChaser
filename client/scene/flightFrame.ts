@@ -28,7 +28,7 @@ import {
   ALT_UNITS, KMH_PER_KT, MS_PER_FPM, M_PER_FT, SPEED_UNITS, UNIT_NAME, VS_UNITS, altIn, altLabel, speedIn, speedLabel, vsLabel, type Units,
 } from '../ui/units.ts'
 import { defaultRangeM } from './chaseCamera.ts'
-import { LOOK_NAMES, PRESETS, PRESET_NAMES, VARIANT_NAMES, dockAt, optionOf, type Dock, type PresetOption } from './framePresets.ts'
+import { LOOK_NAMES, PRESETS, PRESET_NAMES, SMALL_OPTION, VARIANT_NAMES, dockAt, optionOf, type Dock, type PresetOption } from './framePresets.ts'
 import { Glide, TREND_S, Trend, rel180, trendShown } from './instrumentMath.ts'
 import type { ModelWind } from './modelWind.ts'
 import { BOX_CENTRE, BOX_HALF, squarePx } from './traffic.ts'
@@ -665,6 +665,7 @@ export interface FrameOpts {
   prefs?: FramePrefs // the cards as the viewer arranged them (framePrefs.ts); absent: each in its place, shown
   onPrefs?(prefs: FramePrefs): void // the viewer moved, hid, showed or reset a card: to keep
   onEdit?(on: boolean): void // edit mode began or ended
+  onSide?(column: Rect | null): void // the right edge's column of cards: what may stand under it (the radar map); null: the cards are not there
 }
 
 /**
@@ -771,6 +772,9 @@ export class FlightFrame {
     preset: PresetId; option: Partial<Record<PresetId, number>>; variant: Partial<Record<BlockId, number>>; look: Look
   }
   readonly #onPrefs: (prefs: FramePrefs) => void
+  readonly #onSide: (column: Rect | null) => void
+  #sideKey = ''
+  #beforeSmall: { preset: FramePrefs['preset']; option: FramePrefs['option'] } | null = null
   readonly #onEdit: (on: boolean) => void
   #editing = false
   readonly #bar = h('div', 'fh-fbar')
@@ -810,6 +814,7 @@ export class FlightFrame {
     this.#alt = new Tape(altTape(p.units), 'alt')
     this.#spd = new Tape(speedTape(p.units), 'spd')
     this.#onPrefs = opts.onPrefs ?? ((): void => {})
+    this.#onSide = opts.onSide ?? ((): void => {})
     this.#onEdit = opts.onEdit ?? ((): void => {})
     this.#bracket.hidden = true
     const blocks = {} as Record<BlockId, HTMLDivElement>
@@ -1022,6 +1027,7 @@ export class FlightFrame {
         if (f !== null) fixed[id] = f
       }
     }
+    this.#tellSide(ready, fixed)
     const at = frameLayout(lsq, sizes, safe, GAP, this.#placed, fixed)
     this.#auto = Object.keys(fixed).length === 0 ? at : frameLayout(lsq, sizes, safe, GAP, this.#auto)
     for (const id of IDS) {
@@ -1149,6 +1155,44 @@ export class FlightFrame {
   #toTop(id: BlockId): void {
     this.#prefs.order = [...this.#prefs.order.filter((x) => x !== id), id]
     this.#stack()
+  }
+
+  /** Tells the app where the right edge's column stands, when that changes. */
+  #tellSide(ready: PresetOption | null, fixed: Partial<Record<BlockId, Fixed>>): void {
+    const cards = ready?.dock === 'side' ? IDS.flatMap((id) => {
+      const f = fixed[id]
+      const b = f === undefined ? undefined : variantsOf(this.#sizes[id]).find(({ v }) => v === f.v)?.b
+      return f === undefined || b === undefined ? [] : [{ x: f.x, y: f.y, w: b.w, h: b.h }]
+    }) : []
+    const column = cards.length === 0 ? null : {
+      x: Math.min(...cards.map((c) => c.x)), y: Math.min(...cards.map((c) => c.y)),
+      w: Math.max(...cards.map((c) => c.w)), h: Math.max(...cards.map((c) => c.y + c.h)) - Math.min(...cards.map((c) => c.y)),
+    }
+    const key = column === null ? '' : `${column.x},${column.y},${column.w},${column.h}`
+    if (key === this.#sideKey) return
+    this.#sideKey = key
+    this.#onSide(column)
+  }
+
+  /** Whether the Small instruments layout is in force. */
+  get small(): boolean {
+    return this.#ready()?.dock === 'side'
+  }
+
+  /** The Small instruments switch: that layout (Compact, Right edge), or back to the layout it replaced. */
+  setSmall(on: boolean): void {
+    this.#arrange(() => {
+      const p = this.#prefs
+      if (on) {
+        this.#beforeSmall = { preset: p.preset, option: p.option }
+        p.preset = 'compact'
+        p.option = { ...p.option, compact: SMALL_OPTION }
+      } else {
+        p.preset = this.#beforeSmall?.preset ?? 'custom'
+        p.option = this.#beforeSmall?.option ?? p.option
+        this.#beforeSmall = null
+      }
+    })
   }
 
   /** The ready-made layout's option in force; null: the viewer's own layout. */

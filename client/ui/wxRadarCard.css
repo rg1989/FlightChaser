@@ -1,0 +1,76 @@
+/* client/ui/wxRadarCard.css */
+/* The radar map (wxRadarCard.ts): a dark glass card like the flight-data frame's, and the only part of the frame's layer it shares. */
+.fh-wxr {
+  position: absolute;
+  right: 76px;
+  bottom: 112px;
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  font-family: var(--fh-font);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  background: linear-gradient(180deg, var(--fh-i-card0, rgba(24, 30, 40, 0.8)), var(--fh-i-card1, rgba(8, 11, 17, 0.84)));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.fh-wxr.on { display: flex; }
+.fh-wxr.docked { transform-origin: 0 0; cursor: default; }
+.fh-wxr:active { cursor: grabbing; }
+.fh-wxr-head { display: flex; align-items: center; justify-content: space-between; }
+.fh-wxr-title {
+  color: var(--fh-i-label, #8d98aa);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.fh-wxr-range {
+  padding: 1px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--fh-i-text, #f1f4f8);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.fh-wxr-map {
+  position: relative;
+  width: 216px;
+  height: 216px;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #1a2029;
+}
+.fh-wxr-tiles {
+  position: absolute;
+  inset: 0;
+  filter: invert(1) hue-rotate(180deg) brightness(0.72) contrast(0.9) saturate(0.45);
+}
+.fh-wxr-tile { position: absolute; width: 256px; height: 256px; }
+.fh-wxr-over { position: absolute; inset: 0; width: 100%; height: 100%; }
+.fh-wxr-north {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  text-shadow: 0 1px 2px #000;
+}
+.fh-wxr-credit {
+  position: absolute;
+  right: 3px;
+  bottom: 1px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 8px;
+  text-shadow: 0 1px 2px #000;
+}
+@media (max-width: 720px) {
+  .fh-wxr { right: 8px; bottom: 96px; transform: scale(0.72); transform-origin: 100% 100%; }
+}

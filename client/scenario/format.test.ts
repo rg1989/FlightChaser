@@ -250,6 +250,12 @@ test('parseScenario: ending.fadeFrom after darkAt is a problem', () => {
   })
 })
 
+test('parseScenario: weather needs its folder, its time and its source', () => {
+  const ok = parseScenario(validFiles({ manifest: validManifest({ weather: { folder: 'weather/', at: '2026-11-01T17:50:00Z', source: 'NOAA' } }) }))
+  assert.deepEqual(ok.weather, { folder: 'weather', atMs: Date.UTC(2026, 10, 1, 17, 50), source: 'NOAA' })
+  assert.throws(() => parseScenario(validFiles({ manifest: validManifest({ weather: { folder: '', at: 'noon', source: '' } }) })), /weather\.source[\s\S]*weather\.folder[\s\S]*weather\.at/)
+})
+
 test('parseScenario: audio with an empty source is a problem', () => {
   const m = validManifest({ audio: { file: 'local/cvr.m4a', source: '', clips: [{ from: 0, to: 1, at: '18:11:15' }] } })
   assert.throws(() => parseScenario(validFiles({ manifest: m })), (err: unknown) => {
@@ -579,7 +585,7 @@ test('loadScenario: a dev server answering a missing file with its HTML page cou
 
 /** The files a manifest may name (the body decal, the fin logo, the sound): each a path inside the package's own folder. */
 function namedFiles(manifest: Record<string, any>): string[] {
-  return [manifest.aircraft?.livery?.body, manifest.aircraft?.livery?.finLogo, manifest.audio?.file].filter((f): f is string => typeof f === 'string' && f !== '')
+  return [manifest.aircraft?.livery?.body, manifest.aircraft?.livery?.finLogo, manifest.audio?.file, manifest.weather?.folder].filter((f): f is string => typeof f === 'string' && f !== '')
 }
 
 test('every package under public/scenarios loads, and is whole in its own folder', async () => {

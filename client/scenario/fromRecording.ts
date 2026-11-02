@@ -78,6 +78,7 @@ export function recordingScenario(rec: RecordingTrack, model: string): Scenario 
     imagery: [],
     ending: null,
     audio: null,
+    weather: null,
     sources: [],
     track: rows,
     events,

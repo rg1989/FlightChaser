@@ -109,6 +109,13 @@ export interface AudioSpec {
   clips: AudioClip[]
 }
 
+/** The sky of the scenario's own day: files in a folder of the package, in place of today's weather (docs/scenarios.md 1.9a). */
+export interface WeatherSpec {
+  folder: string // relative to the scenario folder
+  atMs: number // the moment the files are of
+  source: string // provenance, required
+}
+
 export interface SourceRef {
   id: string
   title: string
@@ -141,6 +148,7 @@ export interface Scenario {
   imagery: ImagerySpec[]
   ending: EndingSpec | null
   audio: AudioSpec | null
+  weather: WeatherSpec | null
   sources: SourceRef[]
   track: TrackRow[]
   events: EventRow[]

@@ -1,7 +1,7 @@
 // client/scene/framePresets.test.ts
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { PRESETS, dockAt, optionOf } from './framePresets.ts'
+import { PRESETS, SMALL_OPTION, dockAt, optionOf } from './framePresets.ts'
 
 const safe = { x: 66, y: 158, w: 1300, h: 490 } // a scenario's chase on a 1440 × 900 window: the button's column and the bands cut off
 const view = { x: 12, y: 12, w: 1416, h: 876 }
@@ -11,8 +11,10 @@ const button = { x: 12, y: 770, w: 46, h: 46 } // the layout button
 const mini = { left: { w: 160, h: 60 }, right: { w: 160, h: 60 }, top: { w: 160, h: 60 }, bottom: { w: 160, h: 60 } }
 const full = { left: { w: 131, h: 227, ay: 100 }, right: { w: 88, h: 227, ay: 100 }, top: { w: 271, h: 106, ax: 135 }, bottom: { w: 271, h: 118, ax: 135 } }
 
-test('three ready-made layouts of three options each; an option out of range is the first', () => {
-  for (const id of ['compact', 'stylistic', 'detailed'] as const) assert.equal(PRESETS[id].length, 3, id)
+test('three ready-made layouts of three options each, four in Compact; an option out of range is the first', () => {
+  for (const id of ['stylistic', 'detailed'] as const) assert.equal(PRESETS[id].length, 3, id)
+  assert.equal(PRESETS.compact.length, 4)
+  assert.equal(PRESETS.compact[SMALL_OPTION].dock, 'side')
   assert.equal(optionOf('compact', { compact: 1 }).name, 'Strip')
   assert.equal(optionOf('compact', undefined), PRESETS.compact[0])
   assert.equal(optionOf('detailed', { detailed: 9 }), PRESETS.detailed[0])
@@ -30,6 +32,13 @@ test('dockAt, the corner: a cluster two by two in the view\'s bottom left corner
   assert.deepEqual(Object.keys(dockAt('corner', { left: mini.left, bottom: mini.bottom }, safe, view, [], 10)!).sort(), ['bottom', 'left'])
   // No room over the covers: none.
   assert.equal(dockAt('corner', mini, { ...safe, y: 600 }, view, [captions], 10), null)
+})
+
+test('dockAt, the side: one column at the frame\'s right edge, heading first, under what covers the view there; none when it has no height', () => {
+  const at = dockAt('side', mini, safe, view, [], 10)!
+  assert.deepEqual([at.top, at.left, at.right, at.bottom], [{ x: 1206, y: 12 }, { x: 1206, y: 77 }, { x: 1206, y: 142 }, { x: 1206, y: 207 }])
+  assert.equal(dockAt('side', mini, safe, view, [{ x: 1000, y: 0, w: 400, h: 100 }], 10)!.top!.y, 110)
+  assert.equal(dockAt('side', mini, safe, { ...view, h: 200 }, [], 10), null)
 })
 
 test('dockAt, the row: altitude, heading, attitude and speed on one base line, centred on the view; none when it is wider than the room', () => {

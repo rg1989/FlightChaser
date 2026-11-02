@@ -1,0 +1,43 @@
+time,dur,speaker,to,channel,lang,text,original,q,src
+12:30:05,8.8,ZMA,N722BD,radio,en,"N722BD, Miami Center, roger. There's moderate precipitation 11 o'clock and 5 miles, scattered 150 miles to the southeast. You can deviate left and right. When able proceed direct FEMID.",,H,VASA
+12:31:25,3.3,N722BD,ZMA,radio,en,"Center, N2BD requesting direct Freeport.",,H,VASA
+12:31:33,2.5,ZMA,N722BD,radio,en,That was unreadable.,,H,VASA
+12:31:35,4.0,N722BD,ZMA,radio,en,722BD requesting direct Freeport.,,H,VASA
+12:31:42,4.0,ZMA,N722BD,radio,en,"N722BD, cleared direct Freeport.",,H,VASA
+12:31:50,2.5,N722BD,ZMA,radio,en,"Cleared direct Freeport, thanks; 2BD.",,H,VASA
+12:31:53,7.3,ZMA,N722BD,radio,en,"N722BD, the turn to Freeport looks pretty bad. There is a moderate to extreme precipitation 11 o'clock and 25 miles, 100 miles in diameter.",,H,VASA
+12:32:09,2.9,N722BD,ZMA,radio,en,"Roger, we'll look at it; 2BD.",,H,VASA
+12:32:21,3.2,N722BD,ZMA,radio,en,"Center, 722BD, we're just going to do FIMED and then Freeport.",,H,VASA
+12:32:27,2.5,ZMA,N722BD,radio,en,"N722BD, roger.",,H,VASA
+12:33:22,4.4,ZMA,N722BD,radio,en,"N722BD, descend and maintain FL350.",,H,VASA
+12:34:12,2.5,N722BD,ZMA,radio,en,Descend FL350; 2BD.,,H,VASA
+12:35:02,2.5,N722BD,ZMA,radio,en,"2BD, [unintelligible]",,H,VASA
+12:37:23,3.3,ZMA,N722BD,radio,en,"2BD, approved to deviate.",,H,VASA
+12:37:58,4.2,ZMA,N722BD,radio,en,"N722BD, deviations left or right of course are approved, Freeport when able.",,H,VASA
+12:38:13,2.5,N722BD,ZMA,radio,en,"Freeport when able, going left; 2BD.",,H,VASA
+12:38:23,3.5,ZMA,N722BD,radio,en,"N2BD, Miami Center 125.07.",,H,VASA
+12:38:35,2.5,N722BD,ZMA,radio,en,"25.07, 2BD.",,H,VASA
+12:47:00,7.9,N722BD,ZMA,radio,en,"Miami, 722BD, FL350 turning direct Freeport. We have light clear ice that is manageable and moderate turbulence.",,H,VASA
+12:47:16,4.0,ZMA,N722BD,radio,en,"Aircraft with light clear ice and moderate turbulence, say again.",,H,VASA
+12:47:21,8.5,N722BD,ZMA,radio,en,"722BD, FL350, moderate turbulence. Plus or minus - okay, now 700 feet, 600 feet...",,H,VASA
+12:47:30,3.8,ZMA,N722BD,radio,en,"N-- roger, say outside air temperature.",,H,VASA
+12:47:34,5.5,N722BD,ZMA,radio,en,"-47°C, we're managing the ice but it is moderate turbulence. We're direct Freeport.",,H,VASA
+12:47:41,4.4,ZMA,N722BD,radio,en,"Okay, N722BD, roger, let me know if you need anything else. I'm just working you to my airspace right now.",,H,VASA
+12:47:46,4.6,N722BD,ZMA,radio,en,"Thank you, if you have any better rides, let us know; 2BD.",,H,VASA
+12:47:51,7.6,ZMA,N722BD,radio,en,"N2BD, the ride should improve in my airspace. You're kinda far outside of it right now. You can expect better rides ahead.",,H,VASA
+12:48:00,2.7,N722BD,ZMA,radio,en,"Roger, 2BD, and now we're picking up precipitation...",,H,VASA
+12:48:03,4.0,N722BD,ZMA,radio,en,"We need to climb FL370 if able, 2BD.",,H,VASA
+12:48:07,5.3,ZMA,N722BD,radio,en,"N722BD, roger, climb and maintain FL370, no further right than your present heading for traffic.",,H,VASA
+12:48:13,2.8,N722BD,ZMA,radio,en,"Climb FL370, 2BD.",,H,VASA
+12:48:29,5.4,N722BD,ZMA,radio,en,"722BD, we're descending 8000 - MAYDAY MAYDAY, we're descending 10000 feet per minute.",,H,VASA
+12:48:35,3.3,ZMA,N722BD,radio,en,"N722BD, roger.",,H,VASA
+12:48:38,,N722BD,ZMA,radio,en,"Declaring an emergency, 722BD!",,H,VASA
+12:48:42,,N722BD,ZMA,radio,en,"Descending 20,000 feet per minute!",,H,VASA
+12:48:46,4.3,ZMA,N722BD,radio,en,"N722BD, roger, altitude your discretion. Let me know what you need.",,H,VASA
+12:48:56,,N722BD,ZMA,radio,en,"We're going to crash into the ground, 722BD.",,H,VASA
+12:49:01,2.5,ZMA,N722BD,radio,en,"N2BD, I'm here with you. Talk to me.",,H,VASA
+12:49:04,,N722BD,ZMA,radio,en,"We are descending 22,000 feet...",,H,VASA
+12:49:06,,N722BD,ZMA,radio,en,...and we are banking... 60 degrees...,,H,VASA
+12:49:15,3.7,ZMA,N722BD,radio,en,"N2BD, roger--",,H,VASA
+12:49:20,,N722BD,ZMA,radio,en,"But look outside, Jack! Look outside!",,H,VASA
+12:49:22,,N722BD,ZMA,radio,en,Holy fuck! We're out of ti--,,H,VASA

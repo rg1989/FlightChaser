@@ -7,6 +7,7 @@ import type {
   AircraftSpec,
   AudioClip,
   AudioSpec,
+  WeatherSpec,
   Channel,
   CrewMember,
   EndingSpec,
@@ -117,6 +118,7 @@ interface ManifestOut {
   imagery: ImagerySpec[]
   ending: EndingSpec | null
   audio: AudioSpec | null
+  weather: WeatherSpec | null
   sources: SourceRef[]
 }
 
@@ -289,6 +291,16 @@ function parseManifest(manifest: unknown, problems: string[]): ManifestOut {
     }
   }
 
+  const weatherRaw = m.weather
+  let weather: WeatherSpec | null = null
+  if (isRecord(weatherRaw)) {
+    if (!isString(weatherRaw.source) || weatherRaw.source.length === 0) add('weather.source', 'required, non-empty')
+    if (!isString(weatherRaw.folder) || weatherRaw.folder.length === 0) add('weather.folder', 'required, non-empty')
+    const atMs = isString(weatherRaw.at) ? Date.parse(weatherRaw.at) : Number.NaN
+    if (!Number.isFinite(atMs)) add('weather.at', `bad time: ${JSON.stringify(weatherRaw.at)}`)
+    weather = { folder: isString(weatherRaw.folder) ? weatherRaw.folder.replace(/\/$/, '') : '', atMs, source: isString(weatherRaw.source) ? weatherRaw.source : '' }
+  }
+
   const sourcesRaw = Array.isArray(m.sources) ? m.sources : []
   const sources: SourceRef[] = []
   const seenSourceIds = new Set<string>()
@@ -312,7 +324,7 @@ function parseManifest(manifest: unknown, problems: string[]): ManifestOut {
     : []
   const summary: string[] = Array.isArray(m.summary) ? m.summary.filter(isString) : []
 
-  return { format: 1, id, title, subtitle, date, utcOffset, clockLabel, start, end, t0UtcMs, note, summary, crew, aircraft, speakers, imagery, ending, audio, sources }
+  return { format: 1, id, title, subtitle, date, utcOffset, clockLabel, start, end, t0UtcMs, note, summary, crew, aircraft, speakers, imagery, ending, audio, weather, sources }
 }
 
 // ---- CSV files --------------------------------------------------------------------------------------
@@ -593,6 +605,7 @@ export function parseScenario(files: {
     imagery: manifest.imagery,
     ending: manifest.ending,
     audio: manifest.audio,
+    weather: manifest.weather,
     sources: manifest.sources,
     track,
     events,

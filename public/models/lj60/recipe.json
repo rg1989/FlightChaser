@@ -1,0 +1,25 @@
+{
+  "stations": {
+    "lengthM": 17.88,
+    "doors": [4.3],
+    "cockpit": 3.75,
+    "source": "Measured on side photographs of N722BD against its 17.88 m length (JetPhotos, reference only)."
+  },
+  "gear": {
+    "noseAftM": 1.65,
+    "wheelbaseM": 7.94,
+    "trackM": 2.51,
+    "mains": 2,
+    "mainTyre": [0.6, 0.18],
+    "noseTyre": [0.45, 0.14],
+    "noseWheels": 1,
+    "clearanceM": 0.45,
+    "mainsRetract": "inboard"
+  },
+  "windowPitchM": 0.7,
+  "windowRowM": [5.3, 8.1, 1.15],
+  "flags": ["finBeacon"],
+  "sources": [
+    "Mesh: tools/models/lj60.ts, own work (MIT). Length 17.88 m, span 13.35 m, height 4.47 m: Learjet 60 published specifications; shapes measured on side photographs of N722BD."
+  ]
+}

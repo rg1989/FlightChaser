@@ -120,6 +120,7 @@ import { readFlight, readHist, readScenario, readView, writeUrl, type FlightSpan
 import { mountTable, type TableHandle } from './ui/table.ts'
 import { mountSearchBox, type SearchBoxHandle } from './ui/searchBox.ts'
 import { mountWxHud } from './ui/wxHud.ts'
+import { mountRadarCard } from './ui/wxRadarCard.ts'
 import { mountWxMenu, type WxMenuHandle } from './ui/wxMenu.ts'
 import { WX_KEYS, WX_PREFS_KEY, dropWxAids, readWxPrefs, savedAfter, writeWxPrefs, type WxPrefs } from './ui/wxPrefs.ts'
 import type { Item as SearchItem } from './search/search.ts'
@@ -334,10 +335,10 @@ export function sceneKeyActs(key: keyof ScenePrefs, prefs: ScenePrefs, chasing: 
   return true
 }
 
-/** Which weather the prefs, the view and the time ask for: the top-down map's, the chase's, or none (the weather is today's: History and a scenario draw none). */
-export function weatherView(o: { wx: boolean; chasing: boolean; history: boolean; scenario: boolean }): { topDown: boolean; chase: boolean } {
+/** Which weather the prefs, the view and the time ask for: the top-down map's, the chase's, or none (the weather is today's: History and a scenario draw none, but for a scenario that brings its own day's, `own`: always in its chase). */
+export function weatherView(o: { wx: boolean; chasing: boolean; history: boolean; scenario: boolean; own?: boolean }): { topDown: boolean; chase: boolean } {
   const live = !o.history && !o.scenario
-  return { topDown: o.wx && live && !o.chasing, chase: o.wx && live && o.chasing }
+  return { topDown: o.wx && live && !o.chasing, chase: o.chasing && (o.own === true || (o.wx && live)) }
 }
 
 /**
@@ -502,6 +503,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // The Weather menu's choices: ?wxlook, ?wxhaz, ?wxtrack, ?wxslice and ?wxstrip win for this load only. So what is in force (wxPrefs) is kept apart from
   // what is saved (wxSaved): nothing is stored here, and a choice made in the menu saves that choice alone (setWxPrefs), not the link's other aids with it.
   let wxPrefs = readWxPrefs(location.search, storedWx)
+  let wxOver: Partial<WxPrefs> = {} // what a scenario with its own weather holds otherwise, for as long as it plays
   let wxSaved = readWxPrefs('', storedWx)
   const base = import.meta.env.BASE_URL
   const scenarioBase = scenarioBaseFor(location.search, base, import.meta.env.DEV)
@@ -690,6 +692,10 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       writeFramePrefs(p, store)
     },
     onEdit: (on) => rail.button('layout').setAttribute('aria-pressed', String(on)),
+    onSide: (column) => {
+      radarCard.dock(column)
+      rail.button('small').setAttribute('aria-pressed', String(column !== null))
+    },
   })
   const ui = div('fh-ui', root)
   ui.dataset.mode = chasing ? 'chase' : 'browse'
@@ -779,6 +785,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     } },
     // Chase only (flightFrame.css): the frame's cards, to move, hide and show; an open panel closes to show them.
     // A traffic aircraft's card closes too (it and its brackets would sit over the cards), and none opens while editing.
+    { id: 'small', icon: 'gauge', label: 'Small instruments', short: 'Small', spot: 'bottom', action: () => flightFrame.setSmall(!flightFrame.small) },
     { id: 'layout', icon: 'layout', label: 'Edit instrument layout', short: 'Layout', spot: 'bottom', action: () => {
       if (!flightFrame.editing) rail.close()
       if (!flightFrame.editing) traffic?.close()
@@ -979,6 +986,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // WX_LOOK_MS. (It is a layer of the names overlay, like the hazard areas' labels: it shows whether or not Borders & places is on, and
   // while it does the overlay places its names every frame.) Upgrade: PlaceLabels moves a layer's labels in place, every frame.
   const wxHud = mountWxHud(ui, (view) => setWxPrefs({ ...wxPrefs, view }))
+  const radarCard = mountRadarCard(frameLayer)
   const wxAids = { track: wxPrefs.track, slice: wxPrefs.slice, strip: wxPrefs.strip }
   let wxSky = wxPrefs.view === 'sky' // the strip shows the whole sky, not the heights round the way (its own two buttons)
   let wxLookMs = -Infinity
@@ -1037,6 +1045,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     wxAids.strip = p.strip
     wxSky = p.view === 'sky'
     wxHud.setStrip(p.strip)
+    radarCard.show(weather3d.show && p.map)
     wxHud.setView(p.view)
     wxLookMs = -Infinity
   }
@@ -1065,15 +1074,17 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     placeLabels.show = chasing && prefs.places && !onMap
     weather.theme = rainTheme(prefs)
     const live = hist === null && run === null
-    const wx = weatherView({ wx: prefs.wx, chasing, history: hist !== null, scenario: run !== null })
+    const own = run !== null && run.player.scenario.weather !== null // a scenario with its own day's sky
+    const wx = weatherView({ wx: prefs.wx, chasing, history: hist !== null, scenario: run !== null, own })
     weather.show = wx.topDown
     weather3d.show = wx.chase
-    const look = weatherButton({ wx: prefs.wx, live })
+    radarCard.show(wx.chase && wxPrefs.map)
+    const look = weatherButton({ wx: prefs.wx || own, live: live || own })
     rail.setLook('weather', look) // the button says whether the weather is on; its panel is always there
-    wxMenu.setView({ wx: prefs.wx, chasing, live, failed: weather3d.cloudsFailed, theme: rainTheme(prefs) })
+    wxMenu.setView({ wx: prefs.wx || own, chasing, live: live || own, failed: weather3d.cloudsFailed, theme: rainTheme(prefs) })
     map.lift = weather.show
-    if (!live) wxMenu.setWeather('Live only') // the master switch is disabled, and the line says why
-    else if (!prefs.wx) wxMenu.setWeather(null)
+    if (!live && !own) wxMenu.setWeather('Live only') // the master switch is disabled, and the line says why
+    else if (!prefs.wx && !own) wxMenu.setWeather(null)
   }
   applyLayers()
   const fleetLayer = new FleetLayer(viewer)
@@ -1993,8 +2004,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const search = dropWxAids(location.search, WX_KEYS.filter((k) => next[k] !== wxPrefs[k]))
     if (search !== location.search) history.replaceState(history.state, '', `${location.pathname}${search}${location.hash}`)
     wxSaved = savedAfter(wxSaved, wxPrefs, next)
+    for (const k of Object.keys(wxOver) as (keyof WxPrefs)[]) if (next[k] !== wxPrefs[k]) delete wxOver[k]
     wxPrefs = next
-    applyWxPrefs(next)
+    applyWxPrefs({ ...next, ...wxOver })
     writeWxPrefs(wxSaved, store)
     wxMenu.update(next)
   }
@@ -2054,6 +2066,10 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       : recLivery ?? (scn.aircraft.callsign ? liveryOf(liveryCode(scn.aircraft.callsign, scn.aircraft.registration || null)) : null)
     liveGear = null
     dress = new Dresser(e, livery, scn.aircraft.shape?.halfSpanM ?? null, recPlaceholder) // a package names its own model
+    weather3d.archive(scn.weather !== null ? { base: `${scn.base}${scn.weather.folder}`, atMs: scn.weather.atMs } : null)
+    // A day to be seen as it was: no severity colours, no line and no strip of what lies ahead, whatever the menu holds for live, until the viewer changes one of them here.
+    wxOver = scn.weather !== null ? { look: 'natural', opacity: 0.85, track: false, slice: false, strip: false } : {}
+    applyWxPrefs({ ...wxPrefs, ...wxOver })
     const playing = (run = ScenarioRun.start({ viewer, ui, scenario: scn, t: o.t, play: o.play, under: night[0], onExit: exitScenario, onView: () => setChase(!chasing) }))
     scnRoute = scenarioRoute(scn)
     scnInfo = {
@@ -2101,6 +2117,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     loadingScenario = null // one still loading is dropped when it arrives
     if (run === null) return
     endRun()
+    weather3d.archive(null)
+    wxOver = {}
+    applyWxPrefs(wxPrefs)
     const wasChasing = chasing
     chasing = false
     chaseCam.release()
@@ -2338,6 +2357,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     model?.tint(weather3d.tint) // in the Sculpted look the chased aircraft takes the colour of the cloud it is in or behind
     const tAhead = bench === null ? 0 : performance.now()
     lookAhead(chased, now)
+    if (chased !== null) {
+      const untilMs = run !== null ? run.player.clock.t * 1000 : 0
+      const way = run !== null && scnRoute !== null ? scnRoute.path.filter((p, i) => p.tMs <= untilMs && i % 4 === 0) : undefined
+      radarCard.update({ lat: chased.lat, lon: chased.lon, trackDeg: chased.trackDeg ?? chased.headingDeg, echoAt: (lat, lon) => weather3d.echoAt(lat, lon), flown: way }, now)
+    }
     if (bench !== null) {
       measure?.('fh:wx', tWx)
       measure?.('fh:wx-ahead', tAhead)

@@ -1011,7 +1011,7 @@
 
 /* Docked together (a ready-made layout's corner or strip, data-dock on the frame): one size, so the four read as one
    piece. */
-.fh-frame:is([data-dock='corner'], [data-dock='row']) .fh-fblock[data-v='2'] {
+.fh-frame:is([data-dock='corner'], [data-dock='row'], [data-dock='side']) .fh-fblock[data-v='2'] {
   box-sizing: border-box;
   justify-content: center;
   height: 60px;
@@ -1019,6 +1019,12 @@
 
 .fh-frame[data-dock='corner'] .fh-fblock[data-v='2'] {
   width: 160px;
+}
+
+/* The side's column: the corner's width, for the figures, and lower. */
+.fh-frame[data-dock='side'] .fh-fblock[data-v='2'] {
+  width: 160px;
+  height: 52px;
 }
 
 /* ---- looks: the cards' colours (data-look on the frame: the viewer's own layout's, or a ready-made one's) -------- */
@@ -1214,7 +1220,9 @@
 
 /* Its button at the bottom centre (rail.css): the chase view only, where the frame is. */
 .fh-ui:not([data-mode='chase']) .fh-corner-b[data-id='layout'],
-.fh-ui:not([data-mode='chase']) .fh-rail .fh-ibtn[data-id='layout'] {
+.fh-ui:not([data-mode='chase']) .fh-rail .fh-ibtn[data-id='layout'],
+.fh-ui:not([data-mode='chase']) .fh-corner-b[data-id='small'],
+.fh-ui:not([data-mode='chase']) .fh-rail .fh-ibtn[data-id='small'] {
   display: none;
 }
 

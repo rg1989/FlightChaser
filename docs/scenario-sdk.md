@@ -55,7 +55,7 @@ The viewer gets all of this from the package and the app. None of it needs a key
 | Runways as they were on the day | `airport.json` |
 
 The Layers panel works in a scenario: map or satellite (`M`), roads (`R`), borders and places (`P`), 3-D terrain (`T`),
-sun and moon light (`L`). The app draws no weather and no other traffic in a scenario.
+sun and moon light (`L`). The app draws no other traffic in a scenario, and no weather unless the package brings its day's (`weather`, scenarios.md 1.9a).
 
 ## 3. Choose the path
 
@@ -241,6 +241,7 @@ Add a part only if you have the data for it. Each part has its full rules in [sc
 | `airport.json` | The runway of the day is missing or different in the app | 1.11a | A runway end without `thrHaeM`. Copy the method of `tools/scenarios/kc1388/airports.ts`. |
 | `imagery` | The map of today misleads | 1.7 | A `rect` larger than the area that has tiles. |
 | `audio` | A real recording exists and the user has it | 1.9 | A file outside `local/`. No `source`. |
+| `weather` | Archived radar and reports of the day exist | 1.9a | Tiles in the wrong colours: each colour is one dBZ. |
 
 For an accident or a serious incident, obey Part 3 of [scenarios.md](scenarios.md): end before the impact, name the
 flight crew only, and keep the wording sober.

@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { MODEL_CLOUD_HPA, MODEL_WIND_HPA, type Metar, type ModelGrid } from '../../shared/wx.ts'
-import { SAT_DEEP_M, SAT_GRID_N, SAT_NO_TOP_M, SAT_THICK, baseSources, fillTops, gridCloudy, satBase, satCell, satGrid, type SatGrid, type SatGridJob } from './satGrid.ts'
+import { SAT_DEEP_M, SAT_GRID_N, SAT_NO_TOP_M, SAT_THICK, baseSources, fillTops, gridCloudy, satBase, satCell, deepenCells, satGrid, type SatGrid, type SatGridJob } from './satGrid.ts'
 import type { SatFrame } from './satellite.ts'
 import { parallaxKm } from './satPlace.ts'
 
@@ -247,4 +247,15 @@ test('satGrid: a deck whose top slopes through a wind that grows with height is 
   let least = 1
   for (let east = -100; east <= 100; east += CELL_KM) for (const north of [-60, 0, 60]) least = Math.min(least, g.cover[cellAt(g, east, north)])
   assert.ok(least > 0.97, `the least cover inside the deck: ${least}`)
+})
+
+test('deepenCells: an echo under a top brings the cells round it down to the base; clear cells and far cells stay', () => {
+  const n = 8
+  const g = { timeMs: 0, n, cover: new Float32Array(n * n).fill(1), topM: new Float32Array(n * n).fill(14000), baseM: new Float32Array(n * n).fill(13000), seen: new Uint8Array(n * n).fill(1) }
+  g.cover[0] = 0
+  deepenCells(g, 26, -80, [{ lat: 26, lon: -80, baseM: 900 }, { lat: 80, lon: -80, baseM: 100 }])
+  const mid = satCell(g, 26, -80, 26, -80)
+  assert.equal(g.baseM[mid], 900)
+  assert.equal(g.baseM[mid + 1], 900)
+  assert.equal(g.baseM[0], 13000)
 })

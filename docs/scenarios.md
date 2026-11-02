@@ -32,6 +32,7 @@ public/scenarios/<id>/events.csv       phases, marks, gear, flaps, damage (optio
 public/scenarios/<id>/transcript.csv   the captions (optional)
 public/scenarios/<id>/airport.json     the airfields as they were: runways, flattened ground (optional)
 public/scenarios/<id>/livery/…         decal images, committed (optional)
+public/scenarios/<id>/weather/…        the sky of the scenario's own day (optional)
 public/scenarios/<id>/local/…          files that must not be published: logos under trademark, audio (optional)
 ```
 
@@ -81,6 +82,7 @@ The JAL 123 file is a complete example. The fields:
 | `imagery` | no | Imagery of the time, drawn over the base map while the scenario plays. See 1.7. |
 | `ending` | no | The fade to dark and the closing card. See 1.8. |
 | `audio` | no | A recording that plays with the timeline. See 1.9. |
+| `weather` | no | The sky of the scenario's own day. See 1.9a. |
 | `sources` | yes, in practice | `[{ "id", "title", "url", "note" }]`. Every `src` cell names one of these ids. See 1.10. |
 
 `aircraft`:
@@ -88,7 +90,7 @@ The JAL 123 file is a complete example. The fields:
 | Field | Required | Meaning |
 |---|---|---|
 | `registration`, `type`, `callsign`, `operator` | no | Shown on the card. Example: `JA8119`, `Boeing 747SR-46`, `JAL123`, `Japan Air Lines`. |
-| `model` | yes | A model id: a folder in `public/models/`. Today: `a20n a21n a319 a320 a321 a332 a333 a343 a359 a35k a388 at45 at75 b38m b39m b737 b738 b739 b744 b752 b763 b772 b773 b788 b789 b78x bcs3 c182 c550 crj7 crj9 dh8d e145 e170 e190 e195 e75l ec135 p28a pc12 sr22`. Take the nearest one. `node tools/scenarios/new.ts` prints the list. |
+| `model` | yes | A model id: a folder in `public/models/`. Today: `a20n a21n a319 a320 a321 a332 a333 a343 a359 a35k a388 at45 at75 b38m b39m b737 b738 b739 b744 b752 b763 b772 b773 b788 b789 b78x bcs3 c182 c550 crj7 crj9 dh8d e145 e170 e190 e195 e75l ec135 lj60 p28a pc12 sr22`. Take the nearest one. `node tools/scenarios/new.ts` prints the list. |
 | `shape.halfSpanM` | no | Folds the wing tips in to this half-span in metres, when the real aircraft is shorter than the model (a 747SR on the 747-400 model: `29.8`). |
 | `livery.base`, `belly`, `fin`, `engine` | `base` and `fin` | sRGB hex colours: upper body, lower body, fin, engine nacelles. |
 | `livery.body` | no | A body-wrap decal (stripes, titles, registration), path relative to the folder, normally `livery/body.png`. |
@@ -242,6 +244,24 @@ word. When the record gives only the minute, say so in the source note.
   88 % of them within 1.5 s).
 - An accident's file stops at `darkAt`. The sounds of contact are not in it.
 
+### 1.9a weather (optional)
+
+```json
+"weather": { "folder": "weather", "at": "2026-11-01T17:50:00Z", "source": "where each file comes from" }
+```
+
+The app shows this sky in the 3-D view, in the Natural look. Without `weather` a scenario has no weather. The files are one snapshot at the time `at`:
+
+| File in the folder | What it is |
+|---|---|
+| `metar.json` | Station reports, as the app's `/api/wx/metar` answers. |
+| `model.json` | A model grid, as `/api/wx/model` answers (`ModelGrid` in `shared/wx.ts`). |
+| `sigmet.json` | Hazard areas, as `/api/wx/sigmet` answers. `[]` for none. |
+| `radar/256/7/<x>/<y>/2/0_1.png` | Radar tiles at zoom 7 in RainViewer's "Universal Blue" colours: each colour is one dBZ (`client/scene/radar.ts`). |
+| `sat.bin` | Optional. Cloud cover and top height, the format of `shared/sat.ts`. Rain under a top is drawn as one deep cloud. |
+
+`tools/scenarios/n722bd/` builds all of them from NEXRAD, GOES, METAR and a sounding. `source` is required.
+
 ### 1.10 Sources and `src` cells
 
 ```json
@@ -332,7 +352,7 @@ Do not send these. They cost time and the app does not use them.
 | A lighting, sun or moon table | The app computes the sky from the date, time and offset. |
 | KML, KMZ, GPX, ACMI or other copies of the track | One `track.csv` is the source. Other formats can be derived from it. |
 | Flight-dynamics models, failure-injection specs | The app replays the recorded flight. It does not simulate it. |
-| Terrain, weather or sound-design prose | Terrain comes from the map. The app draws no weather. There is no sound design. |
+| Terrain, weather or sound-design prose | Terrain comes from the map. Weather comes as data (1.9a). There is no sound design. |
 | An alternate-airports table | The app does not use it. |
 | Derivable columns: distance to impact, time since start, ground speed or vertical speed next to dense positions | The app derives them. Two copies of one value can disagree. |
 | Raw OCR dumps of the report | Cite the page instead. OCR text has errors and is not a source. |

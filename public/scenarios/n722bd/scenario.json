@@ -1,0 +1,293 @@
+{
+  "format": 1,
+  "id": "n722bd",
+  "title": "Learjet 60 N722BD",
+  "subtitle": "Austin → North Eleuthera",
+  "date": "2026-11-01",
+  "utcOffset": "-05:00",
+  "clockLabel": "EST",
+  "start": "12:29:40",
+  "end": "12:49:32",
+  "note": "A reconstruction, from the aircraft's own ADS-B broadcasts and the Miami Center radio, of the last 20 minutes of a flight on which all nine people aboard died. The attitude is computed from the path. It ends before the impact. The investigation has only begun: the cause is not known.",
+  "summary": [
+    "A Bombardier Learjet 60, N722BD, from Austin, Texas, to North Eleuthera, Bahamas, on Sunday 1 November 2026, with nine people on board.",
+    "Crossing south Florida in thunderstorms at FL350, the crew reported ice and moderate turbulence, and asked to climb.",
+    "It fell from about 35,000 ft in about a minute, in a turn to the right, and crashed near Greenacres, Palm Beach County, at about 12:50.",
+    "The NTSB leads the investigation. No cause has been established. The radio's words are as captioned by the recording's publisher, not an official transcript."
+  ],
+  "crew": [],
+  "aircraft": {
+    "registration": "N722BD",
+    "type": "Bombardier Learjet 60 (s/n 60-271)",
+    "callsign": "N722BD",
+    "operator": "LR60271 LLC (registered owner)",
+    "model": "lj60",
+    "livery": {
+      "base": "#f4f5f4",
+      "belly": "#f4f5f4",
+      "fin": "#0e0f12",
+      "engine": "#eceded",
+      "body": "livery/body.png",
+      "finLogo": "livery/fin.png"
+    }
+  },
+  "speakers": {
+    "N722BD": {
+      "name": "N722BD",
+      "kind": "crew"
+    },
+    "ZMA": {
+      "name": "Miami Center",
+      "kind": "atc"
+    }
+  },
+  "ending": {
+    "fadeFrom": "12:49:24",
+    "darkAt": "12:49:29",
+    "cardAfterS": 3,
+    "card": {
+      "title": "Learjet 60 N722BD",
+      "lines": [
+        "1 November 2026 · Bombardier Learjet 60 N722BD, from Austin to North Eleuthera.",
+        "The aircraft crashed near Military Trail and 10th Avenue North, Greenacres, Florida, at about 12:50 local time. All nine people on board died. Nobody on the ground was reported injured; about 600 residents nearby had to leave their homes.",
+        "The NTSB is investigating, with the FAA. No cause has been established. This is a reconstruction from public data, made the day after, and it may be wrong in its details."
+      ]
+    }
+  },
+  "audio": {
+    "file": "local/radio.m4a",
+    "source": "The Miami Center frequency as LiveATC.net's volunteer receivers recorded it, in VASAviation's video \"Learjet N722BD Crash in Extreme Weather (Ice and Turbulence)\" (youtube.com/watch?v=8ri8h7dg8nE). Each transmission is placed at the clock in that video's own ADS-B replay; the calls of 8,000 and 10,000 ft/min and of 22,000 ft fall within seconds of the same values in the ADS-B. The publisher muted the aircraft's transmissions from 12:48:38 on purpose; they are not played here.",
+    "clips": [
+      {
+        "from": 0.0,
+        "to": 8.8,
+        "at": "12:30:05"
+      },
+      {
+        "from": 8.8,
+        "to": 12.1,
+        "at": "12:31:25"
+      },
+      {
+        "from": 12.1,
+        "to": 13.1,
+        "at": "12:31:33"
+      },
+      {
+        "from": 13.1,
+        "to": 17.1,
+        "at": "12:31:35"
+      },
+      {
+        "from": 17.1,
+        "to": 21.1,
+        "at": "12:31:42"
+      },
+      {
+        "from": 21.1,
+        "to": 23.1,
+        "at": "12:31:50"
+      },
+      {
+        "from": 23.1,
+        "to": 30.4,
+        "at": "12:31:53"
+      },
+      {
+        "from": 30.4,
+        "to": 33.3,
+        "at": "12:32:09"
+      },
+      {
+        "from": 33.3,
+        "to": 36.5,
+        "at": "12:32:21"
+      },
+      {
+        "from": 36.5,
+        "to": 38.8,
+        "at": "12:32:27"
+      },
+      {
+        "from": 38.8,
+        "to": 43.2,
+        "at": "12:33:22"
+      },
+      {
+        "from": 43.2,
+        "to": 45.1,
+        "at": "12:34:12"
+      },
+      {
+        "from": 45.1,
+        "to": 47.1,
+        "at": "12:35:02"
+      },
+      {
+        "from": 47.1,
+        "to": 50.4,
+        "at": "12:37:23"
+      },
+      {
+        "from": 50.4,
+        "to": 54.6,
+        "at": "12:37:58"
+      },
+      {
+        "from": 54.6,
+        "to": 57.1,
+        "at": "12:38:13"
+      },
+      {
+        "from": 57.1,
+        "to": 60.6,
+        "at": "12:38:23"
+      },
+      {
+        "from": 60.6,
+        "to": 63.0,
+        "at": "12:38:35"
+      },
+      {
+        "from": 63.0,
+        "to": 70.9,
+        "at": "12:47:00"
+      },
+      {
+        "from": 70.9,
+        "to": 74.9,
+        "at": "12:47:16"
+      },
+      {
+        "from": 74.9,
+        "to": 83.4,
+        "at": "12:47:21"
+      },
+      {
+        "from": 83.4,
+        "to": 87.2,
+        "at": "12:47:30"
+      },
+      {
+        "from": 87.2,
+        "to": 92.7,
+        "at": "12:47:34"
+      },
+      {
+        "from": 92.7,
+        "to": 97.1,
+        "at": "12:47:41"
+      },
+      {
+        "from": 97.1,
+        "to": 101.7,
+        "at": "12:47:46"
+      },
+      {
+        "from": 101.7,
+        "to": 109.3,
+        "at": "12:47:51"
+      },
+      {
+        "from": 109.3,
+        "to": 112.0,
+        "at": "12:48:00"
+      },
+      {
+        "from": 112.0,
+        "to": 116.0,
+        "at": "12:48:03"
+      },
+      {
+        "from": 116.0,
+        "to": 121.3,
+        "at": "12:48:07"
+      },
+      {
+        "from": 121.3,
+        "to": 124.1,
+        "at": "12:48:13"
+      },
+      {
+        "from": 124.1,
+        "to": 129.5,
+        "at": "12:48:29"
+      },
+      {
+        "from": 129.5,
+        "to": 132.8,
+        "at": "12:48:35"
+      },
+      {
+        "from": 132.8,
+        "to": 137.1,
+        "at": "12:48:46"
+      },
+      {
+        "from": 137.1,
+        "to": 139.6,
+        "at": "12:49:01"
+      },
+      {
+        "from": 139.6,
+        "to": 143.3,
+        "at": "12:49:15"
+      }
+    ]
+  },
+  "weather": {
+    "folder": "weather",
+    "at": "2026-11-01T17:50:00Z",
+    "source": "NOAA NEXRAD composite of 17:45 UTC via Iowa Environmental Mesonet; METARs of about 17:50 UTC from aviationweather.gov; cloud cover and winds at 18:00 UTC from Open-Meteo (CC BY 4.0, a forecast model, not an observation)."
+  },
+  "sources": [
+    {
+      "id": "ADSBLOL",
+      "title": "adsb.lol trace of N722BD (a9ab17), 1 November 2026",
+      "url": "https://adsb.lol/globe_history/2026/11/01/traces/17/trace_full_a9ab17.json",
+      "note": "The aircraft's own ADS-B broadcasts as adsb.lol's receivers heard them, under the ODbL. GPS positions and GNSS height, 1 to 2 a second in the dive. No airspeed is broadcast, so the track has none and the physics check has none to judge with. Pitch and bank are computed from the path (all rows q=R). Height is GNSS height less the geoid."
+    },
+    {
+      "id": "VASA",
+      "title": "VASAviation, \"Learjet N722BD Crash in Extreme Weather (Ice and Turbulence)\"",
+      "url": "https://www.youtube.com/watch?v=8ri8h7dg8nE",
+      "note": "Radio from LiveATC.net; words as in the video's captions (the publisher warns they may hold errors), not an official transcript, so every line is q=H. Lines to other aircraft are left out. The times are that video's clock, whose publisher warns that the sync may not be exact."
+    },
+    {
+      "id": "AIN",
+      "title": "Aviation International News, \"Florida Learjet Crash Claims Nine\", 2 November 2026",
+      "url": "https://www.ainonline.com/aviation-news/business-aviation/2026-11-01/florida-learjet-crash-claims-nine",
+      "note": "The aircraft, the owner, the route, the request for FL370, the investigation."
+    },
+    {
+      "id": "NBC",
+      "title": "NBC News, \"Jet nose-dived onto Florida roadway\", 1 November 2026",
+      "url": "https://www.nbcnews.com/news/us-news/jet-crashes-florida-nine-people-board-rcna606874",
+      "note": "The time and place of the crash, those evacuated, the investigators."
+    },
+    {
+      "id": "NEXRAD",
+      "title": "NEXRAD base reflectivity composite, 17:45 UTC, via Iowa Environmental Mesonet",
+      "url": "https://mesonet.agron.iastate.edu/archive/data/2026/11/01/GIS/uscomp/n0q_202611011745.png",
+      "note": "NOAA data, public domain. Drawn as the rain and the storm cells in the 3-D view."
+    },
+    {
+      "id": "METAR",
+      "title": "METARs, 1 November 2026, via aviationweather.gov",
+      "url": "https://aviationweather.gov/api/data/metar?bbox=24.5,-83,28.5,-78&format=json&date=2026-11-01T18:00:00Z&hours=2",
+      "note": "NOAA data, public domain. The last report of each station before 17:50 UTC."
+    },
+    {
+      "id": "RAOB",
+      "title": "Upper-air sounding KMFL (Miami), 12:00 UTC, via Iowa Environmental Mesonet",
+      "url": "https://mesonet.agron.iastate.edu/json/raob.py?ts=202611011200&station=KMFL",
+      "note": "The wind columns of track.csv by height, 6 hours before the flight and 100 km away: an estimate. −45 °C at 250 hPa (35,800 ft), near the crew's −47 °C."
+    },
+    {
+      "id": "MODEL",
+      "title": "Open-Meteo forecast grid, 18:00 UTC, 1 November 2026",
+      "url": "https://open-meteo.com/",
+      "note": "Weather data by Open-Meteo.com, CC BY 4.0. Cloud cover and winds by height in weather/model.json. A model, not an observation."
+    }
+  ]
+}

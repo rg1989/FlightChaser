@@ -49,11 +49,12 @@ const LEGEND = ['Cloud', 'Light rain', 'Heavy rain', 'Thunderstorm']
 // How the weather reads at an airport (VFR to LIFR), in the colours of its markers' rings (wxText.ts).
 const CATEGORIES: [string, string][] = [['Good', CATEGORY_COLOR.VFR], ['Marginal', CATEGORY_COLOR.MVFR], ['Poor', CATEGORY_COLOR.IFR], ['Very poor', CATEGORY_COLOR.LIFR]]
 const MASTER_TIP = { top: 'Rain radar, airport weather, hazard areas', chase: 'Clouds, rain and hazard areas around the aircraft' } // the switch row's tooltip, per view
-interface Aid { key: 'track' | 'slice' | 'strip'; icon: IconName; label: string; hint: string }
+interface Aid { key: 'track' | 'slice' | 'strip' | 'map'; icon: IconName; label: string; hint: string }
 const AIDS: Aid[] = [
   { key: 'track', icon: 'plane', label: 'Weather on path', hint: 'Marks on this heading' },
   { key: 'slice', icon: 'layers', label: 'Level slice', hint: "At the aircraft's altitude" },
   { key: 'strip', icon: 'altitude', label: 'Ahead strip', hint: 'Side view, next 6 minutes' },
+  { key: 'map', icon: 'radar', label: 'Radar map', hint: 'A small rain map, among the instruments' },
 ]
 const NO_SLICE = 'Not in the Sculpted look yet' // the level slice's hint in that look, where it is not drawn
 /** A control group or a row, in use or not: its controls, and the box that says so. */

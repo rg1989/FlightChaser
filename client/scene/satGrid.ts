@@ -82,6 +82,7 @@ export interface SatGridJob {
   epochMs: number // the wall clock: the frame's age is from this
   metars: readonly Metar[] // as drawn
   model: ModelGrid | null // as drawn
+  noParallax?: boolean // the frame is another satellite's than Meteosat: its pixels are taken where they lie (a scenario's own day)
 }
 
 /** The value at x of the line through points (x rising): the first's before the first, the last's after the last. */
@@ -333,7 +334,7 @@ export function satGrid(whole: SatFrame, job: SatGridJob): SatGrid {
   const nodeAt = (a: number, b: number): [lat: number, lon: number] => [north - (b / (NODES - 1)) * (north - south), west + (a / (NODES - 1)) * (east - west)] // the weather's own place
   for (let b = 0; b < NODES; b++) {
     for (let a = 0; a < NODES; a++) {
-      const par = parallaxKm(...nodeAt(a, b), PARALLAX_AT_M)
+      const par = job.noParallax === true ? { east: 0, north: 0 } : parallaxKm(...nodeAt(a, b), PARALLAX_AT_M)
       parallax[(b * NODES + a) * 2] = par.east / PARALLAX_AT_M
       parallax[(b * NODES + a) * 2 + 1] = par.north / PARALLAX_AT_M
     }
@@ -471,6 +472,24 @@ export function satCell(g: SatGrid, lat0: number, lon0: number, lat: number, lon
   const i = Math.floor((wrapLon(lon - lon0) * kx + FIELD_KM / 2) / (FIELD_KM / g.n))
   const j = Math.floor(((lat - lat0) * KM_PER_DEG + FIELD_KM / 2) / (FIELD_KM / g.n))
   return i >= 0 && i < g.n && j >= 0 && j < g.n ? j * g.n + i : -1
+}
+
+/**
+ * An echo of rain under a satellite's top is one deep cloud, not a thin one over clear air: the grid's cells at and round each such place
+ * reach down to the base there (a storm's anvil, with the storm under it; a scenario's own day, where the radar and the crew say so).
+ */
+export function deepenCells(g: SatGrid, lat0: number, lon0: number, echoes: readonly { lat: number; lon: number; baseM: number }[]): void {
+  for (const e of echoes) {
+    const c = satCell(g, lat0, lon0, e.lat, e.lon)
+    if (c < 0) continue
+    const [i, j] = [c % g.n, Math.floor(c / g.n)]
+    for (let y = Math.max(0, j - 1); y <= Math.min(g.n - 1, j + 1); y++) {
+      for (let x = Math.max(0, i - 1); x <= Math.min(g.n - 1, i + 1); x++) {
+        const o = y * g.n + x
+        if (g.cover[o] > 0 && e.baseM < g.baseM[o]) g.baseM[o] = e.baseM
+      }
+    }
+  }
 }
 
 /** The share of the cells the satellite sees that are cloud (half cover or more); 0 when it sees none. */

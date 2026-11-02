@@ -29,7 +29,7 @@ import type { Metar, ModelGrid } from '../../shared/wx.ts'
 import { MAX_CLOUDS, PUFF_FILL, RADAR_LOOK, modelClouds, nearestClouds, observedClouds, radarBases, radarClouds, type CloudSpec } from './cloudField.ts'
 import type { SourceTile } from './radar.ts'
 import { radarCells, type Shift } from './radarCells.ts'
-import { SAT_SMALL_CU_M, gridCloudy, satCell, satGrid, type SatGrid } from './satGrid.ts'
+import { SAT_SMALL_CU_M, deepenCells, gridCloudy, satCell, satGrid, type SatGrid } from './satGrid.ts'
 import { decodeFrame, rawFrame, satBuffers, type SatFrame, type SatPictures } from './satellite.ts'
 import { wrapLon } from './wxGeo.ts'
 
@@ -50,6 +50,7 @@ export interface GatherJob {
   anew: boolean // what is kept is dropped first (a check aid: Weather3D rebuildSky)
   sat?: SatPictures | null // the weather satellite's frame in use, as its pictures (or the server's numbers) came (where the weather is: not shifted), or without them (satBare) when the gatherer has read this frame before; none: no satellite
   epochMs?: number // the wall clock: the frame's age is from this
+  archive?: boolean // a scenario's own day: its frame is another satellite's, laid where it lies (no parallax), and an echo under its top is one deep cloud
 }
 
 /** What a gathering says of the satellite's frame it was given. */
@@ -134,7 +135,7 @@ export function gatherer(): (job: GatherJob) => Gathered {
       satInfo = { timeMs: p.timeMs, bad: read !== null && read.frame === null, missing: read === null, cloudy: 0, read: reads, decodeMs, gridMs: 0 }
       if (read !== null && read.frame !== null) {
         const t0 = performance.now()
-        const g = satGrid(read.frame, { lat: job.lat, lon: job.lon, shift: job.shift, epochMs: job.epochMs ?? p.timeMs, metars, model: job.grid })
+        const g = satGrid(read.frame, { lat: job.lat, lon: job.lon, shift: job.shift, epochMs: job.epochMs ?? p.timeMs, metars, model: job.grid, noParallax: job.archive })
         satInfo.gridMs = performance.now() - t0
         if (g.seen.some((s) => s === 1)) {
           sat = g
@@ -151,6 +152,10 @@ export function gatherer(): (job: GatherJob) => Gathered {
     const tiles = new Map(job.tiles.map((t) => [t.x * 4096 + t.y, t.tile]))
     const cells = radarCells((x, y) => tiles.get(x * 4096 + y) ?? null, job.lat - job.shift.dLat, wrapLon(job.lon - job.shift.dLon), job.shift, job.readKm)
     let radar = cells.length === 0 ? [] : radarClouds(cells, radarBases(metars))
+    if (sat !== null && job.archive === true) {
+      const baseOf = radarBases(metars)
+      deepenCells(sat, job.lat, job.lon, cells.filter((c) => !c.snow && c.dbz >= RADAR_LOOK.deckDbz).map((c) => ({ lat: c.lat, lon: c.lon, baseM: baseOf(c.lat, c.lon).baseM })))
+    }
     if (sat !== null) radar = raiseTowers(radar, sat, job.lat, job.lon)
     if (job.grid !== null && (model === null || model.metarGen !== job.metarGen || model.modelGen !== job.modelGen)) {
       model = { metarGen: job.metarGen, modelGen: job.modelGen, specs: modelClouds(job.grid, metars) }

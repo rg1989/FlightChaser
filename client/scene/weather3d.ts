@@ -113,8 +113,9 @@ import { builder, type Builder, type WorkerLike } from './fieldBuilder.ts'
 import { fieldCentre, fieldDue } from './fieldPlace.ts'
 import type { LayerLabel, PlaceLabels } from './placeLabels.ts'
 import { Precipitation, cloudBaseM, nearestStation, precipFromDbz, precipFromWx, radarPixel, radarSample, windOf, type Fall } from './precip.ts'
-import { RADAR_INDEX, RADAR_SRC_MAX, RadarSource, type RadarIndex, type SourceTile } from './radar.ts'
+import { NONE, RADAR_INDEX, RADAR_SRC_MAX, RadarSource, type RadarIndex, type SourceTile } from './radar.ts'
 import type { SatGrid } from './satGrid.ts'
+import { decodeSatCut } from '../../shared/sat.ts'
 import { SatelliteSource, satBare, satBuffers, type SatFetch, type SatPictures } from './satellite.ts'
 import { radarCells, tilesAcross } from './radarCells.ts'
 import { gatherer, type GatherJob, type Gathered, type SatInfo } from './wxGather.ts'
@@ -383,7 +384,10 @@ export class Weather3D {
   readonly #at: WxAt | null
   readonly #sky: Sky
   readonly #tile: (radar: RadarSource, z: number, x: number, y: number) => Promise<SourceTile | null>
-  readonly #epochMs: () => number
+  #epochMs: () => number
+  readonly #wallMs: () => number
+  #archive: { base: string; atMs: number } | null = null // a scenario's own sky: archive()
+  #archiveSat: SatPictures | null = null // its satellite frame
   readonly #onShade: (shade: number) => void
   readonly #dwellMs: number
   readonly #demo: number | null
@@ -484,7 +488,8 @@ export class Weather3D {
     this.#heldTier = opts.tier ?? null
     this.#sky = opts.sky ?? cesiumSky(viewer, () => this.#seeFailed(), opts.broken === true, opts.look ?? 'severity')
     this.#tile = opts.tile ?? ((radar, z, x, y) => radar.get(z, x, y))
-    this.#epochMs = opts.epochMs ?? Date.now
+    this.#wallMs = opts.epochMs ?? Date.now
+    this.#epochMs = this.#wallMs
     this.#onShade = opts.onShade ?? (() => {})
     this.#dwellMs = opts.dwellMs ?? MODEL_DWELL_MS
     this.#demo = opts.demo ?? null
@@ -817,6 +822,42 @@ export class Weather3D {
     this.#known = true // the demo sky is the whole sky
   }
 
+  /**
+   * A scenario's own sky: its folder's files (metar.json, sigmet.json, model.json, radar/…, sat.bin) in place of today's sources, at the time
+   * they are of. Null: today's again. What was held goes, and what is due is asked for at the next look.
+   */
+  archive(a: { base: string; atMs: number } | null): void {
+    this.#archive = a
+    this.#epochMs = a === null ? this.#wallMs : () => a.atMs
+    this.#archiveSat = null
+    if (a !== null) void this.#loadArchiveSat(a)
+    this.#metars = []
+    this.#sigmets = []
+    this.#model = null
+    this.#radar = null
+    this.#known = false
+    this.#box = null
+    this.#sigmetsDue = this.#radarDue = this.#metarsDue = this.#modelDue = 0
+    this.#modelAsk++
+    this.#metarGen++
+    this.#modelGen++
+    this.#radarGen++
+    this.#gen++
+    this.#tiles.clear()
+    this.#asked.clear()
+    this.#cell = ''
+  }
+
+  /** The folder's sat.bin, if it has one: a frame of shared/sat.ts, as the app's server would answer. */
+  async #loadArchiveSat(a: { base: string; atMs: number }): Promise<void> {
+    const r = await fetch(`${a.base}/sat.bin`).catch(() => null)
+    const raw = r?.ok === true ? new Uint8Array(await r.arrayBuffer()) : null
+    const f = raw === null ? null : decodeSatCut(raw.slice().buffer)
+    if (f === null || raw === null || this.#archive !== a) return
+    this.#archiveSat = { timeMs: f.timeMs, box: [f.box[0], f.box[1], f.box[2], f.box[3]], n: f.n, mask: new Uint8ClampedArray(0), tops: new Uint8ClampedArray(0), raw }
+    this.#refresh()
+  }
+
   /** Asks for what is due: the SIGMETs and the radar frame by the clock, the METARs by the clock or when the aircraft is out of its box. With ?wxdemo, nothing. */
   #ask(nowMs: number): void {
     if (this.#demo !== null) return
@@ -831,7 +872,7 @@ export class Weather3D {
     const lat = this.#here.lat - this.#shift.dLat // where the aircraft is in the weather's own place
     const lon = wrapLon(this.#here.lon - this.#shift.dLon)
     this.#askModel(nowMs, lat, lon)
-    this.#sat?.look(nowMs, this.#epochMs(), lat, lon)
+    if (this.#archive === null) this.#sat?.look(nowMs, this.#epochMs(), lat, lon)
     const b = this.#box
     if (b === null || nowMs >= this.#metarsDue || lat < b[0] || lat > b[2] || lon < b[1] || lon > b[3]) {
       // ponytail: the box stops at ±180° and the poles: stations across the antimeridian are not asked for. Upgrade: a second box there.
@@ -860,10 +901,10 @@ export class Weather3D {
     this.#cell = cell
     this.#wanted = wanted
     if (nowMs < this.#modelDue && !(wanted && nowMs - this.#modelAskedMs >= this.#modelRetryMs)) return
-    if (nowMs - this.#stoodMs < this.#dwellMs) return
+    if (this.#archive === null && nowMs - this.#stoodMs < this.#dwellMs) return
     this.#modelDue = nowMs + MODEL_EVERY_MS
     this.#modelAskedMs = nowMs
-    void this.#loadModel(`${this.#apiBase}/wx/model?lat=${+lat.toFixed(3)}&lon=${+lon.toFixed(3)}`, ++this.#modelAsk, nowMs)
+    void this.#loadModel(this.#archive !== null ? `${this.#archive.base}/model.json` : `${this.#apiBase}/wx/model?lat=${+lat.toFixed(3)}&lon=${+lon.toFixed(3)}`, ++this.#modelAsk, nowMs)
   }
 
   /**
@@ -888,7 +929,7 @@ export class Weather3D {
   }
 
   #loadMetars(box: Box, askedMs: number): Promise<void> {
-    return this.#fetch('metar', `${this.#apiBase}/wx/metar?bbox=${box.join(',')}`, metarsOf, () => !this.#destroyed && box === this.#box, (list) => {
+    return this.#fetch('metar', this.#archive !== null ? `${this.#archive.base}/metar.json` : `${this.#apiBase}/wx/metar?bbox=${box.join(',')}`, metarsOf, () => !this.#destroyed && box === this.#box, (list) => {
       if (list === null) this.#metarsDue = Math.min(this.#metarsDue, askedMs + RETRY_MS)
       else {
         this.#metars = shiftMetars(list, this.#shift.dLat, this.#shift.dLon)
@@ -915,7 +956,7 @@ export class Weather3D {
   }
 
   #loadSigmets(askedMs: number): Promise<void> {
-    return this.#fetch('sigmet', `${this.#apiBase}/wx/sigmet`, sigmetsOf, () => !this.#destroyed, (list) => {
+    return this.#fetch('sigmet', this.#archive !== null ? `${this.#archive.base}/sigmet.json` : `${this.#apiBase}/wx/sigmet`, sigmetsOf, () => !this.#destroyed, (list) => {
       if (list === null) this.#sigmetsDue = Math.min(this.#sigmetsDue, askedMs + RETRY_MS)
       else {
         this.#sigmets = shiftSigmets(list, this.#shift.dLat, this.#shift.dLon)
@@ -926,6 +967,13 @@ export class Weather3D {
   }
 
   #loadRadar(askedMs: number): Promise<void> {
+    if (this.#archive !== null) { // its one frame, RainViewer's layout in the folder (the tile's colours are its dBZ)
+      this.#radar = new RadarSource(`${this.#archive.base}/`, 'radar')
+      this.#radarGen++
+      this.#known = true
+      this.#status()
+      return Promise.resolve()
+    }
     return this.#fetch('radar', RADAR_INDEX, frameOf, () => !this.#destroyed, (frame) => {
       if (frame === null) this.#radarDue = Math.min(this.#radarDue, askedMs + RETRY_MS)
       else {
@@ -1024,7 +1072,7 @@ export class Weather3D {
     const pixels = sat !== null && handed.length > 0
     const job: GatherJob = {
       id, lat: at.lat, lon: at.lon, metars: this.#metars, metarGen: this.#metarGen, grid: this.#grid(), modelGen: this.#modelGen, tiles,
-      shift: { dLat, dLon }, readKm: RADAR_READ_KM, reachKm: REACH_KM[1], anew: this.#anew, epochMs: this.#epochMs(),
+      shift: { dLat, dLon }, readKm: RADAR_READ_KM, reachKm: REACH_KM[1], anew: this.#anew, epochMs: this.#epochMs(), archive: this.#archive !== null,
       sat: sat === null || pixels ? sat : satBare(sat),
     }
     this.#anew = false
@@ -1065,6 +1113,7 @@ export class Weather3D {
 
   /** The satellite's pictures that may be used now for a field round a place of the drawn sky (the pixels are where the weather is: the place less the ?wxat shift); null: none. */
   #pictures(at: { lat: number; lon: number }): SatPictures | null {
+    if (this.#archive !== null) return this.#archiveSat
     return this.#sat === null || this.#demo !== null ? null : this.#sat.usable(this.#epochMs(), at.lat - this.#shift.dLat, wrapLon(at.lon - this.#shift.dLon))
   }
 
@@ -1132,6 +1181,13 @@ export class Weather3D {
     const n = geoidN(st.lat, st.lon)
     const ground = st.elevM + n
     return base + n + drawnHeightM(ground, this.#fNow, this.#relHM) - ground + PRECIP_OVER_BASE_M
+  }
+
+  /** The radar's echo at a place of the drawn sky, dBZ, for the radar map; null: none, or its tile has not come. */
+  echoAt(lat: number, lon: number): number | null {
+    const { x, y, px, py } = radarPixel(lat - this.#shift.dLat, wrapLon(lon - this.#shift.dLon))
+    const dbz = this.#tileAt(x, y)?.dbz[py * 256 + px] ?? NONE
+    return dbz === NONE ? null : dbz
   }
 
   /** The radar's strongest echo round a place (RainViewer's own), from its decoded zoom-7 tile; null until the tile has come, or no echo. */

@@ -20,14 +20,15 @@ export interface WxPrefs {
   track: boolean // the track line: the way ahead where it is in weather, and a label at the first of it
   slice: boolean // the level slice: the weather at the aircraft's own altitude
   strip: boolean // the ahead strip: a side view of the next 6 minutes
+  map: boolean // the radar map: a small floating card (ui/wxRadarCard.ts); off until asked for
   view: StripView // the heights the strip shows: chosen on the strip itself
 }
 
 export const WX_PREFS_KEY = 'fh.wx3d.v1'
-export const DEFAULT_WX_PREFS: WxPrefs = Object.freeze({ look: 'severity', opacity: VEIL, hazard: 'curtain', track: true, slice: false, strip: true, view: 'path' })
+export const DEFAULT_WX_PREFS: WxPrefs = Object.freeze({ look: 'severity', opacity: VEIL, hazard: 'curtain', track: true, slice: false, strip: true, map: false, view: 'path' })
 export const WX_KEYS = Object.keys(DEFAULT_WX_PREFS) as (keyof WxPrefs)[]
 /** The URL aid of each choice. */
-export const WX_URL_KEYS: Readonly<Record<keyof WxPrefs, string>> = Object.freeze({ look: 'wxlook', opacity: 'wxopacity', hazard: 'wxhaz', track: 'wxtrack', slice: 'wxslice', strip: 'wxstrip', view: 'wxview' })
+export const WX_URL_KEYS: Readonly<Record<keyof WxPrefs, string>> = Object.freeze({ map: 'wxmap', look: 'wxlook', opacity: 'wxopacity', hazard: 'wxhaz', track: 'wxtrack', slice: 'wxslice', strip: 'wxstrip', view: 'wxview' })
 export const WX_LOOKS: readonly CloudLook[] = ['natural', 'severity', 'sculpted']
 export const WX_HAZARDS: readonly HazardStyle[] = ['curtain', 'fence', 'box']
 export const WX_VIEWS: readonly StripView[] = ['path', 'sky']
@@ -63,6 +64,7 @@ export function readWxPrefs(search: string, stored: string | null): WxPrefs {
     track: flag(q.get(WX_URL_KEYS.track), bool(saved.track, d.track)),
     slice: flag(q.get(WX_URL_KEYS.slice), bool(saved.slice, d.slice)),
     strip: flag(q.get(WX_URL_KEYS.strip), bool(saved.strip, d.strip)),
+    map: flag(q.get(WX_URL_KEYS.map), bool(saved.map, d.map)),
     view: choice(q.get(WX_URL_KEYS.view), WX_VIEWS, choice(saved.view, WX_VIEWS, d.view)),
   }
 }

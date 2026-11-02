@@ -154,6 +154,13 @@ test('scene keys: T topography and L sun, either case; not with a modifier, on a
   assert.equal(sceneKey(press('t', { target: { tagName: 'BUTTON', isContentEditable: false } })), 'topo') // a focused toggle
 })
 
+test('weatherView: a scenario with its own day\'s sky shows it in its chase, whatever the switch, and never on the top-down map', () => {
+  const o = { wx: false, history: false, scenario: true, own: true }
+  assert.deepEqual(weatherView({ ...o, chasing: true }), { topDown: false, chase: true })
+  assert.deepEqual(weatherView({ ...o, chasing: false }), { topDown: false, chase: false })
+  assert.deepEqual(weatherView({ ...o, own: false, wx: true, chasing: true }), { topDown: false, chase: false })
+})
+
 test('weatherView: the top-down map\'s weather or the chase\'s, on a live sky only; History and a scenario draw none', () => {
   const view = (o: Partial<Parameters<typeof weatherView>[0]>): ReturnType<typeof weatherView> =>
     weatherView({ wx: true, chasing: false, history: false, scenario: false, ...o })
