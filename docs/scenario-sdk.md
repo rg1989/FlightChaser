@@ -182,6 +182,7 @@ Replace each `TODO`. The package test fails while one is left.
 Rules:
 
 - Add one entry to `sources` for each other document that you cite. Each has an `id`, a `title`, a `url` and a `note`.
+- To open later than the start of the track but keep the rest on the timeline, set `openAt`: `"openAt": "12:46:30"`.
 - To play only a part of the flight, change `start` and `end`. Both must lie between the first and the last row of
   `track.csv`. Use whole seconds: `HH:MM:SS`.
 - Write plain facts. No adjectives that dramatise. No guesses.

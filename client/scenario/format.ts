@@ -109,6 +109,7 @@ interface ManifestOut {
   clockLabel: string
   start: number
   end: number
+  openAt?: number
   t0UtcMs: number
   note: string
   summary: string[]
@@ -175,6 +176,15 @@ function parseManifest(manifest: unknown, problems: string[]): ManifestOut {
     add('end', `bad time: ${JSON.stringify(endStr)}`)
   }
   if (startOk && endOk && !(start < end)) add('start', 'start must be before end')
+  let openAt: number | undefined
+  if (m.openAt !== undefined) {
+    try {
+      openAt = clockToS(String(m.openAt))
+      if (startOk && endOk && !(openAt >= start && openAt < end)) add('openAt', `must be from start up to end: ${JSON.stringify(m.openAt)}`)
+    } catch {
+      add('openAt', `bad time: ${JSON.stringify(m.openAt)}`)
+    }
+  }
 
   let t0UtcMs = 0
   if (DATE_RE.test(date) && OFFSET_RE.test(utcOffset)) {
@@ -324,7 +334,7 @@ function parseManifest(manifest: unknown, problems: string[]): ManifestOut {
     : []
   const summary: string[] = Array.isArray(m.summary) ? m.summary.filter(isString) : []
 
-  return { format: 1, id, title, subtitle, date, utcOffset, clockLabel, start, end, t0UtcMs, note, summary, crew, aircraft, speakers, imagery, ending, audio, weather, sources }
+  return { format: 1, id, title, subtitle, date, utcOffset, clockLabel, start, end, ...(openAt === undefined ? {} : { openAt }), t0UtcMs, note, summary, crew, aircraft, speakers, imagery, ending, audio, weather, sources }
 }
 
 // ---- CSV files --------------------------------------------------------------------------------------
@@ -595,6 +605,7 @@ export function parseScenario(files: {
     utcOffset: manifest.utcOffset,
     clockLabel: manifest.clockLabel,
     start: manifest.start,
+    ...(manifest.openAt === undefined ? {} : { openAt: manifest.openAt }),
     end: manifest.end,
     t0UtcMs: manifest.t0UtcMs,
     note: manifest.note,

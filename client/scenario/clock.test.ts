@@ -3,6 +3,16 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { RATES, ScenarioClock } from './clock.ts'
 
+test('a clock that opens later than its start: it can be sought back, and Play at the stop goes to where it opens', () => {
+  const c = new ScenarioClock(100, 200, 150, 150)
+  assert.equal(c.t, 150)
+  c.seek(100)
+  assert.equal(c.t, 100)
+  c.seek(200)
+  c.play()
+  assert.equal(c.t, 150)
+})
+
 test('tick advances t by dt·rate while playing', () => {
   const c = new ScenarioClock(0, 100)
   c.play()

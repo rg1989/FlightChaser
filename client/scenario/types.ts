@@ -138,7 +138,8 @@ export interface Scenario {
   date: string // YYYY-MM-DD, local
   utcOffset: string // ±HH:MM
   clockLabel: string // e.g. JST
-  start: number // t where playback starts
+  start: number // t where the timeline starts
+  openAt?: number // t where playback begins, when later than start; the timeline still goes back to start
   end: number // t of the last data second the timeline reaches
   t0UtcMs: number // UTC ms of `date` 00:00 local
   note: string

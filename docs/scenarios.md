@@ -72,7 +72,8 @@ The JAL 123 file is a complete example. The fields:
 | `date` | yes | `YYYY-MM-DD`, local date of `start`. |
 | `utcOffset` | yes | `+09:00`. The offset in force on that day (check daylight saving time). |
 | `clockLabel` | yes | The zone name shown next to the clock, for example `JST`. |
-| `start` | yes | The first second of playback. |
+| `start` | yes | The first second of the timeline. |
+| `openAt` | no | Where playback begins, when not at `start`. The viewer can still drag back to `start`. |
 | `end` | yes | The last second the timeline reaches. |
 | `note` | yes | One or two sentences on the card. For an accident, say that it is a reconstruction, how many people died, and that it ends before the impact. |
 | `summary` | no | Short lines for the card: route, aircraft, what happened, where. |

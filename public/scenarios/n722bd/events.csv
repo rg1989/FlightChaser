@@ -9,8 +9,9 @@ time,type,value,label,src
 12:38:40,story,14,"The crew turn left of course around the weather. The heights on screen are true altitude: in the warm air FL350 is near 37,000 ft.",ADSBLOL
 12:44:00,phase,,Along the storm's edge,NEXRAD
 12:44:05,story,14,"The route skirts the large storm area to the north-west. On the radar the track stays in moderate rain, about 35 to 45 dBZ, not in the red core.",NEXRAD
+12:46:32,story,14,"Learjet 60 N722BD is on its way from Austin to North Eleuthera, Bahamas, with nine people on board. It is crossing south Florida at FL350, in thunderstorms.",AIN
 12:47:00,mark,,Ice and moderate turbulence,VASA
-12:47:00,story,14,"Turning direct Freeport, the crew report light clear ice and moderate turbulence. They report height swings of 600 to 700 ft. Outside air temperature: −47 °C.",VASA
+12:47:00,story,14,"Turning direct Freeport, the crew report light clear ice and moderate turbulence. The pilot says ""plus or minus... 700 feet, 600 feet"". The ADS-B shows the climb rate swinging by about that many feet per minute, and height by under 100 ft. Outside air temperature: −47 °C.",VASA
 12:47:25,story,14,"The turn direct to Freeport swings the track from north-east to east, toward a single storm cell west of West Palm Beach. On the radar its core is over 50 dBZ.",NEXRAD
 12:47:58,mark,,Reaches the storm cell,NEXRAD
 12:47:58,phase,,In the storm cell,NEXRAD

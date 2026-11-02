@@ -9,13 +9,15 @@ export type Rate = (typeof RATES)[number]
 
 export class ScenarioClock {
   readonly start: number
+  readonly open: number // where Play goes from the stop: where the scenario opens
   readonly stop: number
   t: number
   playing = false
   rate: Rate = 1
 
-  constructor(start: number, stop: number, t: number = start) {
+  constructor(start: number, stop: number, t: number = start, open: number = start) {
     this.start = start
+    this.open = open
     this.stop = stop
     this.t = clamp(t, start, stop)
   }
@@ -35,9 +37,9 @@ export class ScenarioClock {
     this.t = clamp(t, this.start, this.stop)
   }
 
-  /** Resumes from the current t, or from `start` when t is already at `stop`. */
+  /** Resumes from the current t, or from `open` (where the scenario opens) when t is already at `stop`. */
   play(): void {
-    if (this.t >= this.stop) this.t = this.start
+    if (this.t >= this.stop) this.t = this.open
     this.playing = true
   }
 

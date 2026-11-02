@@ -250,6 +250,15 @@ test('parseScenario: ending.fadeFrom after darkAt is a problem', () => {
   })
 })
 
+test('parseScenario: openAt is read when it lies from start up to end; absent, the scenario has none', () => {
+  const base = validManifest({}) as { start: string; end: string }
+  assert.equal(parseScenario(validFiles({ manifest: validManifest({}) })).openAt, undefined)
+  assert.throws(() => parseScenario(validFiles({ manifest: validManifest({ openAt: base.end }) })), /openAt/)
+  assert.throws(() => parseScenario(validFiles({ manifest: validManifest({ openAt: 'noon' }) })), /openAt/)
+  const at = parseScenario(validFiles({ manifest: validManifest({ openAt: base.start }) }))
+  assert.equal(at.openAt, at.start)
+})
+
 test('parseScenario: weather needs its folder, its time and its source', () => {
   const ok = parseScenario(validFiles({ manifest: validManifest({ weather: { folder: 'weather/', at: '2026-11-01T17:50:00Z', source: 'NOAA' } }) }))
   assert.deepEqual(ok.weather, { folder: 'weather', atMs: Date.UTC(2026, 10, 1, 17, 50), source: 'NOAA' })

@@ -62,7 +62,8 @@ export class ScenarioPlayer {
   constructor(scenario: Scenario, pose: PoseLike, t?: number) {
     this.scenario = scenario
     this.#pose = pose
-    this.clock = new ScenarioClock(scenario.start, stopOf(scenario), t !== undefined && Number.isFinite(t) ? t : scenario.start)
+    const open = scenario.openAt ?? scenario.start
+    this.clock = new ScenarioClock(scenario.start, stopOf(scenario), t !== undefined && Number.isFinite(t) ? t : open, open)
     this.#lastT = this.clock.t
   }
 
