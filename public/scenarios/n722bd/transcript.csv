@@ -31,13 +31,13 @@ time,dur,speaker,to,channel,lang,text,original,q,src
 12:48:13,2.8,N722BD,ZMA,radio,en,"Climb FL370, 2BD.",,H,VASA
 12:48:29,5.4,N722BD,ZMA,radio,en,"722BD, we're descending 8000 - MAYDAY MAYDAY, we're descending 10000 feet per minute.",,H,VASA
 12:48:35,3.3,ZMA,N722BD,radio,en,"N722BD, roger.",,H,VASA
-12:48:38,,N722BD,ZMA,radio,en,"Declaring an emergency, 722BD!",,H,VASA
-12:48:42,,N722BD,ZMA,radio,en,"Descending 20,000 feet per minute!",,H,VASA
+12:48:38.8,2.5,N722BD,ZMA,radio,en,"Declaring an emergency, 722BD!",,H,VASA
+12:48:41.4,3.5,N722BD,ZMA,radio,en,"Descending 20,000 feet per minute!",,H,VASA
 12:48:46,4.3,ZMA,N722BD,radio,en,"N722BD, roger, altitude your discretion. Let me know what you need.",,H,VASA
-12:48:56,,N722BD,ZMA,radio,en,"We're going to crash into the ground, 722BD.",,H,VASA
+12:48:54.8,5.0,N722BD,ZMA,radio,en,"We're going to crash into the ground, 722BD.",,H,VASA
 12:49:01,2.5,ZMA,N722BD,radio,en,"N2BD, I'm here with you. Talk to me.",,H,VASA
-12:49:04,,N722BD,ZMA,radio,en,"We are descending 22,000 feet...",,H,VASA
-12:49:06,,N722BD,ZMA,radio,en,...and we are banking... 60 degrees...,,H,VASA
+12:49:03.4,2.5,N722BD,ZMA,radio,en,"We are descending 22,000 feet...",,H,VASA
+12:49:06.4,5.5,N722BD,ZMA,radio,en,...and we are banking... 60 degrees...,,H,VASA
 12:49:15,3.7,ZMA,N722BD,radio,en,"N2BD, roger--",,H,VASA
-12:49:20,,N722BD,ZMA,radio,en,"But look outside, Jack! Look outside!",,H,VASA
-12:49:22,,N722BD,ZMA,radio,en,Holy fuck! We're out of ti--,,H,VASA
+12:49:18.3,3.4,N722BD,ZMA,radio,en,"But look outside, Jack! Look outside!",,H,VASA
+12:49:22.9,2.5,N722BD,ZMA,radio,en,Holy fuck! We're out of ti--,,H,VASA

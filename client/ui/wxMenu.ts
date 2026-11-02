@@ -2,7 +2,7 @@
 // The Weather panel (a square of its own under the Layers square, always on the rail): a master switch (Weather, W: ScenePrefs.wx) with
 // what hangs under it: the rain scale in the radar's colours and the airports legend (the top-down map's) and the status line (both
 // views', with Open-Meteo's credit in it, and EUMETSAT's while the satellite's frame is in use, as links to their sites, as their licences
-// ask); Clouds, in three looks (natural, severity colours, sculpted), their opacity (a slider, none to solid: at none the hazard areas show alone) and the severity scale's four colours; Hazard areas, in
+// ask); Clouds, off or in three looks (natural, severity colours, sculpted), their opacity (a slider, none to solid: at none the hazard areas show alone) and the severity scale's four colours; Hazard areas, in
 // three styles (curtain, fence, box); Looking ahead, a switch row each for the track line, the level slice and the ahead strip (the
 // level slice is not drawn in the Sculpted look: there its switch is disabled, keeps its choice, and its hint says so). The
 // looks, styles and aids are the chase's: top-down they show disabled, with one line, "In the chase view". With the master switch off
@@ -15,8 +15,8 @@ import { icon, type IconName } from './icons.ts'
 import { RAIN_PALETTE } from '../scene/radar.ts'
 import { CATEGORY_COLOR, WX_CREDITS } from '../scene/wxText.ts'
 import { SEV_COLOR } from '../scene/wxAhead.ts'
-import type { CloudLook, HazardStyle } from '../scene/cloudVolume.ts'
-import type { WxPrefs } from './wxPrefs.ts'
+import type { HazardStyle } from '../scene/cloudVolume.ts'
+import type { WxLook, WxPrefs } from './wxPrefs.ts'
 import './sceneToggles.css'
 import './wxMenu.css'
 
@@ -42,7 +42,7 @@ export interface WxMenuHandle {
   destroy(): void
 }
 
-const LOOKS: [CloudLook, string][] = [['natural', 'Natural'], ['severity', 'Severity colours'], ['sculpted', 'Sculpted']]
+const LOOKS: [WxLook, string][] = [['off', 'Off'], ['natural', 'Natural'], ['severity', 'Severity colours'], ['sculpted', 'Sculpted']]
 const HAZARDS: [HazardStyle, string][] = [['curtain', 'Curtain'], ['fence', 'Fence'], ['box', 'Box']]
 // The severity scale's names (wxAhead.ts SEV_COLOR is in this order), as a legend says them.
 const LEGEND = ['Cloud', 'Light rain', 'Heavy rain', 'Thunderstorm']
@@ -232,7 +232,7 @@ export function mountWxMenu(root: HTMLElement, opts: WxMenuOpts): WxMenuHandle {
     const use = wx && chasing // the looks, styles and aids act in the chase, with the weather on
     setOff(m.part, !live)
     setOff(looks, !use || failed)
-    setOff(dial, !use || failed)
+    setOff(dial, !use || failed || prefs.look === 'off')
     setOff(styles, !use)
     for (const a of aids) {
       const undrawn = a.key === 'slice' && prefs.look === 'sculpted' // the Sculpted look has no level slice

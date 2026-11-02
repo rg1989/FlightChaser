@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { FRAME_PREFS_KEY, MAX_SCALE, MIN_SCALE, NO_FRAME_PREFS, readFramePrefs, writeFramePrefs } from './framePrefs.ts'
 import { DEFAULT_UNITS } from './units.ts'
 
-const REST = { scale: {}, units: DEFAULT_UNITS, preset: 'custom', option: {}, variant: {}, look: 'glass' }
+const REST = { scale: {}, units: DEFAULT_UNITS, preset: 'custom', option: {}, variant: {}, look: 'glass', total: false }
 
 test('nothing stored: every card in its place and shown; the key is fh.hudLayout.v1', () => {
   assert.equal(FRAME_PREFS_KEY, 'fh.hudLayout.v1')

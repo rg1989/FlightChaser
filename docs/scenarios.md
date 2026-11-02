@@ -219,6 +219,7 @@ word. When the record gives only the minute, say so in the source note.
   Close.
 - A drag back on the timeline lifts the veil. A drag into the dark seconds shows only dark and the clock.
 - For an accident, `darkAt` is before the first contact with the ground or an obstacle (see Part 3).
+- The veil covers the 3-D view only. On the top-down map the route's end stays in sight.
 
 ### 1.9 audio (optional)
 
@@ -247,10 +248,10 @@ word. When the record gives only the minute, say so in the source note.
 ### 1.9a weather (optional)
 
 ```json
-"weather": { "folder": "weather", "at": "2026-11-01T17:50:00Z", "source": "where each file comes from" }
+"weather": { "folder": "weather", "at": "2026-11-01T17:50:00Z", "satellite": "GOES-East", "source": "where each file comes from" }
 ```
 
-The app shows this sky in the 3-D view, in the Natural look. Without `weather` a scenario has no weather. The files are one snapshot at the time `at`:
+The app shows this sky in the 3-D view until the viewer turns it off (Weather menu: the master switch, or Clouds: Off). Without `weather` a scenario has no weather. `satellite` names the source of `sat.bin` in the Weather panel. The files are one snapshot at the time `at`:
 
 | File in the folder | What it is |
 |---|---|
@@ -363,8 +364,9 @@ Do not send these. They cost time and the app does not use them.
 
 These rules are fixed. They apply to every accident or serious-incident scenario.
 
-1. **End before the impact.** The screen is fully dark (`darkAt`) before the first contact with anything. The app
-   never draws or plays an impact, fire, wreckage, a crash sound or a camera view of the ground contact.
+1. **End before the impact.** The 3-D view is fully dark (`darkAt`) before the first contact with anything. The app
+   never draws or plays an impact, fire, wreckage, a crash sound or a camera view of the ground contact. The top-down
+   map stays lit, so the end of the route shows where the flight ended.
 2. **Captions from the official record only.** Use the investigating authority's transcript. Keep its words and its
    spelling. Our own translation of the official original is `q=T`. Where no official transcript exists and a genuine
    recording does, its words as we hear them are `q=H`, marked "as heard" on screen; say in the source's `note` how

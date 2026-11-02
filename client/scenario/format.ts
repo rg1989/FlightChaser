@@ -298,7 +298,7 @@ function parseManifest(manifest: unknown, problems: string[]): ManifestOut {
     if (!isString(weatherRaw.folder) || weatherRaw.folder.length === 0) add('weather.folder', 'required, non-empty')
     const atMs = isString(weatherRaw.at) ? Date.parse(weatherRaw.at) : Number.NaN
     if (!Number.isFinite(atMs)) add('weather.at', `bad time: ${JSON.stringify(weatherRaw.at)}`)
-    weather = { folder: isString(weatherRaw.folder) ? weatherRaw.folder.replace(/\/$/, '') : '', atMs, source: isString(weatherRaw.source) ? weatherRaw.source : '' }
+    weather = { folder: isString(weatherRaw.folder) ? weatherRaw.folder.replace(/\/$/, '') : '', atMs, source: isString(weatherRaw.source) ? weatherRaw.source : '', ...(isString(weatherRaw.satellite) ? { satellite: weatherRaw.satellite } : {}) }
   }
 
   const sourcesRaw = Array.isArray(m.sources) ? m.sources : []

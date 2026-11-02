@@ -37,11 +37,12 @@ export interface FramePrefs {
   option?: Partial<Record<PresetId, number>> // a ready-made layout's option, 0 to 2 (absent: its first)
   variant?: Partial<Record<BlockId, number>> // custom: a card's variant, 1 or 2 (absent: the full one)
   look?: Look // custom: its colours (absent: glass)
+  total?: boolean // the total speed's line on the speed card: in every layout (absent: off)
 }
 
 export const NO_FRAME_PREFS: FramePrefs = Object.freeze({
   moved: Object.freeze({}), hidden: Object.freeze([]), order: Object.freeze([]), scale: Object.freeze({}), units: DEFAULT_UNITS,
-  preset: 'custom', option: Object.freeze({}), variant: Object.freeze({}), look: 'glass',
+  preset: 'custom', option: Object.freeze({}), variant: Object.freeze({}), look: 'glass', total: false,
 })
 export const MIN_SCALE = 0.6
 export const MAX_SCALE = 1.8
@@ -99,14 +100,15 @@ export function readFramePrefs(stored: string | null): FramePrefs {
     preset: PRESET_IDS.find((id) => id === all.preset) ?? 'custom',
     option: each(all.option, PRESET_IDS), variant: each(all.variant, CARDS),
     look: LOOK_IDS.find((id) => id === all.look) ?? 'glass',
+    total: all.total === true,
   }
 }
 
 /** Stores the layout as JSON. Storage errors (private mode, quota, blocked) are swallowed: the layout still applies. */
 export function writeFramePrefs(prefs: FramePrefs, storage: Pick<Storage, 'setItem'> | null): void {
   try {
-    const { moved, hidden, order, scale, units, preset, option, variant, look } = prefs
-    storage?.setItem(FRAME_PREFS_KEY, JSON.stringify({ moved, hidden, order, scale, units, preset, option, variant, look }))
+    const { moved, hidden, order, scale, units, preset, option, variant, look, total } = prefs
+    storage?.setItem(FRAME_PREFS_KEY, JSON.stringify({ moved, hidden, order, scale, units, preset, option, variant, look, total }))
   } catch {
     // not kept; the page keeps the layout in memory
   }

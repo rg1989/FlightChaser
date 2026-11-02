@@ -50,6 +50,7 @@ export const AGL_SHOWN_BELOW_FT = 15_000
 const LEVEL_FPM = 50 // within this a vertical speed reads 0, without an arrow (ADS-B rates come in 64 fpm steps)
 const TRACK_DIAMOND_DEG = 1 // the track diamond shows once the track is this far off the heading
 const MINUS = '−' // the typographic minus: the width of the plus sign, not a hyphen's
+const FPM_PER_KT = 101.269 // ft/min in a knot
 const IDS: readonly BlockId[] = ['left', 'right', 'top', 'bottom']
 
 const fin = (v: number | null | undefined): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -424,6 +425,7 @@ export interface FrameView {
   speed: (Reading & { kind: 'IAS' | 'GS' }) | null // the tape
   tas: Reading | null // the true airspeed: the speed through the air, level with the vertical speed
   gs: Reading | null // the ground speed beside an airspeed tape
+  total: Reading | null // the speed along the way it moves: over the ground and up or down together
   hdg: (Reading & { kind: 'HDG' | 'TRK' }) | null // the tape: the heading, else the track (an estimate of the nose)
   track: Reading | null // the track diamond on the heading tape, once it differs from the heading by TRACK_DIAMOND_DEG
   // rel: where it comes from, clockwise from the nose; null: calm, or no nose.
@@ -436,6 +438,9 @@ export interface FrameView {
   gear: { est: boolean } | null // down
   flaps: Reading | null // out
 }
+
+/** The speed along the way it moves, kt: the ground speed and the vertical speed together (no vertical speed known: the ground speed). */
+export const totalSpeedKt = (gsKt: number, vsFpm: number | null | undefined): number => Math.hypot(gsKt, fin(vsFpm) ? vsFpm / FPM_PER_KT : 0)
 
 export function frameView(d: FlightData): FrameView {
   const est = (k: keyof FlightData): boolean => d.derived.has(k)
@@ -468,6 +473,7 @@ export function frameView(d: FlightData): FrameView {
     // when the airspeed is.
     tas: fin(d.tasKt) && d.tasKt > 0 ? { value: d.tasKt, est: est('tasKt') || est('iasKt') } : null,
     gs: speed?.kind === 'IAS' ? gs : null,
+    total: gs === null ? null : { value: totalSpeedKt(gs.value, d.vsFpm), est: gs.est || est('vsFpm') },
     hdg,
     track,
     wind,
@@ -705,6 +711,8 @@ export class FlightFrame {
   readonly #tas = line('fh-tas', 'TAS', 'kt')
   readonly #gs = line('fh-gs', 'GS', 'kt')
   readonly #spd2 = line('fh-dual', '', 'km/h') // "both" units: the speed in km/h under the tape
+  readonly #total = line('fh-total', 'Total', 'km/h') // the speed along the way it moves, in a road's units whatever the tape's: the toolbar's switch
+  readonly #totalBtn = h('button', 'fh-fbar-b fh-fbar-total', 'Total speed')
   // Top: the wind, the heading tape.
   readonly #wind = h('div', 'fh-wind')
   readonly #wdial = new WindDial()
@@ -731,6 +739,7 @@ export class FlightFrame {
     vs: new Glide(0.35, 4_000),
     spd: new Glide(0.25, 60),
     tas: new Glide(0.25, 60),
+    total: new Glide(0.25, 60),
     gs: new Glide(0.25, 60),
     hdg: new Glide(0.3, 90, true),
     trk: new Glide(0.3, 90, true),
@@ -769,7 +778,7 @@ export class FlightFrame {
   readonly #layer: HTMLElement
   #prefs: {
     moved: Partial<Record<BlockId, Offset>>; hidden: BlockId[]; order: BlockId[]; scale: Partial<Record<BlockId, number>>; units: Units
-    preset: PresetId; option: Partial<Record<PresetId, number>>; variant: Partial<Record<BlockId, number>>; look: Look
+    preset: PresetId; option: Partial<Record<PresetId, number>>; variant: Partial<Record<BlockId, number>>; look: Look; total?: boolean
   }
   readonly #onPrefs: (prefs: FramePrefs) => void
   readonly #onSide: (column: Rect | null) => void
@@ -809,7 +818,7 @@ export class FlightFrame {
     const p = opts.prefs ?? NO_FRAME_PREFS
     this.#prefs = {
       moved: { ...p.moved }, hidden: [...p.hidden], order: [...p.order], scale: { ...(p.scale ?? {}) }, units: { ...p.units },
-      preset: p.preset ?? 'custom', option: { ...(p.option ?? {}) }, variant: { ...(p.variant ?? {}) }, look: p.look ?? 'glass',
+      preset: p.preset ?? 'custom', option: { ...(p.option ?? {}) }, variant: { ...(p.variant ?? {}) }, look: p.look ?? 'glass', total: p.total === true,
     }
     this.#alt = new Tape(altTape(p.units), 'alt')
     this.#spd = new Tape(speedTape(p.units), 'spd')
@@ -836,7 +845,7 @@ export class FlightFrame {
     blocks.left.append(head(this.#altHead), this.#altD.el, this.#altRow, this.#alt2.el, this.#vs.el, this.#agl.el)
 
     this.#spdRow.append(this.#spd.el)
-    blocks.right.append(this.#spdHead, this.#spdD.el, this.#spdRow, this.#spd2.el, this.#tas.el, this.#gs.el)
+    blocks.right.append(this.#spdHead, this.#spdD.el, this.#spdRow, this.#spd2.el, this.#tas.el, this.#gs.el, this.#total.el)
 
     const windRow = h('div', 'fh-wind-row')
     windRow.append(this.#wdial.el, this.#windText, this.#windUnit)
@@ -893,7 +902,16 @@ export class FlightFrame {
     this.#buildUnits()
     this.#presets.setAttribute('role', 'group')
     this.#presets.setAttribute('aria-label', 'Layout')
-    this.#top.append(title, this.#presets, this.#unitsBtn, done)
+    this.#totalBtn.type = 'button'
+    this.#totalBtn.title = 'The speed along the way it moves: over the ground and up or down together, in km/h or mph'
+    this.#totalBtn.setAttribute('aria-pressed', String(this.#prefs.total === true))
+    this.#totalBtn.addEventListener('click', () => {
+      this.#prefs.total = this.#prefs.total !== true
+      this.#totalBtn.setAttribute('aria-pressed', String(this.#prefs.total))
+      this.#changed()
+    })
+    this.#total.el.title = this.#totalBtn.title
+    this.#top.append(title, this.#presets, this.#unitsBtn, this.#totalBtn, done)
     this.#bar.append(this.#top, this.#choices, this.#unitsMenu)
     this.#arranged()
     this.#guideV.hidden = this.#guideH.hidden = true
@@ -1596,7 +1614,7 @@ export class FlightFrame {
     const p = this.#prefs
     this.#onPrefs({
       moved: { ...p.moved }, hidden: [...p.hidden], order: [...p.order], scale: { ...p.scale }, units: { ...p.units },
-      preset: p.preset, option: { ...p.option }, variant: { ...p.variant }, look: p.look,
+      preset: p.preset, option: { ...p.option }, variant: { ...p.variant }, look: p.look, total: p.total,
     })
   }
 
@@ -1677,6 +1695,7 @@ export class FlightFrame {
     this.#spd.trend(this.#trendOn ? speedIn(rate! * TREND_S, u.speed) : null, dpr)
     gl.tas.step(v.tas?.value ?? null, dt)
     gl.gs.step(v.gs?.value ?? null, dt)
+    gl.total.step(v.total?.value ?? null, dt)
     const hdg = gl.hdg.step(v.hdg?.value ?? null, dt)
     const trk = gl.trk.step(v.track?.value ?? null, dt)
     if (hdg !== null) this.#hdg.set(hdg, trk === null ? null : rel180(trk - hdg), dpr)
@@ -1743,6 +1762,14 @@ export class FlightFrame {
       say(this.#gs.value, speedText(speedIn(gl.gs.value, u.speed)))
       dim(this.#gs.el, v.gs.est)
     }
+    const total = this.#prefs.total === true ? v.total : null
+    show(this.#total.el, total !== null)
+    if (total !== null && gl.total.value !== null) {
+      const mph = u.speed === 'mph'
+      say(this.#total.value, speedText(speedIn(gl.total.value, mph ? 'mph' : 'kmh')))
+      say(this.#total.unit, mph ? 'mph' : 'km/h')
+      dim(this.#total.el, total.est)
+    }
     show(this.#thrust, v.epr !== null)
     if (v.epr !== null) {
       v.epr.values.forEach((e, i) => this.#eprGauges[i]?.text(e === null ? '—' : eprText(e)))
@@ -1805,7 +1832,7 @@ export class FlightFrame {
     const fit = (el: Element, room: number): number => Math.max(len(el), room)
     const keys: Record<BlockId, string> = {
       left: [phone, v.alt !== null, v.vs !== null, v.agl !== null, this.#alt.leadLength, fit(this.#vs.value, 7), fit(this.#agl.value, 6), len(this.#altD.value)].join(),
-      right: [phone, v.speed?.kind, v.tas !== null, v.gs !== null, this.#spd.leadLength, fit(this.#tas.value, 3), fit(this.#gs.value, 3), len(this.#spdD.value)].join(),
+      right: [phone, v.speed?.kind, v.tas !== null, v.gs !== null, this.#prefs.total === true && v.total !== null, fit(this.#total.value, 5), this.#spd.leadLength, fit(this.#tas.value, 3), fit(this.#gs.value, 3), len(this.#spdD.value)].join(),
       top: [phone, v.hdg?.kind, v.wind !== null, v.wind?.rel !== null, len(this.#windText)].join(),
       bottom: [
         phone, v.adi !== null, v.roll !== null, v.pitch !== null, v.g !== null, v.gear !== null, v.flaps !== null, len(this.#flaps),

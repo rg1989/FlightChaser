@@ -113,6 +113,7 @@ export interface AudioSpec {
 export interface WeatherSpec {
   folder: string // relative to the scenario folder
   atMs: number // the moment the files are of
+  satellite?: string // whose sat.bin it is, for the Weather panel's line
   source: string // provenance, required
 }
 

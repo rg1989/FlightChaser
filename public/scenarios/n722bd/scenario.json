@@ -7,8 +7,8 @@
   "utcOffset": "-05:00",
   "clockLabel": "EST",
   "start": "12:29:40",
-  "end": "12:49:32",
-  "note": "A reconstruction, from the aircraft's own ADS-B broadcasts and the Miami Center radio, of the last 20 minutes of a flight on which all nine people aboard died. The attitude is computed from the path. It ends before the impact. The investigation has only begun: the cause is not known.",
+  "end": "12:49:35",
+  "note": "A reconstruction, from the aircraft's own ADS-B broadcasts and the Miami Center radio, of the last 20 minutes of a flight on which all nine people aboard died. The attitude is computed from the path. It plays to the last moment before the impact, then goes dark: no impact is shown. The investigation has only begun: the cause is not known.",
   "summary": [
     "A Bombardier Learjet 60, N722BD, from Austin, Texas, to North Eleuthera, Bahamas, on Sunday 1 November 2026, with nine people on board.",
     "Crossing south Florida in thunderstorms at FL350, the crew reported ice and moderate turbulence, and asked to climb.",
@@ -42,21 +42,21 @@
     }
   },
   "ending": {
-    "fadeFrom": "12:49:24",
-    "darkAt": "12:49:29",
+    "fadeFrom": "12:49:32.6",
+    "darkAt": "12:49:33.1",
     "cardAfterS": 3,
     "card": {
       "title": "Learjet 60 N722BD",
       "lines": [
         "1 November 2026 · Bombardier Learjet 60 N722BD, from Austin to North Eleuthera.",
-        "The aircraft crashed near Military Trail and 10th Avenue North, Greenacres, Florida, at about 12:50 local time. All nine people on board died. Nobody on the ground was reported injured; about 600 residents nearby had to leave their homes.",
+        "The aircraft crashed near Military Trail and 10th Avenue North, Greenacres, Florida (26.6329° N, 80.1131° W), at 12:49:33 local time by its last ADS-B signal. All nine people on board died. Nobody on the ground was reported injured; about 600 residents nearby had to leave their homes.",
         "The NTSB is investigating, with the FAA. No cause has been established. This is a reconstruction from public data, made the day after, and it may be wrong in its details."
       ]
     }
   },
   "audio": {
     "file": "local/radio.m4a",
-    "source": "The Miami Center frequency as LiveATC.net's volunteer receivers recorded it, in VASAviation's video \"Learjet N722BD Crash in Extreme Weather (Ice and Turbulence)\" (youtube.com/watch?v=8ri8h7dg8nE). Each transmission is placed at the clock in that video's own ADS-B replay; the calls of 8,000 and 10,000 ft/min and of 22,000 ft fall within seconds of the same values in the ADS-B. The publisher muted the aircraft's transmissions from 12:48:38 on purpose; they are not played here.",
+    "source": "The Miami Center frequency as LiveATC.net's volunteer receivers recorded it. VASAviation's video \"Learjet N722BD Crash in Extreme Weather (Ice and Turbulence)\" (youtube.com/watch?v=8ri8h7dg8nE) gives the clock and most of the sound. It mutes the aircraft from 12:48:38 on purpose; those calls come from another copy of the recording (youtube.com/watch?v=PsynXCIsuQM), whose tower lines match at 0.97 correlation. Each call is levelled, since the pilot came through about 10 dB under the controller. The calls of 8,000 and 10,000 ft/min and of 22,000 ft fall within seconds of the same values in the ADS-B. The file ends with the aircraft's last words, nine seconds before the impact.",
     "clips": [
       {
         "from": 0.0,
@@ -220,32 +220,68 @@
       },
       {
         "from": 132.8,
-        "to": 137.1,
+        "to": 135.0,
+        "at": "12:48:38.8"
+      },
+      {
+        "from": 135.0,
+        "to": 138.5,
+        "at": "12:48:41.4"
+      },
+      {
+        "from": 138.5,
+        "to": 142.8,
         "at": "12:48:46"
       },
       {
-        "from": 137.1,
-        "to": 139.6,
+        "from": 142.8,
+        "to": 147.8,
+        "at": "12:48:54.8"
+      },
+      {
+        "from": 147.8,
+        "to": 150.3,
         "at": "12:49:01"
       },
       {
-        "from": 139.6,
-        "to": 143.3,
+        "from": 150.3,
+        "to": 152.8,
+        "at": "12:49:03.4"
+      },
+      {
+        "from": 152.8,
+        "to": 158.3,
+        "at": "12:49:06.4"
+      },
+      {
+        "from": 158.3,
+        "to": 162.0,
         "at": "12:49:15"
+      },
+      {
+        "from": 162.0,
+        "to": 165.4,
+        "at": "12:49:18.3"
+      },
+      {
+        "from": 165.4,
+        "to": 166.6,
+        "at": "12:49:22.9"
       }
     ]
   },
   "weather": {
     "folder": "weather",
     "at": "2026-11-01T17:50:00Z",
-    "source": "NOAA NEXRAD composite of 17:45 UTC via Iowa Environmental Mesonet; METARs of about 17:50 UTC from aviationweather.gov; cloud cover and winds at 18:00 UTC from Open-Meteo (CC BY 4.0, a forecast model, not an observation)."
+    "satellite": "GOES-East",
+    "source": "NOAA NEXRAD composite and GOES-East infrared of 17:45 UTC via Iowa Environmental Mesonet; METARs of about 17:50 UTC from aviationweather.gov; cloud cover and winds at 18:00 UTC from Open-Meteo (CC BY 4.0, a forecast model, not an observation)."
   },
   "sources": [
     {
       "id": "ADSBLOL",
       "title": "adsb.lol trace of N722BD (a9ab17), 1 November 2026",
       "url": "https://adsb.lol/globe_history/2026/11/01/traces/17/trace_full_a9ab17.json",
-      "note": "The aircraft's own ADS-B broadcasts as adsb.lol's receivers heard them, under the ODbL. GPS positions and GNSS height, 1 to 2 a second in the dive. No airspeed is broadcast, so the track has none and the physics check has none to judge with. Pitch and bank are computed from the path (all rows q=R). Height is GNSS height less the geoid."
+      "note": "The aircraft's own ADS-B broadcasts as adsb.lol's receivers heard them, under the ODbL. GPS positions and GNSS height, 1 to 2 a second in the dive. No airspeed is broadcast, so the track has none and the physics check has none to judge with. Pitch and bank are computed from the path (all rows q=R). Height is GNSS height less the geoid. The last row before the ground is the last reception, 12:49:32.75; the rows after it are that velocity carried on to the ground, an estimate that ends 57 m from the published site."
     },
     {
       "id": "VASA",
@@ -288,6 +324,12 @@
       "title": "Open-Meteo forecast grid, 18:00 UTC, 1 November 2026",
       "url": "https://open-meteo.com/",
       "note": "Weather data by Open-Meteo.com, CC BY 4.0. Cloud cover and winds by height in weather/model.json. A model, not an observation."
+    },
+    {
+      "id": "WIKI",
+      "title": "Wikipedia, \"2026 Palm Beach County Learjet 60 crash\"",
+      "url": "https://en.wikipedia.org/wiki/2026_Palm_Beach_County_Learjet_60_crash",
+      "note": "The crash site's coordinates, 26.632889, -80.113111, a secondary source; the NTSB has published none yet."
     }
   ]
 }

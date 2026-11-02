@@ -18,6 +18,7 @@ registerHooks({
 const {
   HYST_PX, altText, bankText, blocksShown, boxCentre, deg3, eprText, frameLayout, frameView, freeSpot, gText, layoutSide,
   dragStarted, liveFlightData, movedTo, offsetAt, pitchText, speedText, vsText, wholePx, windText,
+  totalSpeedKt,
 } = await import('./flightFrame.ts')
 
 type Sizes = Record<BlockId, BlockSize>
@@ -867,4 +868,10 @@ test('scaledSizes: size and anchors grow with the scale; 1 keeps them', async ()
   const { scaledSizes } = await import('./flightFrame.ts')
   assert.deepEqual(scaledSizes([{ w: 100, h: 50, ay: 20 }], 1.5), [{ w: 150, h: 75, ay: 30 }])
   assert.deepEqual(scaledSizes([{ w: 100, h: 50, ax: 40 }], 1), [{ w: 100, h: 50, ax: 40 }])
+})
+
+test('totalSpeedKt: the ground speed and the vertical speed together; none known up or down: the ground speed', () => {
+  assert.equal(totalSpeedKt(400, null), 400)
+  assert.equal(totalSpeedKt(400, 0), 400)
+  assert.ok(Math.abs(totalSpeedKt(232, 53_700) - 578) < 1) // N722BD's last seconds: 232 kt over the ground, 530 kt down
 })

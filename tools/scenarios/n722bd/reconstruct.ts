@@ -31,6 +31,7 @@ const clock = (t: number): string => { // on the package's local clock
 const FROM = hms('17:28:30')
 const START = hms('17:29:40')
 const UPSET_FROM = hms('17:48:10') // the top of the zoom
+const GROUND_FT = 18 // the crash site's height above the sea
 
 const trace = JSON.parse(readFileSync(process.argv[2], 'utf8')) as { timestamp: number; trace: unknown[][] }
 interface Pt { t: number; lat: number; lon: number; geomFt: number | null; gsKt: number; trk: number }
@@ -93,7 +94,27 @@ for (let t = START - 20; t <= END + 1e-9; t += SUB) {
     'R', 'ADSBLOL',
   ].join(','))
 }
+// Past the last whole second: the last reception, then on its last velocity to the ground (nobody heard that). The crash site as published
+// (26.632889, -80.113111) is printed against where this ends.
+const fine = (t: number): string => `${clock(Math.floor(t))}.${Math.floor((t % 1) * 10)}`
+const lastT = uniq[uniq.length - 1].t
+const end = { e: knotAt(ground.e, lastT), n: knotAt(ground.n, lastT), h: knotAt(kv, lastT) }
+const lastRow = rows[rows.length - 1].split(',')
+const at = (t: number): [string, string, string] => {
+  const dt = t - lastT
+  const lat = lat0 + (end.n.p + end.n.v * dt) / M_PER_DEG
+  const lon = lon0 + (end.e.p + end.e.v * dt) / M_PER_DEG / c0
+  return [lat.toFixed(6), lon.toFixed(6), Math.max(GROUND_FT, (end.h.p + end.h.v * dt) / FT).toFixed(0)]
+}
+const hitT = lastT + (GROUND_FT * FT - end.h.p) / end.h.v
+const row = (t: string, p: [string, string, string]): string => [t, ...p, ...lastRow.slice(4, 9), 'R', 'ADSBLOL'].join(',')
+rows.push(row(fine(lastT), at(lastT)))
+if (hitT - lastT > 0.15) rows.push(row(fine(lastT + (hitT - lastT) / 2), at(lastT + (hitT - lastT) / 2)))
+rows.push(row(fine(hitT), at(hitT)))
+rows.push(row(clock(Math.ceil(hitT) + 1), at(hitT)))
 writeFileSync(new URL('../../../public/scenarios/n722bd/track.csv', import.meta.url), `${rows.join('\n')}\n`)
+const [hitLat, hitLon] = at(hitT).map(Number)
+console.log(`on the ground ${fine(hitT)}, ${hitLat}, ${hitLon}: ${Math.round(Math.hypot((hitLat - 26.632889) * M_PER_DEG, (hitLon + 80.113111) * M_PER_DEG * c0))} m from the published site`)
 console.log(`${rows.length - 1} rows, ${clock(START)}–${clock(END)} EST from ${uniq.length} receptions`)
 for (const s of ['17:47:00', '17:48:14', '17:48:30', '17:48:42', '17:49:04', '17:49:15', '17:49:25', '17:49:32']) {
   const r = rows.find((x) => x.startsWith(clock(hms(s))))

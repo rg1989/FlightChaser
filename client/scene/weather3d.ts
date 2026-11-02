@@ -203,13 +203,13 @@ export function parseWxAt(search: string): WxAt | null {
  * Open-Meteo.com · © EUMETSAT": the satellite's part and its credit while its frame is in use (sat: the frame's time), Open-Meteo's
  * credit while the forecast model's grid is in use.
  */
-export function statusText3d(s: { airports: number; areas: number; model: boolean; note: string; sat?: number | null }): string {
+export function statusText3d(s: { airports: number; areas: number; model: boolean; note: string; sat?: number | null; satName?: string | null }): string {
   const count = (n: number, what: string): string => `${n} ${what}${n === 1 ? '' : 's'}`
   const sat = s.sat ?? null
-  const positions = sat === null ? [] : [`cloud positions from Meteosat, ${hhmmUtc(sat)} UTC`]
+  const positions = sat === null ? [] : [`cloud positions from ${s.satName ?? 'Meteosat'}, ${hhmmUtc(sat)} UTC`]
   // Over the sea, with no airport: the forecast draws the clouds, or, in its view, the satellite.
   const from = s.airports > 0 || !(s.model || sat !== null) ? [`Clouds from ${count(s.airports, 'airport')}`] : sat === null ? ['Clouds from the forecast'] : []
-  const line = [...from, ...positions, count(s.areas, 'hazard area'), ...(s.model ? [MODEL_CREDIT] : []), ...(sat === null ? [] : [SAT_CREDIT]), ...(s.note ? [s.note] : [])].join(' · ')
+  const line = [...from, ...positions, count(s.areas, 'hazard area'), ...(s.model ? [MODEL_CREDIT] : []), ...(sat === null || s.satName != null ? [] : [SAT_CREDIT]), ...(s.note ? [s.note] : [])].join(' · ')
   return line[0].toUpperCase() + line.slice(1)
 }
 
@@ -386,7 +386,7 @@ export class Weather3D {
   readonly #tile: (radar: RadarSource, z: number, x: number, y: number) => Promise<SourceTile | null>
   #epochMs: () => number
   readonly #wallMs: () => number
-  #archive: { base: string; atMs: number } | null = null // a scenario's own sky: archive()
+  #archive: { base: string; atMs: number; satName?: string } | null = null // a scenario's own sky: archive()
   #archiveSat: SatPictures | null = null // its satellite frame
   readonly #onShade: (shade: number) => void
   readonly #dwellMs: number
@@ -826,7 +826,7 @@ export class Weather3D {
    * A scenario's own sky: its folder's files (metar.json, sigmet.json, model.json, radar/…, sat.bin) in place of today's sources, at the time
    * they are of. Null: today's again. What was held goes, and what is due is asked for at the next look.
    */
-  archive(a: { base: string; atMs: number } | null): void {
+  archive(a: { base: string; atMs: number; satName?: string } | null): void {
     this.#archive = a
     this.#epochMs = a === null ? this.#wallMs : () => a.atMs
     this.#archiveSat = null
@@ -849,7 +849,7 @@ export class Weather3D {
   }
 
   /** The folder's sat.bin, if it has one: a frame of shared/sat.ts, as the app's server would answer. */
-  async #loadArchiveSat(a: { base: string; atMs: number }): Promise<void> {
+  async #loadArchiveSat(a: { base: string; atMs: number; satName?: string }): Promise<void> {
     const r = await fetch(`${a.base}/sat.bin`).catch(() => null)
     const raw = r?.ok === true ? new Uint8Array(await r.arrayBuffer()) : null
     const f = raw === null ? null : decodeSatCut(raw.slice().buffer)
@@ -1022,8 +1022,8 @@ export class Weather3D {
     if (due || this.#builtSat !== satKey(this.#pictures(this.#centre))) this.#buildClouds() // (the satellite's frame has come, is another, or may be used no longer)
     const from = Cartesian3.fromDegrees(a.lon, a.lat, a.altM, Ellipsoid.WGS84, this.#hereWC)
     this.#sky.clouds.fade(from)
-    this.#sky.fog.set(fogNear(this.#metars, a.lat, a.lon))
-    const fall = this.#fall()
+    this.#sky.fog.set(this.#opacity === 0 ? null : fogNear(this.#metars, a.lat, a.lon))
+    const fall = this.#opacity === 0 ? null : this.#fall() // no clouds: no fog and no rain out of them either
     this.#sky.precip.set(fall)
     if (fall !== null && !this.#falling) this.#aimedMs = -Infinity // aimed at the next frame
     this.#falling = fall !== null
@@ -1309,7 +1309,7 @@ export class Weather3D {
   #status(): void {
     if (!this.#show) return
     const note = [this.#down.size > 0 || this.#sat?.down === true ? NOTE : '', this.#sky.clouds.failed ? NO_CLOUDS : ''].filter((n) => n !== '').join(' · ')
-    const text = statusText3d({ airports: this.#stations, areas: this.#hazards.length, model: this.#grid() !== null, note, sat: this.#satUsed && this.#satInfo !== null ? this.#satInfo.timeMs : null })
+    const text = statusText3d({ airports: this.#stations, areas: this.#hazards.length, model: this.#grid() !== null, note, sat: this.#satUsed && this.#satInfo !== null ? this.#satInfo.timeMs : null, satName: this.#archive === null ? null : this.#archive.satName ?? 'satellite' })
     if (text === this.#line) return
     this.#line = text
     this.#onStatus(text)

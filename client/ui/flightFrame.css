@@ -137,6 +137,11 @@
   min-width: 3ch;
 }
 
+.fh-total .fh-v {
+  min-width: 5ch;
+  color: var(--fh-i-cyan);
+}
+
 .fh-line .fh-u {
   font-size: 10px;
 }
@@ -976,7 +981,7 @@
   min-width: 3.3em;
 }
 
-.fh-fblock[data-v='2'][data-block='right'] .fh-v {
+.fh-fblock[data-v='2'][data-block='right'] :is(.fh-dig, .fh-gs) .fh-v {
   min-width: 1.75em;
 }
 
@@ -1449,7 +1454,7 @@
   flex-direction: column;
   gap: 5px;
   box-sizing: border-box;
-  width: 760px; /* one width, whichever layout's choices its second row holds */
+  width: 860px; /* one width, whichever layout's choices its second row holds */
   max-width: calc(100% - 92px); /* beside the rail on a narrow window: its rows wrap */
   padding: 5px 5px 5px 12px;
   border: 1px solid var(--fh-hairline);
@@ -1495,6 +1500,11 @@
   font: 600 12.5px/1 var(--fh-font);
   cursor: pointer;
   transition: background var(--fh-fast) var(--fh-ease);
+}
+
+.fh-fbar-total[aria-pressed='true'] {
+  border-color: var(--fh-i-cyan);
+  color: var(--fh-i-cyan);
 }
 
 .fh-fbar-b:hover {

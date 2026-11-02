@@ -235,6 +235,7 @@ export interface ScenarioRunOpts {
 
 /** A scenario playing in the page. frame() once a frame; destroy() removes everything it added. */
 export class ScenarioRun {
+  #onMap = false // the top-down map covers the 3-D view
   readonly player: ScenarioPlayer
   readonly #viewer: Viewer
   readonly #layers: ImageryLayer[] = []
@@ -309,6 +310,7 @@ export class ScenarioRun {
 
   /** The street map lies over the era imagery (an opaque map on screen): the era layers are not drawn meanwhile (transparent, so their tiles stay). */
   setCovered(covered: boolean): void {
+    this.#onMap = covered
     for (const l of this.#layers) l.alpha = covered ? 0 : 1
   }
 
@@ -326,7 +328,8 @@ export class ScenarioRun {
     this.#captions.update(f.lines.map((l) => this.#views.get(l)!))
     this.#story.update(f.story === null ? null : { key: f.story.key, clock: `${clockText(f.story.t)} ${this.scenario.clockLabel}`, text: f.story.text })
     this.#title.update(f.mark === null ? null : { key: f.mark.key, text: f.mark.label }, f.jumped)
-    this.#ending.update(f.fade, f.card ? this.scenario.ending!.card : null)
+    // The veil is the 3-D view's, which it spares the impact. The top-down map draws none: there the route's end shows where the flight ended.
+    this.#ending.update(this.#onMap ? 0 : f.fade, f.card ? this.scenario.ending!.card : null)
     this.#audio?.update(f.t, clock.playing, clock.rate, (1 - f.fade) * this.#gain)
     // The era imagery takes the base's brightness, which the Sun lowers at dusk.
     const layers = this.#viewer.imageryLayers

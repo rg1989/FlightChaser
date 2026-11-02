@@ -22,4 +22,6 @@ time,type,value,label,src
 12:48:29,mark,,Mayday,VASA
 12:48:29,story,14,"About 15 seconds after the top of the climb the descent rate passes 10,000 ft a minute, and the crew call mayday. The aircraft then turns right as it falls.",ADSBLOL
 12:49:04,mark,,"""Banking 60 degrees""",VASA
-12:49:05,story,12,"The broadcast rate stops at its 32,640 ft/min limit. The aircraft's GNSS height shows more than 50,000 ft/min in the last seconds. The radio from the aircraft is captions only: the source muted it. What part ice or the storm played is not known.",ADSBLOL
+12:49:05,story,12,"The broadcast rate stops at its 32,640 ft/min limit. The aircraft's GNSS height shows more than 50,000 ft/min in the last seconds. What part ice or the storm played is not known.",ADSBLOL
+12:49:32.7,mark,,Last ADS-B signal,ADSBLOL
+12:49:33,mark,,"Crash site: Military Trail at 10th Avenue North",WIKI
