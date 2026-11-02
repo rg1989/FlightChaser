@@ -74,6 +74,7 @@ The JAL 123 file is a complete example. The fields:
 | `clockLabel` | yes | The zone name shown next to the clock, for example `JST`. |
 | `start` | yes | The first second of the timeline. |
 | `openAt` | no | Where playback begins, when not at `start`. The viewer can still drag back to `start`. |
+| `layout` | no | The instruments' layout while it plays, `preset/option`: `detailed/Bottom panel`. Names are in `client/scene/framePresets.ts`. The viewer can change it; leaving the scenario brings theirs back. |
 | `end` | yes | The last second the timeline reaches. |
 | `note` | yes | One or two sentences on the card. For an accident, say that it is a reconstruction, how many people died, and that it ends before the impact. |
 | `summary` | no | Short lines for the card: route, aircraft, what happened, where. |

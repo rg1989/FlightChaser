@@ -8,6 +8,7 @@
   "clockLabel": "EST",
   "start": "12:29:40",
   "openAt": "12:46:30",
+  "layout": "detailed/Bottom panel",
   "end": "12:49:35",
   "note": "A reconstruction, from the aircraft's own ADS-B broadcasts and the Miami Center radio, of the last 20 minutes of a flight on which all nine people aboard died. The attitude is computed from the path. It plays to the last moment before the impact, then goes dark: no impact is shown. The investigation has only begun: the cause is not known.",
   "summary": [

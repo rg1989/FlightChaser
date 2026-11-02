@@ -259,6 +259,12 @@ test('parseScenario: openAt is read when it lies from start up to end; absent, t
   assert.equal(at.openAt, at.start)
 })
 
+test('parseScenario: layout names a ready-made layout and its option', () => {
+  assert.deepEqual(parseScenario(validFiles({ manifest: validManifest({ layout: 'detailed/Bottom panel' }) })).layout, { preset: 'detailed', option: 2 })
+  assert.equal(parseScenario(validFiles({ manifest: validManifest({}) })).layout, undefined)
+  for (const bad of ['detailed/Nope', 'nope/Bottom panel', 'detailed']) assert.throws(() => parseScenario(validFiles({ manifest: validManifest({ layout: bad }) })), /layout/, bad)
+})
+
 test('parseScenario: weather needs its folder, its time and its source', () => {
   const ok = parseScenario(validFiles({ manifest: validManifest({ weather: { folder: 'weather/', at: '2026-11-01T17:50:00Z', source: 'NOAA' } }) }))
   assert.deepEqual(ok.weather, { folder: 'weather', atMs: Date.UTC(2026, 10, 1, 17, 50), source: 'NOAA' })

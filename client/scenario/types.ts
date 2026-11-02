@@ -2,6 +2,7 @@
 // A scenario package (.planning/scenarios-design.md §3) as loadScenario returns it: validated, typed, times resolved.
 // Every time is t: seconds since `date` 00:00 in the scenario's local time (clockToS in format.ts); the UTC instant of
 // t is t0UtcMs + t·1000.
+import type { ReadyId } from '../scene/framePresets.ts'
 
 export type SpeakerKind = 'crew' | 'cabin' | 'atc' | 'company' | 'alert' | 'other'
 export type Channel = 'cockpit' | 'radio' | 'company' | 'cabin' | 'interphone' | 'alert'
@@ -139,6 +140,7 @@ export interface Scenario {
   utcOffset: string // ±HH:MM
   clockLabel: string // e.g. JST
   start: number // t where the timeline starts
+  layout?: { preset: ReadyId; option: number } // the instruments' ready-made layout while it plays
   openAt?: number // t where playback begins, when later than start; the timeline still goes back to start
   end: number // t of the last data second the timeline reaches
   t0UtcMs: number // UTC ms of `date` 00:00 local

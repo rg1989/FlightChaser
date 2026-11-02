@@ -1,6 +1,7 @@
 // client/scenario/format.ts
 // Scenario package validation and assembly (.planning/scenarios-design.md §3): turns scenario.json + the CSV text
 // of a package into a typed, validated Scenario, or throws one ScenarioError listing every problem found.
+import { PRESETS, type ReadyId } from '../scene/framePresets.ts'
 import { parseCsv } from './csv.ts'
 import { damagePart } from './timeline.ts'
 import type {
@@ -110,6 +111,7 @@ interface ManifestOut {
   start: number
   end: number
   openAt?: number
+  layout?: { preset: ReadyId; option: number }
   t0UtcMs: number
   note: string
   summary: string[]
@@ -184,6 +186,14 @@ function parseManifest(manifest: unknown, problems: string[]): ManifestOut {
     } catch {
       add('openAt', `bad time: ${JSON.stringify(m.openAt)}`)
     }
+  }
+
+  let layout: { preset: ReadyId; option: number } | undefined
+  if (m.layout !== undefined) {
+    const [preset, name] = String(m.layout).split('/')
+    const option = PRESETS[preset as ReadyId]?.findIndex((o) => o.name === name) ?? -1
+    if (option < 0) add('layout', `not a layout: ${JSON.stringify(m.layout)}`)
+    else layout = { preset: preset as ReadyId, option }
   }
 
   let t0UtcMs = 0
@@ -334,7 +344,7 @@ function parseManifest(manifest: unknown, problems: string[]): ManifestOut {
     : []
   const summary: string[] = Array.isArray(m.summary) ? m.summary.filter(isString) : []
 
-  return { format: 1, id, title, subtitle, date, utcOffset, clockLabel, start, end, ...(openAt === undefined ? {} : { openAt }), t0UtcMs, note, summary, crew, aircraft, speakers, imagery, ending, audio, weather, sources }
+  return { format: 1, id, title, subtitle, date, utcOffset, clockLabel, start, end, ...(openAt === undefined ? {} : { openAt }), ...(layout === undefined ? {} : { layout }), t0UtcMs, note, summary, crew, aircraft, speakers, imagery, ending, audio, weather, sources }
 }
 
 // ---- CSV files --------------------------------------------------------------------------------------
@@ -606,6 +616,7 @@ export function parseScenario(files: {
     clockLabel: manifest.clockLabel,
     start: manifest.start,
     ...(manifest.openAt === undefined ? {} : { openAt: manifest.openAt }),
+    ...(manifest.layout === undefined ? {} : { layout: manifest.layout }),
     end: manifest.end,
     t0UtcMs: manifest.t0UtcMs,
     note: manifest.note,

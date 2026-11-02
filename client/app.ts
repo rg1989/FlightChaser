@@ -2073,6 +2073,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       : recLivery ?? (scn.aircraft.callsign ? liveryOf(liveryCode(scn.aircraft.callsign, scn.aircraft.registration || null)) : null)
     liveGear = null
     dress = new Dresser(e, livery, scn.aircraft.shape?.halfSpanM ?? null, recPlaceholder) // a package names its own model
+    flightFrame.useLayout(scn.layout ?? null)
     weather3d.archive(scn.weather !== null ? { base: `${scn.base}${scn.weather.folder}`, atMs: scn.weather.atMs, satName: scn.weather.satellite } : null)
     // A day to be seen as it was: no line and no strip of what lies ahead, and natural, nearly solid clouds unless the viewer has chosen a look and an opacity. Any of it changes here at a click.
     wxOver = scn.weather === null ? {} : {
@@ -2128,6 +2129,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     loadingScenario = null // one still loading is dropped when it arrives
     if (run === null) return
     endRun()
+    flightFrame.useLayout(null)
     weather3d.archive(null)
     wxOver = {}
     applyWxPrefs(wxPrefs)

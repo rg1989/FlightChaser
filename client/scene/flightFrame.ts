@@ -28,7 +28,7 @@ import {
   ALT_UNITS, KMH_PER_KT, MS_PER_FPM, M_PER_FT, SPEED_UNITS, UNIT_NAME, VS_UNITS, altIn, altLabel, speedIn, speedLabel, vsLabel, type Units,
 } from '../ui/units.ts'
 import { defaultRangeM } from './chaseCamera.ts'
-import { LOOK_NAMES, PRESETS, PRESET_NAMES, SMALL_OPTION, VARIANT_NAMES, dockAt, optionOf, type Dock, type PresetOption } from './framePresets.ts'
+import { LOOK_NAMES, PRESETS, PRESET_NAMES, SMALL_OPTION, VARIANT_NAMES, dockAt, optionOf, type Dock, type PresetOption, type ReadyId } from './framePresets.ts'
 import { Glide, TREND_S, Trend, rel180, trendShown } from './instrumentMath.ts'
 import type { ModelWind } from './modelWind.ts'
 import { BOX_CENTRE, BOX_HALF, squarePx } from './traffic.ts'
@@ -784,6 +784,7 @@ export class FlightFrame {
   readonly #onSide: (column: Rect | null) => void
   #sideKey = ''
   #beforeSmall: { preset: FramePrefs['preset']; option: FramePrefs['option'] } | null = null
+  #beforeUse: { preset: PresetId; option: Partial<Record<PresetId, number>> } | null = null // the viewer's own, under a scenario's layout
   readonly #onEdit: (on: boolean) => void
   #editing = false
   readonly #bar = h('div', 'fh-fbar')
@@ -1192,6 +1193,21 @@ export class FlightFrame {
     this.#onSide(column)
   }
 
+  /** A scenario's own layout while it plays, not saved; null: the viewer's again. A layout the viewer picks meanwhile stays (#arrange). */
+  useLayout(l: { preset: ReadyId; option: number } | null): void {
+    const p = this.#prefs
+    if (l !== null) {
+      this.#beforeUse ??= { preset: p.preset, option: p.option }
+      p.preset = l.preset
+      p.option = { ...p.option, [l.preset]: l.option }
+    } else if (this.#beforeUse !== null) {
+      p.preset = this.#beforeUse.preset
+      p.option = this.#beforeUse.option
+      this.#beforeUse = null
+    }
+    this.#arranged()
+  }
+
   /** Whether the Small instruments layout is in force. */
   get small(): boolean {
     return this.#ready()?.dock === 'side'
@@ -1460,6 +1476,7 @@ export class FlightFrame {
 
   /** A choice of the toolbar's: made, then the cards arranged for it and the layout kept. */
   #arrange(choose: () => void): void {
+    this.#beforeUse = null
     choose()
     this.#arranged()
     this.#changed()
@@ -1614,7 +1631,7 @@ export class FlightFrame {
     const p = this.#prefs
     this.#onPrefs({
       moved: { ...p.moved }, hidden: [...p.hidden], order: [...p.order], scale: { ...p.scale }, units: { ...p.units },
-      preset: p.preset, option: { ...p.option }, variant: { ...p.variant }, look: p.look, total: p.total,
+      preset: this.#beforeUse?.preset ?? p.preset, option: { ...(this.#beforeUse?.option ?? p.option) }, variant: { ...p.variant }, look: p.look, total: p.total,
     })
   }
 
