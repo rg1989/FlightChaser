@@ -19,6 +19,8 @@
   user-select: none;
 }
 .fh-wxr.on { display: flex; }
+/* The bottom panel fills the bottom of the view: the card waits at the top, unless it was dragged (an inline place wins). */
+.fh-frame[data-dock='row'] .fh-wxr { top: 12px; bottom: auto; }
 .fh-wxr.docked { transform-origin: 0 0; cursor: default; }
 .fh-wxr:active { cursor: grabbing; }
 .fh-wxr-head { display: flex; align-items: center; justify-content: space-between; }

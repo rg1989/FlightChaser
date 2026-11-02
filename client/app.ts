@@ -1081,7 +1081,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const wx = weatherView({ wx: prefs.wx, chasing, history: hist !== null, scenario: run !== null, own: has && wxPrefs.day })
     weather.show = wx.topDown
     weather3d.show = wx.chase
-    radarCard.show(wx.chase && wxPrefs.map)
+    radarCard.show(wx.chase && wxShown().map)
     const look = weatherButton({ wx: on, live: live || has })
     rail.setLook('weather', look) // the button says whether the weather is on; its panel is always there
     wxMenu.setView({ wx: on, chasing, live: live || has, failed: weather3d.cloudsFailed, theme: rainTheme(prefs) })
@@ -2075,9 +2075,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     dress = new Dresser(e, livery, scn.aircraft.shape?.halfSpanM ?? null, recPlaceholder) // a package names its own model
     flightFrame.useLayout(scn.layout ?? null)
     weather3d.archive(scn.weather !== null ? { base: `${scn.base}${scn.weather.folder}`, atMs: scn.weather.atMs, satName: scn.weather.satellite } : null)
-    // A day to be seen as it was: no line and no strip of what lies ahead, and natural, nearly solid clouds unless the viewer has chosen a look and an opacity. Any of it changes here at a click.
+    // A day to be seen as it was: the radar map, no line and no strip of what lies ahead, and natural, nearly solid clouds unless the viewer has chosen a look and an opacity. Any of it changes here at a click.
     wxOver = scn.weather === null ? {} : {
-      track: false, slice: false, strip: false,
+      track: false, slice: false, strip: false, map: true,
       ...(wxPrefs.look === DEFAULT_WX_PREFS.look ? { look: 'natural' } : {}), ...(wxPrefs.opacity === DEFAULT_WX_PREFS.opacity ? { opacity: 0.85 } : {}),
     }
     applyWxPrefs(wxShown())

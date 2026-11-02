@@ -253,7 +253,7 @@ word. When the record gives only the minute, say so in the source note.
 "weather": { "folder": "weather", "at": "2026-11-01T17:50:00Z", "satellite": "GOES-East", "source": "where each file comes from" }
 ```
 
-The app shows this sky in the 3-D view until the viewer turns it off (Weather menu: the master switch, or Clouds: Off). Without `weather` a scenario has no weather. `satellite` names the source of `sat.bin` in the Weather panel. The files are one snapshot at the time `at`:
+The app shows this sky in the 3-D view, with the radar map, until the viewer turns them off (Weather menu: the master switch, Clouds: Off, or Radar map). Without `weather` a scenario has no weather. `satellite` names the source of `sat.bin` in the Weather panel. The files are one snapshot at the time `at`:
 
 | File in the folder | What it is |
 |---|---|
