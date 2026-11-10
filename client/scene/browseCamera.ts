@@ -1,11 +1,12 @@
 // client/scene/browseCamera.ts
-// Browse mode's camera: a north-up, straight-down view like a slippy map, which the person may tilt (Ctrl + drag or a
-// middle drag, Cesium's own; Shift + two fingers on a trackpad, browseTilt) up to MAX_TILT_RAD off straight down, and turn
-// (Ctrl + drag sideways). N brings it back straight down, north up. The view is kept as the ground point at the canvas's
-// centre, the camera's distance to it (its "height": the zoom) and its heading and pitch; a pan, a pinch and a jump keep
-// the tilt. Cesium's own controls still pan (drag) and zoom (wheel, right-drag), within MIN_ZOOM_M … MAX_ZOOM_M. On a
-// trackpad, two fingers pan (browseDrag) and a pinch zooms (browsePinch).
-import { Cartesian2, Cartesian3, Ellipsoid, Math as CesiumMath, Matrix4, Rectangle, Transforms } from 'cesium'
+// Browse mode's camera: a north-up, straight-down view like a slippy map, which the person may tilt (a right-button drag,
+// which on a Mac trackpad is a two-finger click held and moved; Ctrl + drag; a middle drag: Cesium's own, BROWSE_TILT_EVENTS;
+// Shift + two fingers on a trackpad, browseTilt) up to MAX_TILT_RAD off straight down, and turn (the same drags sideways).
+// N brings it back straight down, north up. The view is kept as the ground point at the canvas's centre, the camera's
+// distance to it (its "height": the zoom) and its heading and pitch; a pan, a pinch and a jump keep the tilt. Cesium's own
+// controls still pan (drag) and zoom (wheel, pinch), within MIN_ZOOM_M … MAX_ZOOM_M. On a trackpad, two fingers pan
+// (browseDrag) and a pinch zooms (browsePinch).
+import { CameraEventType, Cartesian2, Cartesian3, Ellipsoid, KeyboardEventModifier, Math as CesiumMath, Matrix4, Rectangle, Transforms } from 'cesium'
 import type { ScreenSpaceCameraController, Viewer } from 'cesium'
 import { attachTrackpad } from './trackpad.ts'
 
@@ -97,7 +98,20 @@ export function containsDeg(r: RectDeg, lat: number, lon: number): boolean {
   return r.west <= r.east ? lon >= r.west && lon <= r.east : lon >= r.west || lon <= r.east
 }
 
-type Saved = Pick<ScreenSpaceCameraController, 'enableTilt' | 'enableLook' | 'minimumZoomDistance' | 'maximumZoomDistance' | 'maximumTiltAngle'>
+type Saved = Pick<ScreenSpaceCameraController, 'enableTilt' | 'enableLook' | 'minimumZoomDistance' | 'maximumZoomDistance' | 'maximumTiltAngle' | 'tiltEventTypes' | 'zoomEventTypes'>
+
+/**
+ * Browse: a right-button drag tilts and turns the map (a Mac trackpad's two-finger click held and moved is one), as
+ * Ctrl + drag and a middle drag do; the wheel and a pinch zoom. Cesium's default zooms on a right drag.
+ */
+export const BROWSE_TILT_EVENTS = [
+  CameraEventType.MIDDLE_DRAG,
+  CameraEventType.PINCH,
+  CameraEventType.RIGHT_DRAG,
+  { eventType: CameraEventType.LEFT_DRAG, modifier: KeyboardEventModifier.CTRL },
+  { eventType: CameraEventType.RIGHT_DRAG, modifier: KeyboardEventModifier.CTRL },
+]
+export const BROWSE_ZOOM_EVENTS = [CameraEventType.WHEEL, CameraEventType.PINCH]
 /** Keyed by controller, present = browsing: its settings from before browse, and the detach of browse's trackpad. */
 const saved = new WeakMap<object, { before: Saved; detach: () => void; aim: ReturnType<typeof browseView>; flyEndMs: number }>()
 
@@ -173,16 +187,23 @@ export function enterBrowse(viewer: Viewer, center: { lat: number; lon: number }
   const aim = s !== undefined && performance.now() < s.flyEndMs ? s.aim : was
   const keep = s !== undefined && opts.topDown !== true
   if (!saved.has(sscc)) {
-    const { enableTilt, enableLook, minimumZoomDistance, maximumZoomDistance, maximumTiltAngle } = sscc
+    const { enableTilt, enableLook, minimumZoomDistance, maximumZoomDistance, maximumTiltAngle, tiltEventTypes, zoomEventTypes } = sscc
     const detach = attachTrackpad(viewer.scene.canvas, {
       drag: (dx, dy) => browseDrag(viewer, dx, dy),
       pinch: (ratio, x, y) => browsePinch(viewer, ratio, x, y),
       tilt: (dy) => browseTilt(viewer, dy),
     })
-    saved.set(sscc, { before: { enableTilt, enableLook, minimumZoomDistance, maximumZoomDistance, maximumTiltAngle }, detach, aim: was, flyEndMs: 0 })
+    // The right button's menu would open on the press (macOS) and end the drag: none over the map while browsing.
+    const canvas = viewer.scene.canvas as Partial<HTMLCanvasElement>
+    const noMenu = (e: Event): void => e.preventDefault()
+    canvas.addEventListener?.('contextmenu', noMenu)
+    const untrack = (): void => { detach(); canvas.removeEventListener?.('contextmenu', noMenu) }
+    saved.set(sscc, { before: { enableTilt, enableLook, minimumZoomDistance, maximumZoomDistance, maximumTiltAngle, tiltEventTypes, zoomEventTypes }, detach: untrack, aim: was, flyEndMs: 0 })
   }
   sscc.enableTilt = true
   sscc.maximumTiltAngle = MAX_TILT_RAD
+  sscc.tiltEventTypes = BROWSE_TILT_EVENTS
+  sscc.zoomEventTypes = BROWSE_ZOOM_EVENTS
   sscc.enableLook = false
   sscc.minimumZoomDistance = MIN_ZOOM_M
   sscc.maximumZoomDistance = MAX_ZOOM_M

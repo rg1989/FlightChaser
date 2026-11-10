@@ -2,11 +2,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import * as Cesium from 'cesium'
-import { Camera, Cartesian2, Cartesian3, Ellipsoid, GeographicProjection, HeadingPitchRange, MapMode2D, Math as CesiumMath, Matrix4, SceneMode, Transforms } from 'cesium'
+import { Camera, CameraEventType, Cartesian2, Cartesian3, Ellipsoid, GeographicProjection, HeadingPitchRange, MapMode2D, Math as CesiumMath, Matrix4, SceneMode, Transforms } from 'cesium'
 import type { Viewer } from 'cesium'
 import {
   BROWSE_FLY_S, BROWSE_HEIGHT_M, MAX_ZOOM_M, MIN_ZOOM_M,
-  MAX_TILT_RAD, browseDrag, browsePinch, browseTilt, browseView, containsDeg, footprint, inFootprint, enterBrowse, exitBrowse, heightForViewWidthM, heightToFit, isBrowsing, viewRectangleDeg, viewToFit, viewWidthM,
+  BROWSE_TILT_EVENTS, BROWSE_ZOOM_EVENTS, MAX_TILT_RAD, browseDrag, browsePinch, browseTilt, browseView, containsDeg, footprint, inFootprint, enterBrowse, exitBrowse, heightForViewWidthM, heightToFit, isBrowsing, viewRectangleDeg, viewToFit, viewWidthM,
 } from './browseCamera.ts'
 
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b} (tol ${tol}) ${msg}`)
@@ -20,6 +20,10 @@ const TweenCollection = (Cesium as unknown as { TweenCollection: new () => { upd
  * A real Cesium Camera on the smallest scene its constructor, setView, picking and flights read, plus Cesium's default
  * controller settings. Flights run on a real TweenCollection: tweens.update(s) starts them on its first call, then advances.
  */
+/** Cesium's own drags (ScreenSpaceCameraController's defaults): what the chase keeps. */
+const CESIUM_TILT = ['cesium tilt drags']
+const CESIUM_ZOOM = ['cesium zoom drags']
+
 function fakeViewer() {
   const tweens = new TweenCollection()
   const scene = {
@@ -30,7 +34,7 @@ function fakeViewer() {
     mode: SceneMode.SCENE3D,
     mapMode2D: MapMode2D.INFINITE_SCROLL,
     ellipsoid: Ellipsoid.WGS84,
-    screenSpaceCameraController: { enableTilt: true, enableLook: true, minimumZoomDistance: 1, maximumZoomDistance: Number.POSITIVE_INFINITY },
+    screenSpaceCameraController: { enableTilt: true, enableLook: true, minimumZoomDistance: 1, maximumZoomDistance: Number.POSITIVE_INFINITY, tiltEventTypes: CESIUM_TILT, zoomEventTypes: CESIUM_ZOOM },
     globe: { ellipsoid: Ellipsoid.WGS84, getHeight: () => 0 },
     tweens,
     camera: null as Camera | null,
@@ -96,7 +100,9 @@ test('enterBrowse flyS 0: north-up, straight down, 300 km above the centre; tilt
   near(Math.min(headingDeg(camera), 360 - headingDeg(camera)), 0, 1e-6, 'north up')
   near(camera.pitch * DEG, -90, 1e-6)
   near(camera.roll, 0, 1e-9)
-  assert.deepEqual(sscc, { enableTilt: true, enableLook: false, minimumZoomDistance: MIN_ZOOM_M, maximumZoomDistance: MAX_ZOOM_M, maximumTiltAngle: MAX_TILT_RAD })
+  assert.deepEqual(sscc, { enableTilt: true, enableLook: false, minimumZoomDistance: MIN_ZOOM_M, maximumZoomDistance: MAX_ZOOM_M, maximumTiltAngle: MAX_TILT_RAD, tiltEventTypes: BROWSE_TILT_EVENTS, zoomEventTypes: BROWSE_ZOOM_EVENTS })
+  assert.ok(BROWSE_TILT_EVENTS.includes(CameraEventType.RIGHT_DRAG), 'a right-button drag (a Mac trackpad\'s two-finger click and move) tilts')
+  assert.ok(!BROWSE_ZOOM_EVENTS.includes(CameraEventType.RIGHT_DRAG), 'and does not zoom')
   assert.equal(MIN_ZOOM_M, 2_000)
   assert.equal(MAX_ZOOM_M, 10_000_000)
   assert.equal(isBrowsing(viewer), true)
@@ -177,7 +183,7 @@ test('exitBrowse restores the controller settings from before browse, cancels a 
   enterBrowse(viewer, LLBG, { flyS: 0 }) // re-centring must not save the browse settings as the originals
   assert.equal(cancels, 2, 'a jump stops a browse flight that may still be running')
   exitBrowse(viewer)
-  assert.deepEqual(sscc, { enableTilt: true, enableLook: true, minimumZoomDistance: 5, maximumZoomDistance: Number.POSITIVE_INFINITY, maximumTiltAngle: undefined })
+  assert.deepEqual(sscc, { enableTilt: true, enableLook: true, minimumZoomDistance: 5, maximumZoomDistance: Number.POSITIVE_INFINITY, maximumTiltAngle: undefined, tiltEventTypes: CESIUM_TILT, zoomEventTypes: CESIUM_ZOOM })
   assert.equal(cancels, 3)
   assert.equal(isBrowsing(viewer), false)
   exitBrowse(viewer)
