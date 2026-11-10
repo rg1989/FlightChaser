@@ -40,6 +40,8 @@ export interface Trackpad {
   drag(dxPx: number, dyPx: number): void
   /** The fingers spread by ratio (new / old distance) around (xPx, yPx), CSS px from the canvas's top-left. */
   pinch(ratio: number, xPx: number, yPx: number): void
+  /** With Shift held, the fingers moved dyPx down (macOS turns Shift + up/down into sideways: either counts). */
+  tilt?(dyPx: number): void
 }
 
 /**
@@ -56,7 +58,8 @@ export function attachTrackpad(canvas: HTMLCanvasElement, on: Trackpad): () => v
     if (kind === 'wheel') return
     e.preventDefault()
     e.stopPropagation()
-    if (kind === 'scroll') on.drag(-e.deltaX, -e.deltaY)
+    if (kind === 'scroll' && e.shiftKey && on.tilt) on.tilt(-(e.deltaY !== 0 ? e.deltaY : e.deltaX))
+    else if (kind === 'scroll') on.drag(-e.deltaX, -e.deltaY)
     else {
       const r = canvas.getBoundingClientRect()
       on.pinch(pinchRatio(e), e.clientX - r.left, e.clientY - r.top)

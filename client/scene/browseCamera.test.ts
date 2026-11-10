@@ -6,7 +6,7 @@ import { Camera, Cartesian2, Cartesian3, Ellipsoid, GeographicProjection, Headin
 import type { Viewer } from 'cesium'
 import {
   BROWSE_FLY_S, BROWSE_HEIGHT_M, MAX_ZOOM_M, MIN_ZOOM_M,
-  browseDrag, browsePinch, containsDeg, enterBrowse, exitBrowse, heightForViewWidthM, heightToFit, isBrowsing, viewRectangleDeg, viewToFit, viewWidthM,
+  MAX_TILT_RAD, browseDrag, browsePinch, browseTilt, browseView, containsDeg, footprint, inFootprint, enterBrowse, exitBrowse, heightForViewWidthM, heightToFit, isBrowsing, viewRectangleDeg, viewToFit, viewWidthM,
 } from './browseCamera.ts'
 
 const near = (a: number, b: number, tol: number, msg = ''): void => assert.ok(Math.abs(a - b) <= tol, `${a} vs ${b} (tol ${tol}) ${msg}`)
@@ -85,7 +85,7 @@ test('viewWidthM matches where Cesium’s camera actually looks: canvas mid-left
   }
 })
 
-test('enterBrowse flyS 0: north-up, straight down, 300 km above the centre; tilt and free-look locked; zoom clamped', () => {
+test('enterBrowse flyS 0: north-up, straight down, 300 km above the centre; tilt up to MAX_TILT_RAD, free-look locked; zoom clamped', () => {
   const { camera, sscc, viewer } = fakeViewer()
   assert.equal(isBrowsing(viewer), false)
   enterBrowse(viewer, LLBG, { flyS: 0 })
@@ -96,7 +96,7 @@ test('enterBrowse flyS 0: north-up, straight down, 300 km above the centre; tilt
   near(Math.min(headingDeg(camera), 360 - headingDeg(camera)), 0, 1e-6, 'north up')
   near(camera.pitch * DEG, -90, 1e-6)
   near(camera.roll, 0, 1e-9)
-  assert.deepEqual(sscc, { enableTilt: false, enableLook: false, minimumZoomDistance: MIN_ZOOM_M, maximumZoomDistance: MAX_ZOOM_M })
+  assert.deepEqual(sscc, { enableTilt: true, enableLook: false, minimumZoomDistance: MIN_ZOOM_M, maximumZoomDistance: MAX_ZOOM_M, maximumTiltAngle: MAX_TILT_RAD })
   assert.equal(MIN_ZOOM_M, 2_000)
   assert.equal(MAX_ZOOM_M, 10_000_000)
   assert.equal(isBrowsing(viewer), true)
@@ -177,7 +177,7 @@ test('exitBrowse restores the controller settings from before browse, cancels a 
   enterBrowse(viewer, LLBG, { flyS: 0 }) // re-centring must not save the browse settings as the originals
   assert.equal(cancels, 2, 'a jump stops a browse flight that may still be running')
   exitBrowse(viewer)
-  assert.deepEqual(sscc, { enableTilt: true, enableLook: true, minimumZoomDistance: 5, maximumZoomDistance: Number.POSITIVE_INFINITY })
+  assert.deepEqual(sscc, { enableTilt: true, enableLook: true, minimumZoomDistance: 5, maximumZoomDistance: Number.POSITIVE_INFINITY, maximumTiltAngle: undefined })
   assert.equal(cancels, 3)
   assert.equal(isBrowsing(viewer), false)
   exitBrowse(viewer)
@@ -308,11 +308,85 @@ test('viewToFit: the box inside a part of the canvas: the whole canvas is height
   assert.ok(v.heightM > whole.heightM * 1.25, 'less room: from higher')
   // The part's middle is right of and below the canvas's: the camera looks west and north of the box's middle.
   assert.ok(v.lon < 28.75 && v.lat > 40)
-  // What it shows: the box's corners fall inside the part (a pinhole over flat ground, as moveTopDown takes it).
+  // What it shows: the box's corners fall inside the part (a pinhole over flat ground, as moveView takes it).
   const mPerPx = (2 * v.heightM * Math.tan(Math.PI / 6)) / w
   const px = (lat: number, lon: number): [number, number] => [w / 2 + ((lon - v.lon) * 111_320 * Math.cos((v.lat * Math.PI) / 180)) / mPerPx, h / 2 - ((lat - v.lat) * 111_320) / mPerPx]
   for (const [lat, lon] of [[box.north, box.west], [box.south, box.east]]) {
     const [x, y] = px(lat, lon)
     assert.ok(x >= part.x && x <= part.x + part.w && y >= part.y && y <= part.y + part.h, `(${lat}, ${lon}) at ${x.toFixed(0)}, ${y.toFixed(0)}`)
   }
+})
+
+test('tilt: kept by a pan, a pinch and a re-centre; the view stays on the same ground; N (topDown) brings it straight down', () => {
+  const { camera, viewer } = fakeViewer()
+  enterBrowse(viewer, LLBG, { heightM: 50_000, flyS: 0 })
+  browseTilt(viewer, -300) // fingers up half the canvas: 45° toward the horizon
+  near(browseView(viewer).pitch * DEG, -45, 1e-6)
+  let v = browseView(viewer)
+  near(v.lat, LLBG.lat, 1e-6, 'tilted round the ground at the centre')
+  near(v.lon, LLBG.lon, 1e-6)
+  near(v.rangeM, 50_000, 1e-3, 'same zoom')
+  browseTilt(viewer, -10_000)
+  near(browseView(viewer).pitch, -Math.PI / 2 + MAX_TILT_RAD, 1e-9, 'no flatter than the limit')
+  browseTilt(viewer, 10_000)
+  near(camera.pitch * DEG, -90, 1e-6, 'no further than straight down')
+  browseTilt(viewer, -300)
+  enterBrowse(viewer, browseView(viewer), { heightM: 50_000, flyS: 0 }) // the jump keeps it
+  near(browseView(viewer).pitch * DEG, -45, 1e-6)
+  v = browseView(viewer)
+  const turned = cameraAtForTest(v.lat, v.lon, v.rangeM, 1, v.pitch) // turned 57° (Ctrl + drag)
+  camera.setView(turned)
+  v = browseView(viewer)
+  near(v.heading, 1, 1e-6)
+  browseDrag(viewer, 0, 100) // fingers down: the view goes up the screen, along the heading
+  const w = browseView(viewer)
+  near(w.pitch * DEG, -45, 1e-6, 'a pan keeps the tilt')
+  near(w.heading, 1, 1e-6, 'and the heading')
+  near(w.rangeM, v.rangeM, 1, 'and the zoom')
+  const d = Cartesian3.fromDegrees(w.lon, w.lat)
+  const ahead = Math.atan2((w.lon - v.lon) * Math.cos(v.lat / DEG), w.lat - v.lat)
+  assert.ok(Cartesian3.distance(d, Cartesian3.fromDegrees(v.lon, v.lat)) > 1_000)
+  near(ahead, 1, 0.01, 'moved along the heading')
+  browsePinch(viewer, 2, 400, 300)
+  near(browseView(viewer).rangeM, w.rangeM / 2, 1, 'a pinch halves the distance')
+  near(browseView(viewer).pitch * DEG, -45, 1e-6)
+  enterBrowse(viewer, LLBG, { heightM: 40_000, flyS: 0 }) // a search, a flight's fit: same tilt, over the new place
+  v = browseView(viewer)
+  near(v.lat, LLBG.lat, 1e-6)
+  near(v.lon, LLBG.lon, 1e-6)
+  near(v.rangeM, 40_000, 1e-3)
+  near(v.pitch * DEG, -45, 1e-6)
+  enterBrowse(viewer, v, { heightM: v.rangeM, flyS: 0, topDown: true })
+  topDown(camera)
+  near(browseView(viewer).lat, LLBG.lat, 1e-6, 'straight down over the same place')
+})
+
+/** The camera looking at (lat, lon) from rangeM along heading at pitch, in that point's frame (as browseCamera places it). */
+function cameraAtForTest(lat: number, lon: number, rangeM: number, heading: number, pitch: number) {
+  const enu = Transforms.eastNorthUpToFixedFrame(Cartesian3.fromDegrees(lon, lat, 0))
+  const f = new Cartesian3(Math.sin(heading) * Math.cos(pitch), Math.cos(heading) * Math.cos(pitch), Math.sin(pitch))
+  const u = new Cartesian3(-Math.sin(heading) * Math.sin(pitch), -Math.cos(heading) * Math.sin(pitch), Math.cos(pitch))
+  return {
+    destination: Matrix4.multiplyByPoint(enu, Cartesian3.multiplyByScalar(f, -rangeM, new Cartesian3()), new Cartesian3()),
+    orientation: { direction: Matrix4.multiplyByPointAsVector(enu, f, new Cartesian3()), up: Matrix4.multiplyByPointAsVector(enu, u, new Cartesian3()) },
+  }
+}
+
+test('footprint: tilted, the ground the same view shows straight down; null straight down; the rectangle bounds it', () => {
+  const { viewer } = fakeViewer()
+  enterBrowse(viewer, LLBG, { heightM: 50_000, flyS: 0 })
+  assert.equal(footprint(viewer), null)
+  const flatRect = viewRectangleDeg(viewer) as NonNullable<ReturnType<typeof viewRectangleDeg>>
+  browseTilt(viewer, -300)
+  const f = footprint(viewer)
+  assert.ok(f)
+  const half = 50_000 * Math.tan(Math.PI / 6) // half the 800 px width at 50 km: 28.9 km
+  near(f.halfXM, half, 0.01)
+  near(f.halfYM, half * 0.75, 0.01)
+  assert.ok(inFootprint(f, LLBG.lat, LLBG.lon))
+  const kmLat = 1 / 111.32
+  assert.ok(inFootprint(f, LLBG.lat + 20 * kmLat, LLBG.lon), '20 km north: inside (21.7 km half)')
+  assert.ok(!inFootprint(f, LLBG.lat + 25 * kmLat, LLBG.lon), '25 km north: outside, though the tilted view sees it')
+  const r = viewRectangleDeg(viewer) as NonNullable<ReturnType<typeof viewRectangleDeg>>
+  near(r.north - r.south, flatRect.north - flatRect.south, (flatRect.north - flatRect.south) * 0.05, 'about the top-down rectangle')
 })

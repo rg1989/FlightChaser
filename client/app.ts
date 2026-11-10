@@ -43,7 +43,7 @@ import type { ReadsbAircraft, Sample } from '../shared/types.ts'
 import { ApiClient } from './api.ts'
 import { BenchRecorder, countTextures, type CloudsBench } from './bench/overlay.ts'
 import { Fleet, heightM } from './browse/fleet.ts'
-import { BROWSE_FLY_S, BROWSE_HEIGHT_M, browseDrag, browsePinch, containsDeg, enterBrowse, exitBrowse, heightToFit, isBrowsing, viewRectangleDeg, viewToFit } from './scene/browseCamera.ts'
+import { BROWSE_FLY_S, BROWSE_HEIGHT_M, browseDrag, browsePinch, browseView, containsDeg, enterBrowse, exitBrowse, footprint, heightToFit, isBrowsing, viewRectangleDeg, viewToFit } from './scene/browseCamera.ts'
 import type { RectDeg } from './scene/browseCamera.ts'
 import { ChaseCamera } from './scene/chaseCamera.ts'
 import { FleetLayer } from './scene/fleetLayer.ts'
@@ -154,6 +154,9 @@ const CHASE_SHRINK_S_PER_S = 0.05
 const HOVER_PICK_MS = 100 // at most ten hover picks a second while the mouse moves (each pick is a small render pass)
 const HEX = /^~?[0-9a-f]{6}$/
 // Until the first reply. Nothing is drawn before it, so the source named here is never shown.
+/** A tilted map's route: this much more see-through at TILT_FADE_RAD of tilt and beyond. */
+const TILT_FADE = 0.35
+const TILT_FADE_RAD = Math.PI / 6
 const NO_HEXES: ReadonlySet<string> = new Set()
 const NO_STATUS: StatusBrief = { source: 'adsblol', degraded: null, cellPeriodP95S: null, chasePeriodP95S: null }
 const NO_ENTRIES: readonly FleetEntry[] = []
@@ -1184,10 +1187,10 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   function syncUrl(now: number): void {
     if (now - lastUrlMs < URL_EVERY_MS || loadingScenario !== null) return // a reload while it loads still asks for it
     lastUrlMs = now
-    const cam = viewer.camera.positionCartographic
-    const heightKm = cam.height / 1000
-    // Browse: the point under the (top-down) camera. Chase: the chased aircraft; before its first state, the camera.
-    const here = { lat: CesiumMath.toDegrees(cam.latitude), lon: CesiumMath.toDegrees(cam.longitude), heightKm }
+    const bv = browseView(viewer)
+    const heightKm = bv.rangeM / 1000
+    // Browse: the ground at the canvas's centre. Chase: the chased aircraft; before its first state, the camera.
+    const here = { lat: bv.lat, lon: bv.lon, heightKm }
     const at = !chasing ? (isBrowsing(viewer) ? here : null) : chased !== null ? { lat: chased.lat, lon: chased.lon, heightKm } : here
     const o = chaseCam.orbit
     const orbit = chasing ? { headingDeg: o.headingOffsetDeg, pitchDeg: o.pitchDeg, rangeM: o.rangeM } : null
@@ -1466,7 +1469,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const flyS = m.fly === 'bring' ? BRING_FLY_S : FOLLOW_FLY_S
     const runs = h.clock.playing && !h.clock.stalled // the replay the flight takes: none while paused or waiting for data
     const to = centredOn(aheadOf(at, ds, t, runs ? flyS * 1000 * h.clock.rate : 0), area)
-    enterBrowse(viewer, to, { heightM: viewer.camera.positionCartographic.height, flyS })
+    enterBrowse(viewer, to, { heightM: browseView(viewer).rangeM, flyS })
     h.flyUntilMs = now + flyS * 1000
     askSlots(h, t, { lat: to.lat, lon: to.lon, nm: v.nm })
   }
@@ -1544,7 +1547,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     const m = areaMiddle(area)
     const under = groundAt(c.clientWidth / 2, c.clientHeight / 2)
     const middle = m === null ? null : groundAt(m.x, m.y)
-    return under === null ? { lat: e.lat, lon: e.lon } : cameraTarget(e, viewer.camera.positionCartographic.height, under, middle)
+    return under === null ? { lat: e.lat, lon: e.lon } : cameraTarget(e, browseView(viewer).rangeM, under, middle)
   }
 
   /**
@@ -1820,7 +1823,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     select(hex)
     if (matchMedia('(max-width: 860px)').matches) rail.close()
     const e = fleet.get(hex)
-    if (!chasing && e !== undefined) enterBrowse(viewer, e, { heightM: viewer.camera.positionCartographic.height })
+    if (!chasing && e !== undefined) enterBrowse(viewer, e, { heightM: browseView(viewer).rangeM })
   }
 
   /** The person picked an aircraft by hand (or let it go): Follow automatically waits a while (ui/alerts.ts mayAutoFollow). */
@@ -1954,7 +1957,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     chasing = on
     chaseCam.release() // hands the mouse back to Cesium's controls; a chase starts behind its aircraft
     if (on) {
-      browseHeightM = viewer.camera.positionCartographic.height // the map's zoom, for coming back
+      browseHeightM = browseView(viewer).rangeM // the map's zoom, for coming back
       exitBrowse(viewer) // restores tilt and zoom limits
       applyLayers()
       relatchPending = true
@@ -2054,7 +2057,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     exitHistory() // a scenario takes the screen
     if (run !== null) endRun()
     if (!chasing) {
-      browseHeightM = o.fromUrl ? null : viewer.camera.positionCartographic.height // the map's zoom, for coming back
+      browseHeightM = o.fromUrl ? null : browseView(viewer).rangeM // the map's zoom, for coming back
       exitBrowse(viewer)
     }
     chasing = false // no flight back to the map: the scenario takes the camera at once
@@ -2252,6 +2255,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     fleetLayer.setTerrain(tf) // ground icons follow the grow and sink
     // Chase shows the traffic in range as 3-D models and no flat icons (none at all without the traffic model).
     const chaseModels = traffic?.select(all, selected, chasing && s !== null ? s : null, trafficRangeNm(chaseCam.orbit.rangeM)) ?? NO_HEXES
+    // A tilted map: only the aircraft the same view shows straight down, as flat icons; the route a little see-through.
+    const bv = chasing ? null : browseView(viewer)
+    const foot = bv === null ? null : footprint(viewer, bv)
+    fleetLayer.setFootprint(foot)
+    routeLine.setFade(bv === null ? 1 : 1 - TILT_FADE * Math.min(1, (bv.pitch + Math.PI / 2) / TILT_FADE_RAD))
     fleetLayer.update(all, sf !== null ? scnOwn.hex : selected, tableHover ?? mapHover, chasing && s !== null && model !== null, chasing ? chaseModels : null)
     const tTable = measure === null ? 0 : performance.now()
     measure?.('fh:fleet', now)
@@ -2503,8 +2511,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   function viewCircle(rect?: RectDeg | null): { lat: number; lon: number; nm: number } {
     if (!chasing) {
       const r = rect === undefined ? viewRectangleDeg(viewer) : rect
-      const under = viewer.camera.positionCartographic // browse looks straight down: the screen centre
-      const c = r === null ? null : browseCircle(r, { lat: CesiumMath.toDegrees(under.latitude), lon: CesiumMath.toDegrees(under.longitude) })
+      const c = r === null ? null : browseCircle(r, browseView(viewer)) // round the ground at the screen centre
       // A rectangle spanning every longitude (the globe, or a pole in view) says nothing by its centre: then the point
       // under the camera.
       const allLons = r !== null && (r.west <= r.east ? r.east - r.west : r.east + 360 - r.west) >= 359
@@ -2752,6 +2759,10 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       hist.clock.toggle(performance.now())
     }
     else if ((e.key === 'b' || e.key === 'B') && bench) bench.download()
+    else if ((e.key === 'n' || e.key === 'N') && !chasing && isBrowsing(viewer) && sceneKey({ key: 'm', metaKey: e.metaKey, ctrlKey: e.ctrlKey, altKey: e.altKey, repeat: e.repeat, target: e.target }) !== null) {
+      const v = browseView(viewer) // N: the map straight down and north up again, over the same place
+      enterBrowse(viewer, v, { heightM: v.rangeM, flyS: 0.6, topDown: true })
+    }
     else {
       // T, L, B, X: they apply in the chase view (D9, D11), and can be set beforehand (X: only with the buildings on).
       // M: map or satellite, for the view on screen. R: roads, P: borders and places, each only over the satellite. W: weather.

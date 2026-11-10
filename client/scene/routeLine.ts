@@ -218,13 +218,13 @@ interface LineOptions {
 /** A flown run's line: its colour (written in place per run) inside the dark edge. */
 const flownLine = (): LineOptions => ({
   width: PATH_PX, show: false,
-  material: Material.fromType(Material.PolylineOutlineType, { color: new Color(), outlineColor: EDGE, outlineWidth: EDGE_PX }),
+  material: Material.fromType(Material.PolylineOutlineType, { color: new Color(), outlineColor: EDGE.clone(), outlineWidth: EDGE_PX }),
 })
 
 /** A line nobody heard: dotted grey. */
 const dottedLine = (): LineOptions => ({
   width: 3, show: false,
-  material: Material.fromType(Material.PolylineDashType, { color: DOTS, gapColor: DOTS_GAP, dashLength: 6 }),
+  material: Material.fromType(Material.PolylineDashType, { color: DOTS.clone(), gapColor: DOTS_GAP.clone(), dashLength: 6 }),
 })
 
 /** The drawn ground under a ground run, read at one point of it; h undefined until its tile is loaded. */
@@ -283,6 +283,9 @@ export class RouteLine {
   #grounds = new Map<number, GroundRead>()
   #groundsUsed: GroundRead[] = []
   #lastLift: number | undefined = undefined
+  #fade = 1 // the lines' opacity, × their own (setFade)
+  #flownColor: number[] = [] // the altitudeIndex of each flown line in use, and the join's
+  #joinColor = UNKNOWN_INDEX
 
   constructor(viewer: Viewer) {
     this.#viewer = viewer
@@ -294,7 +297,7 @@ export class RouteLine {
     this.#join = this.#lines.add(flownLine())
     this.#joinGap = this.#lines.add(dottedLine())
     this.#leadIn = this.#lines.add(dottedLine())
-    this.#ahead = this.#lines.add({ width: 3, material: Material.fromType(Material.PolylineDashType, { color: AHEAD, gapColor: AHEAD_GAP, dashLength: 16 }), show: false })
+    this.#ahead = this.#lines.add({ width: 3, material: Material.fromType(Material.PolylineDashType, { color: AHEAD.clone(), gapColor: AHEAD_GAP.clone(), dashLength: 16 }), show: false })
     this.#dot = this.#points.add({ pixelSize: 9, color: AHEAD, outlineColor: Color.WHITE, outlineWidth: 2, show: false, disableDepthTestDistance: Number.POSITIVE_INFINITY })
     this.#label = this.#labels.add({ ...LABEL, verticalOrigin: VerticalOrigin.BOTTOM, pixelOffset: new Cartesian2(0, -10) })
     this.#firstDot = this.#points.add({ pixelSize: 8, color: Color.WHITE, outlineColor: AHEAD, outlineWidth: 2, show: false, disableDepthTestDistance: Number.POSITIVE_INFINITY })
@@ -375,16 +378,48 @@ export class RouteLine {
     flown.sort((a, b) => a.color - b.color)
     for (let i = 0; i < flown.length; i++) {
       const line = this.#put(this.#flown, i, flownLine, flown[i].pts.map((p) => Cartesian3.fromDegrees(p.lon, p.lat, hOf(p))))
-      indexRgba(flown[i].color, line.material.uniforms.color)
+      this.#flownColor[i] = flown[i].color
     }
     retire(this.#flown, flown.length, this.#nFlown)
     retire(this.#gaps, gaps, this.#nGaps)
     this.#nFlown = flown.length
     this.#nGaps = gaps
     const end = runs.at(-1) // flown: a gap is always followed by the run it leads to
-    if (end !== undefined) indexRgba(end.color, this.#join.material.uniforms.color)
+    if (end !== undefined) this.#joinColor = end.color
+    this.#applyFade()
     const last = end?.points.at(-1)
     this.#lastLift = last === undefined ? undefined : lifted.get(last)
+  }
+
+  /**
+   * The lines' opacity, × their own: 1 on the map straight down, less when it is tilted (the aircraft and the ground
+   * show through the path in the air). Written at once, not at the next redraw.
+   */
+  setFade(k: number): void {
+    if (k === this.#fade) return
+    this.#fade = k
+    this.#applyFade()
+    this.#viewer.scene.requestRender()
+  }
+
+  #applyFade(): void {
+    const k = this.#fade
+    const solid = (line: Polyline, color: number): void => {
+      const u = line.material.uniforms
+      indexRgba(color, u.color)
+      u.color.alpha *= k
+      u.outlineColor.alpha = EDGE.alpha * k
+    }
+    const dashed = (line: Polyline, color: Color, gap: Color): void => {
+      line.material.uniforms.color.alpha = color.alpha * k
+      line.material.uniforms.gapColor.alpha = gap.alpha * k
+    }
+    for (let i = 0; i < this.#nFlown; i++) solid(this.#flown[i], this.#flownColor[i])
+    solid(this.#join, this.#joinColor)
+    for (let i = 0; i < this.#nGaps; i++) dashed(this.#gaps[i], DOTS, DOTS_GAP)
+    dashed(this.#joinGap, DOTS, DOTS_GAP)
+    dashed(this.#leadIn, DOTS, DOTS_GAP)
+    dashed(this.#ahead, AHEAD, AHEAD_GAP)
   }
 
   /** The drawn ground at p, a ground run's first point on it: from the cache, read again when GROUND_READ_MS old. */

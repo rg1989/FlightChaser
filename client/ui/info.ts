@@ -17,6 +17,9 @@ const KEYS: Section[] = [
     ['P', 'Borders and places over the satellite'],
     ['W', 'Weather'],
   ] },
+  { title: 'Map', rows: [
+    ['N', 'Straight down, north up'],
+  ] },
   { title: '3-D chase', rows: [
     ['T', '3-D terrain'],
     ['L', 'Sun and moon light'],

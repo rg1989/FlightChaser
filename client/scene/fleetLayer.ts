@@ -1,5 +1,6 @@
 // client/scene/fleetLayer.ts
 import {
+  Axis,
   BillboardCollection,
   BlendOption,
   Cartesian2,
@@ -7,10 +8,15 @@ import {
   Cartographic,
   Color,
   Ellipsoid,
+  HeadingPitchRoll,
   HorizontalOrigin,
   LabelCollection,
   LabelStyle,
+  Matrix4,
+  Model,
   NearFarScalar,
+  ShadowMode,
+  Transforms,
   VerticalOrigin,
 } from 'cesium'
 import type { Billboard, Label, PerspectiveFrustum, Scene, Viewer } from 'cesium'
@@ -19,6 +25,12 @@ import { ALTITUDE_RGBA, COLOR_COUNT, altitudeIndex } from './altitudeColor.ts'
 import { drawnHeightM, trueHeightM } from './exaggeration.ts'
 import { HALO_ID, HALO_PX, ICON_ID, ICON_PX, haloCanvas, iconCanvas, iconFor } from './icons.ts'
 import type { IconKind } from './icons.ts'
+import { flatIconGltf } from './flatIcon.ts'
+import { inFootprint } from './browseCamera.ts'
+import type { Footprint } from './browseCamera.ts'
+
+/** At most this many flat icons (3-D models, one draw call each) at once; the rest keep their billboards. */
+const MAX_FLAT = 300
 
 const RAD = Math.PI / 180
 export const SELECTED_SCALE = 1.4
@@ -41,6 +53,22 @@ const HALO_COLOR = Color.fromCssColorString('#ffd23f')
 const LABEL_BG = Color.fromCssColorString('#16181d')
 /** Icons shrink to half size between 300 km and 8,000 km from the camera (continental views stay readable). */
 const SIZE_BY_DISTANCE = new NearFarScalar(3e5, 1, 8e6, 0.5)
+/** SIZE_BY_DISTANCE's factor at distance dM (Cesium's NearFarScalar: linear between near and far, held outside). */
+const sizeByDistance = (dM: number): number => {
+  const f = SIZE_BY_DISTANCE
+  const t = Math.min(1, Math.max(0, (dM - f.near) / (f.far - f.near)))
+  return f.nearValue + (f.farValue - f.nearValue) * t
+}
+/** A kind's flat icon as a data: URI, made once (the same URI lets Cesium share what it loaded). */
+const FLAT_URIS = new Map<IconKind, string>()
+const flatIconUri = (kind: IconKind): string => {
+  let u = FLAT_URIS.get(kind)
+  if (u === undefined) {
+    const json = JSON.stringify(flatIconGltf(iconCanvas(kind).toDataURL('image/png')))
+    FLAT_URIS.set(kind, (u = `data:model/gltf+json;base64,${btoa(json)}`))
+  }
+  return u
+}
 const LABEL_OFFSET = new Cartesian2(0, -(ICON_PX / 2 + 2))
 const LABEL_OFFSET_SELECTED = new Cartesian2(0, -(HALO_PX / 2 + 2)) // above the selection ring
 
@@ -82,6 +110,10 @@ interface Slot {
   groundLat: number
   groundLon: number
   groundAt: number
+  m: Model | null // the flat icon (the tilted map), loaded for mKind; null: none (yet)
+  mKind: IconKind | null
+  mColor: number
+  mm: Matrix4
 }
 
 /**
@@ -114,6 +146,9 @@ export class FleetLayer {
   #fSampled = 1 // terrain exaggeration of this frame (setTerrain); until the first call, the terrain as loaded
   #fNow = 1
   #relHM = 0
+  #foot: Footprint | null = null
+  #models = 0 // flat icons made or loading
+  #hpr = new HeadingPitchRoll()
 
   constructor(viewer: Viewer) {
     this.#scene = viewer.scene
@@ -175,15 +210,21 @@ export class FleetLayer {
       if (e.ghost === true) s.ghostFrame = frame
       // The Fleet's own age limit per aircraft (it prunes them later), which a ghost is not held to; the chased one gives
       // way to its 3-D model. In chase (models), only the traffic drawn as 3-D models is placed, with its icon hidden.
+      // A tilted map (setFootprint) places only the aircraft that the same view would show straight down.
+      const foot = this.#foot
       s.placed = (e.ghost === true || e.ageS <= e.staleS) && !(modelShown && e.hex === selectedHex) &&
-        (models === null || e.hex === selectedHex || models.has(e.hex))
+        (models === null || e.hex === selectedHex || models.has(e.hex)) &&
+        (foot === null || e.hex === selectedHex || inFootprint(foot, e.lat, e.lon))
       const visible = s.placed && !(models !== null && models.has(e.hex))
-      if (visible !== s.show) {
-        s.b.show = visible
-        s.show = visible
+      if (s.placed) this.#draw(s, e)
+      const flat = visible && foot !== null && this.#flatIcon(s, e, e.hex === selectedHex)
+      if (s.m !== null && s.m.show !== flat) s.m.show = flat
+      const bb = visible && !flat
+      if (bb !== s.show) {
+        s.b.show = bb
+        s.show = bb
       }
       if (!s.placed) continue
-      this.#draw(s, e)
       const isSel = e.hex === selectedHex
       if (isSel !== s.sel) {
         s.b.scale = isSel ? SELECTED_SCALE : 1
@@ -209,6 +250,14 @@ export class FleetLayer {
     this.#updateLabel(hover ?? sel, hoverE ?? selE, sel !== null && (hover ?? sel) === sel)
   }
 
+  /**
+   * The tilted map's footprint (browseCamera.ts footprint), null straight down and in the chase. While it is set, only
+   * the aircraft inside it are placed (and the selected one), drawn as flat icons along their track.
+   */
+  setFootprint(f: Footprint | null): void {
+    this.#foot = f
+  }
+
   /** The aircraft under windowPos; sizePx widens the search (Cesium spirals out from the centre: the nearest wins). */
   pick(windowPos: Cartesian2, sizePx = 3): string | null {
     const id: unknown = this.#scene.pick(windowPos, sizePx, sizePx)?.id
@@ -222,6 +271,7 @@ export class FleetLayer {
   }
 
   destroy(): void {
+    for (const s of this.#byHex.values()) this.#dropModel(s)
     this.#scene.primitives.remove(this.#bbs)
     this.#scene.primitives.remove(this.#labels)
     this.#byHex.clear()
@@ -234,6 +284,7 @@ export class FleetLayer {
     const s: Slot = {
       b, frame: 0, ghostFrame: 0, n: this.#made++, show: b.show, placed: false, lat: NaN, lon: NaN, h: NaN, x: 0, y: 0, z: 0, cosLat: NaN, axisLat: NaN, axisLon: NaN, rot: NaN, color: -1,
       cat: undefined, type: undefined, kind: null, sel: null, groundH: NaN, groundLat: NaN, groundLon: NaN, groundAt: 0,
+      m: null, mKind: null, mColor: -1, mm: new Matrix4(),
     }
     this.#byHex.set(hex, s)
     return s
@@ -245,9 +296,62 @@ export class FleetLayer {
       if (s.frame === frame) continue
       s.b.show = false
       s.b.id = undefined
+      this.#dropModel(s)
       this.#free.push(s.b)
       this.#byHex.delete(hex)
     }
+  }
+
+  #dropModel(s: Slot): void {
+    if (s.mKind === null) return
+    if (s.m !== null) this.#scene.primitives.remove(s.m) // removing destroys it
+    s.m = null
+    s.mKind = null
+    s.mColor = -1
+    this.#models--
+  }
+
+  /**
+   * The slot's flat icon placed and tinted for this frame: true when it is ready to be shown (else the billboard shows).
+   * Loads one for the slot's kind when it has none (or one of another kind), up to MAX_FLAT. It lies along the track at
+   * the billboard's position, as many pixels across as the billboard (ICON_PX, SIZE_BY_DISTANCE, SELECTED_SCALE): its
+   * scale is set from its distance each frame.
+   */
+  #flatIcon(s: Slot, e: FleetEntry, isSel: boolean): boolean {
+    const kind = s.kind
+    if (kind === null) return false
+    if (s.mKind !== kind) {
+      this.#dropModel(s)
+      if (this.#models >= MAX_FLAT || typeof document === 'undefined') return false
+      this.#models++
+      s.mKind = kind
+      const hex = e.hex
+      Model.fromGltfAsync({
+        url: flatIconUri(kind), id: hex, show: false, upAxis: Axis.Z, forwardAxis: Axis.X, // as built: no Y-up turn
+        shadows: ShadowMode.DISABLED, enableVerticalExaggeration: false,
+      }).then((m) => {
+        if (this.#byHex.get(hex) !== s || s.mKind !== kind || s.m !== null) return void m.destroy() // gone or changed meanwhile
+        s.m = this.#scene.primitives.add(m)
+      }).catch(() => {}) // stays a billboard
+      return false
+    }
+    const m = s.m
+    if (m === null || !m.ready) return false
+    const cam = this.#scene.camera
+    const fovy = (cam.frustum as PerspectiveFrustum).fovy ?? Math.PI / 3
+    const hPx = this.#scene.canvas.clientHeight
+    const p = s.b.position
+    const d = Cartesian3.distance(cam.positionWC, p)
+    const px = ICON_PX * (isSel ? SELECTED_SCALE : 1) * sizeByDistance(d)
+    const scale = (px * 2 * d * Math.tan(fovy / 2)) / Math.max(1, hPx)
+    this.#hpr.heading = ((e.trackDeg ?? 0) - 90) * RAD // the nose (+X) along the track (model.ts hprFor)
+    Transforms.headingPitchRollToFixedFrame(p, this.#hpr, Ellipsoid.WGS84, undefined, s.mm)
+    m.modelMatrix = Matrix4.multiplyByUniformScale(s.mm, scale, s.mm)
+    if (s.mColor !== s.color) {
+      m.color = COLORS[s.color]
+      s.mColor = s.color
+    }
+    return true
   }
 
   /**
