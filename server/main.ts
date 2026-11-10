@@ -44,7 +44,7 @@
 // The command line also keeps the newest hour of the past in memory for a live source (two heatmap files, refreshed each
 // half hour: rollHistory) while a page asks for traffic, live or past (until 10 min after its last ask), or the alerts are on;
 // and for any source finds the oldest day adsb.lol keeps and loads the past's aircraft types at their first need: History's
-// first ask, or the alerts on (historyMeta). A server made in code, a test's included, fetches the past only when it is asked.
+// first ask, or the alerts on (historyMeta), also only while a page asks (until 10 min after its last ask) or the alerts are on. A server made in code, a test's included, fetches the past only when it is asked.
 // A live source with EVENTS_DIR set also has the alerts (alerts.ts): the poller feeds them every aircraft it takes and sweeps the
 // emergency squawks worldwide where the source can (adsb.fi), and each new half hour of the rolling past is read for late events
 // (the first read waits for the type table, so those events have their types).
@@ -486,6 +486,7 @@ export function createServer(
   let metaTimer: ReturnType<typeof setInterval> | null = null
   let askedMs = -Infinity // when a page last asked for traffic, live or past (WATCHES)
   let roll: (() => void) | null = null // the rolling fetch of the past, once listen() has armed it (deps.rollHistory)
+  let meta: (() => void) | null = null // the oldest day and the type table, once listen() has armed it (deps.historyMeta)
   const packs: Packs = new Map() // the static files gzipped
   const tiles = new Tiles({ dir: cfg.tilesDir, bordersFile: 'public/map/borders.json', get: deps.tilesFetch })
   /** A map tile: drawn once, the same bytes for good (shared/tiles.ts versions the paths), so kept a year by the browser. */
@@ -529,7 +530,10 @@ export function createServer(
   function asked(): void {
     const idle = !rollWanted()
     askedMs = nowMs()
-    if (idle) roll?.()
+    if (idle) {
+      roll?.()
+      meta?.()
+    }
   }
 
   /** History asks for the past: the type table is wanted from now on (loaded now, then kept fresh by the meta timer). */
@@ -913,7 +917,10 @@ export function createServer(
           // asked for the past, or the alerts are on), the type table, each loaded when it is due (the table daily, the oldest day
           // every 6 h, 10 min after a failure).
           if (deps.historyMeta === true && metaTimer === null) {
-            const meta = (): void => {
+            meta = (): void => {
+              // Nobody using the app (no page has asked for 10 min) and the alerts off: nothing is fetched. A search that does
+              // not find the day retries every 10 min, so without this an idle server would ask adsb.lol for ever.
+              if (!rollWanted()) return
               if (typesNeeded || alerts?.on === true) tickTypes()
               void history.tickOldest().catch((e: unknown) => console.error('history: the oldest day search failed:', e))
             }

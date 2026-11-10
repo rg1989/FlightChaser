@@ -941,9 +941,9 @@ test('the type table is not loaded at the start with the alerts off, nor for liv
     return String(input) === TYPE_DB_URL ? new Response(typeZip()) : new Response('not found', { status: 404 })
   }) as typeof fetch
   const s = await liveServer(t, { deps: { historyMeta: true, historyFetch } })
-  await waitFor('the oldest day search', async () => asked, (a) => a.some((u) => u.endsWith('/heatmap/00.bin.ttf')))
   await getEvents(s.base)
-  await get<ViewResponse>(viewUrl(s.base, 0))
+  await get<ViewResponse>(viewUrl(s.base, 0)) // a page: the oldest day search starts
+  await waitFor('the oldest day search', async () => asked, (a) => a.some((u) => u.endsWith('/heatmap/00.bin.ttf')))
   await get<ChaseResponse>(`${s.base}/api/chase?hex=${CHASED}`)
   await sleep(50)
   assert.ok(!asked.includes(TYPE_DB_URL), 'not asked for')

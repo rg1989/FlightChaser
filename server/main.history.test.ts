@@ -256,7 +256,7 @@ test('/api/history: each aircraft with its type and the category it implies from
   assert.deepEqual(slot.body.aircraft.map((a) => [a.hex, a.type, a.category]), [['4691c4', 'A320', 'A3'], ['a1b2c3', null, null]])
 })
 
-test('the command line\'s lookups: the type table and the oldest day come through the past\'s fetch; the table loads at the first ask for the past, which waits for it', async (t) => {
+test('the command line\'s lookups: none while nobody asks; the oldest day and the type table come through the past\'s fetch, the table at the first ask for the past, which waits for it', async (t) => {
   const nowMs = (): number => T0
   const cfg = config()
   const up = upstream()
@@ -265,8 +265,10 @@ test('the command line\'s lookups: the type table and the oldest day come throug
   const app = createServer(cfg, { source: makeReplay({ files: cfg.replayFiles, nowMs }), nowMs, historyFetch: up.fetchFn, historyMeta: true })
   const base = await app.listen(0)
   t.after(() => app.close())
+  await sleep(100)
+  assert.equal(up.urls.length, 0, 'an idle server (no page, the alerts off) asks adsb.lol nothing')
+  assert.equal((await get<HistoryStatus>(`${base}/api/history/status`)).status, 200) // a page: the search starts at once
   await waitFor('the oldest day search', () => up.urls.some((u) => u.endsWith('/heatmap/00.bin.ttf')))
-  assert.equal((await get<HistoryStatus>(`${base}/api/history/status`)).status, 200)
   await sleep(50)
   assert.ok(!up.urls.includes(TYPE_DB_URL), 'not at the start: the table waits for its first need')
 
