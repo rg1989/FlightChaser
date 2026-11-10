@@ -94,6 +94,8 @@ const P: Record<string, string> = {
   stop: 'M7.5 7.5h9v9h-9z',
   // A dial and its needle: the top-down map's small instrument panel.
   gauge: 'M4.6 17.5a8.5 8.5 0 1 1 14.8 0M12 13.5l4-5.5M12 13.5h.01',
+  // A house: back to the dashboard the app was opened from (VITE_HOME_URL).
+  home: 'M3 11.5 12 4l9 7.5M5.5 9.5V20h13V9.5M10 20v-5h4v5',
 }
 
 const NS = 'http://www.w3.org/2000/svg'

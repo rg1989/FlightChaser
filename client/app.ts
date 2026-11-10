@@ -717,6 +717,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   let openedScenarios!: () => void
   const scenariosOpened = new Promise<void>((resolve) => (openedScenarios = resolve))
   let scenariosSeen = false
+  // A dashboard this copy is run for (Homebase): the corner's Home button goes back to it. Only an https address.
+  const homeRaw = import.meta.env.VITE_HOME_URL?.trim() ?? ''
+  const homeUrl: string | undefined = /^https:\/\/[^\s"'<>]+$/.test(homeRaw) ? homeRaw : undefined
   const rail = mountRail(ui, [
     // Phones only: the search box's tab (wider screens have the box itself at the top centre).
     { id: 'search', icon: 'search', label: 'Search', short: 'Search', spot: 'phone', action: () => searchBox.open() },
@@ -796,6 +799,8 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       if (!flightFrame.editing) traffic?.close()
       flightFrame.edit(!flightFrame.editing)
     } },
+    // VITE_HOME_URL (a copy run for a dashboard, e.g. Homebase): a way back to it. Unset (a local run): no button.
+    ...(homeUrl === undefined ? [] : [{ id: 'home', icon: 'home', label: 'Back to Homebase', short: 'Home', spot: 'corner', action: () => location.assign(homeUrl) } as const]),
     { id: 'settings', icon: 'settings', label: 'Settings', short: 'Settings', spot: 'corner', action: () => settings.open() },
     // Not where the page cannot go full screen (iPhone Safari).
     ...(document.fullscreenEnabled ? [{ id: 'fullscreen', icon: 'maximize', label: 'Full screen', short: 'Full', spot: 'corner', action: () => toggleFullscreen() } as const] : []),
