@@ -153,8 +153,12 @@ export function watchButton(model: WatchModel, idOf: () => string | null, classN
     })
   })
   const off = model.subscribe(sync)
-  sync()
-  return { el, sync, destroy: () => (off(), el.remove()) }
+  // The first paint waits for the caller to finish building: idOf may read what it declares after making the button (the
+  // search box's lookup: reading it now threw "Cannot access 'look' before initialization" and stopped the app's start).
+  el.hidden = true
+  let gone = false
+  queueMicrotask(() => gone || sync())
+  return { el, sync, destroy: () => ((gone = true), off(), el.remove()) }
 }
 
 /** The Watching panel's body: a row a watch (eye, name and route, state; remove), or a line saying how to add one. */
