@@ -18,13 +18,14 @@ import { flagEmoji } from '../../shared/icaoCountry.ts'
 import type { AircraftInfo } from '../../shared/info.ts'
 import type { Places } from '../../shared/places.ts'
 import type { ScenarioCard } from '../scenario/types.ts'
-import { FIRST_DAYS, LOOKUP_AFTER_MS, PAST_AFTER_MS, POLL_MS, flightRecent, flightView, type FlightEnv, type FlightLookup } from '../search/flights.ts'
+import { FIRST_DAYS, LOOKUP_AFTER_MS, PAST_AFTER_MS, POLL_MS, flightRecent, flightView, knownRecent, type FlightEnv, type FlightLookup } from '../search/flights.ts'
 import {
   addRecent, flightCandidates, highlight, placeCandidates, readRecents, recordingCandidates, scenarioCandidates, search,
   type Candidate, type Hit, type Item, type Kind, type Recent,
 } from '../search/search.ts'
 import { icon, type IconName } from './icons.ts'
 import { SHEET_MEDIA } from './rail.ts'
+import { watchButton, type WatchModel } from './watchList.ts'
 import './searchBox.css'
 
 export const RECENTS_KEY = 'fh.search.v1'
@@ -38,6 +39,7 @@ export interface SearchBoxOpts {
   flightSearch?(q: string, o: { scan?: boolean; days?: number; deep?: boolean }): Promise<FlightSearchReply | null>
   store: Storage | null // localStorage; null where it is blocked (nothing is remembered)
   tools?: HTMLElement[] // more controls at the bar's end (the Live pill: ui/timePill.ts)
+  watch?: WatchModel // the watch list (ui/watchList.ts): an eye on the flight looked up worldwide puts it on or takes it off
   onPick(item: Item): void
 }
 
@@ -153,7 +155,21 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
   flightNotes.setAttribute('aria-live', 'polite')
   const flightText = h('div', 'fh-search-flight-text')
   flightText.append(flightTitle, flightRoute, flightNotes)
-  flight.append(flightTile, flightText, flightSpin)
+  // The eye: watch the flight looked up (a known one), as it was typed: its number or callsign.
+  const flightWatch = opts.watch === undefined ? null : watchButton(opts.watch, () => (look?.reply?.known === true ? look.reply.id : null))
+  flight.append(flightTile, flightText, ...(flightWatch === null ? [] : [flightWatch.el]), flightSpin)
+  // A click or Enter on the flight's own block keeps it among the past picks (the box stays open, nothing else changes).
+  flight.tabIndex = 0
+  flight.addEventListener('pointerdown', (e) => e.preventDefault()) // the input keeps its focus
+  flight.addEventListener('click', (e) => {
+    if ((e.target as Element).closest('button') === null && look !== null) keepFlight(look, true)
+  })
+  flight.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || e.target !== flight || look === null) return
+    e.preventDefault()
+    e.stopPropagation()
+    keepFlight(look, true)
+  })
   const list = h('ul', 'fh-search-list')
   list.id = `${id}-list`
   list.setAttribute('role', 'listbox')
@@ -263,6 +279,16 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
     lookTimer = null
   }
 
+  /** A looked-up flight the search knows, into the past picks: once a lookup (again by a click or Enter on its block). */
+  const keptLooks = new WeakSet<FlightLookup>()
+  function keepFlight(l: FlightLookup, again = false): void {
+    const item = knownRecent(l.reply)
+    if (item === null || (keptLooks.has(l) && !again)) return
+    keptLooks.add(l)
+    recents = addRecent(recents, item, Date.now())
+    saveRecents()
+  }
+
   /** Asks the server about the flight in the box, then again while its past is being searched; an answer for a text since changed is dropped. */
   function askFlight(): void {
     const l = look
@@ -275,6 +301,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
         if (look !== l || destroyed) return
         l.reply = r ?? l.reply
         l.state = r === null ? 'error' : 'ok'
+        keepFlight(l) // a flight it knows is a past pick at once: one with no row to pick (out of range) is not typed again
         if (r === null || !isOpen) return
         stopLook() // one timer at a time (the box may have closed and opened again while this was asked)
         // Its past days: asked for once the text has stayed a little longer; then again and again while they are read.
@@ -409,6 +436,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
       flightRoute.hidden = view.route === null
       flightNotes.replaceChildren(...view.notes.map((n) => h('div', 'fh-search-flight-note', n)))
       flightSpin.hidden = !view.busy
+      flightWatch?.sync()
     }
 
     // Network trouble: what failed, with Retry. Offline says so.
@@ -631,6 +659,7 @@ export function mountSearchBox(root: HTMLElement, opts: SearchBoxOpts): SearchBo
       if (enterTimer !== null) clearTimeout(enterTimer)
       window.removeEventListener('keydown', onKey)
       phone.removeEventListener('change', onMedia)
+      flightWatch?.destroy()
       box.remove()
     },
   }

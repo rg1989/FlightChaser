@@ -18,6 +18,7 @@ import type { FleetEntry, RenderState } from '../types.ts'
 import { UPDATE_MS, detailRows, shareLink, sourceLabel, type Lookup } from './detail.ts'
 import { STALE_AGE_S, formatDistanceM, hudFields, isStale, lostFor } from './format.ts'
 import { icon } from './icons.ts'
+import { watchButton, type WatchModel } from './watchList.ts'
 import type { PhotoCache } from './photo.ts'
 import './flightCard.css'
 
@@ -224,6 +225,8 @@ export interface FlightCardOpts {
   onRecord?(hex: string, on: boolean): Promise<RecordingState | null>
   /** What the 3-D view draws an aircraft on when it has no model of its own (cardView); absent: the card says nothing of it. */
   modelWords?: ModelWords
+  /** The watch list (ui/watchList.ts): an eye in the header watches the aircraft's flight by its callsign. Absent: no eye. */
+  watch?: WatchModel
 }
 
 export interface FlightCardHandle {
@@ -326,7 +329,11 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
   recBtn.classList.add('fh-card-recbtn')
   recBtn.hidden = true
   recBtn.setAttribute('aria-pressed', 'false')
-  actions.append(recBtn, linkBtn, closeBtn)
+  // The eye: watch this flight by its callsign (none: no eye; nor in History, nor on a traffic card).
+  let watchCs: string | null = null
+  let watchPast = false // History (setReplay): no eye
+  const watchBtn = traffic || opts.watch === undefined ? null : watchButton(opts.watch, () => (watchPast ? null : watchCs))
+  actions.append(...(watchBtn === null ? [] : [watchBtn.el]), recBtn, linkBtn, closeBtn)
   // Beside the status line, above what it opens.
   const expandBtn = iconButton('chevronDown', 'Show details')
   expandBtn.classList.add('fh-card-expand')
@@ -564,6 +571,10 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
       paintRec()
     }
     const cs = curInfo?.callsign ?? curS?.callsign ?? null
+    if (cs !== watchCs) {
+      watchCs = cs
+      watchBtn?.sync()
+    }
     const key = `${hex}/${cs}`
     if (key !== lkKey) {
       lk = opts.lookup(hex, cs)
@@ -715,6 +726,8 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
       if (destroyed || same) return
       curReplay = v === null ? null : { text: v.text, state: v.state, quietS: v.quietS }
       paintRec() // History has no Record button
+      watchPast = v !== null
+      watchBtn?.sync() // nor an eye
       if (hexOf() !== null) render()
     },
     setRecording(hex, state, serverNowMs) {
@@ -733,6 +746,7 @@ export function mountFlightCard(root: HTMLElement, opts: FlightCardOpts): Flight
       if (recTimer !== null) clearInterval(recTimer)
       if (timer !== null) clearTimeout(timer)
       timer = null
+      watchBtn?.destroy()
       card.remove()
     },
   }

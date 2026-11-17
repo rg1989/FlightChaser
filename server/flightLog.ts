@@ -45,6 +45,7 @@ interface Active {
   route: string | null // the last route written
   airborne: boolean // seen airborne since the recording began: only then can it "land"
   slowSinceMs: number | null // rxMs from which it has been on the ground and slow
+  lostMs: number // silent this long: gone (LOST_MS; a watched flight's is longer: it crosses gaps out of range)
 }
 
 export class FlightLog {
@@ -53,6 +54,7 @@ export class FlightLog {
   #source: SourceKind
   #active = new Map<string, Active>()
   #routeOf: (hex: string) => string | null
+  #ended = new Map<string, EndReason>() // how each aircraft's last recording ended (since this server started)
 
   /** routeOf: the aircraft's route as known now (the InfoStore's), for recordings started before it was. */
   constructor(opts: { dir: string; source: SourceKind; nowMs?: () => number; routeOf?: (hex: string) => string | null }) {
@@ -66,12 +68,17 @@ export class FlightLog {
 
   /**
    * Starts recording this aircraft (a no-op answer if it already is), beginning with `backfill`: the samples the store
-   * still holds of it (the last few minutes).
+   * still holds of it (the last few minutes). A watched flight's (by 'watch') is kept through silences up to lostMs.
    */
-  start(hex: string, info: AircraftInfo | null, backfill: readonly Sample[]): RecordingState {
+  start(hex: string, info: AircraftInfo | null, backfill: readonly Sample[], o: { by?: 'hand' | 'watch'; lostMs?: number } = {}): RecordingState {
     hex = hex.toLowerCase()
+    const lostMs = Math.max(LOST_MS, o.lostMs ?? 0)
     const had = this.#active.get(hex)
-    if (had) return { ...had.state }
+    if (had) {
+      if (lostMs > had.lostMs) (had.lostMs = lostMs), this.#save()
+      return { ...had.state }
+    }
+    this.#ended.delete(hex)
     const now = this.#now()
     const file = fileOf(now, info?.callsign ?? null, hex)
     mkdirSync(join(this.#dir, file.slice(0, 10)), { recursive: true })
@@ -85,11 +92,11 @@ export class FlightLog {
       military: info?.military ?? false,
       route: info?.route ?? null,
       source: this.#source,
-      by: 'hand',
+      by: o.by ?? 'hand',
       startedMs: now,
     }
     appendFileSync(join(this.#dir, file), JSON.stringify({ flight }) + '\n')
-    const a: Active = { state: { hex, callsign: flight.callsign, file, startedMs: now, samples: 0, lastMs: null }, route: flight.route, airborne: false, slowSinceMs: null }
+    const a: Active = { state: { hex, callsign: flight.callsign, file, startedMs: now, samples: 0, lastMs: null }, route: flight.route, airborne: false, slowSinceMs: null, lostMs }
     this.#active.set(hex, a)
     for (const s of backfill) this.#write(a, s)
     this.#save()
@@ -102,6 +109,7 @@ export class FlightLog {
     const a = this.#active.get(hex)
     if (!a) return null
     this.#active.delete(hex)
+    this.#ended.set(hex, why)
     this.#noteRoute(hex, a)
     const end = { why, endedMs: this.#now(), samples: a.state.samples }
     appendFileSync(join(this.#dir, a.state.file), JSON.stringify({ end }) + '\n')
@@ -141,13 +149,18 @@ export class FlightLog {
     for (const [hex, a] of this.#active) {
       this.#noteRoute(hex, a)
       if (a.slowSinceMs !== null && now - a.slowSinceMs >= LANDED_HOLD_MS) this.stop(hex, 'landed')
-      else if (now - (a.state.lastMs ?? a.state.startedMs) >= LOST_MS) this.stop(hex, 'lost')
+      else if (now - (a.state.lastMs ?? a.state.startedMs) >= a.lostMs) this.stop(hex, 'lost')
     }
   }
 
   get(hex: string): RecordingState | null {
     const a = this.#active.get(hex.toLowerCase())
     return a ? { ...a.state } : null
+  }
+
+  /** How this aircraft's last recording ended, or null when none ended since this server started (or one is under way). */
+  endedWhy(hex: string): EndReason | null {
+    return this.#ended.get(hex.toLowerCase()) ?? null
   }
 
   active(): RecordingState[] {
@@ -289,13 +302,13 @@ export class FlightLog {
   }
 
   #save(): void {
-    const list = [...this.#active.values()].map((a) => ({ ...a.state, airborne: a.airborne }))
+    const list = [...this.#active.values()].map((a) => ({ ...a.state, airborne: a.airborne, lostMs: a.lostMs }))
     writeFileSync(join(this.#dir, 'active.json'), JSON.stringify(list, null, 1) + '\n')
   }
 
   /** Picks up the recordings a previous server left under way; their counts from the files (active.json has the start's). */
   #resume(): void {
-    let list: (RecordingState & { airborne?: boolean })[]
+    let list: (RecordingState & { airborne?: boolean; lostMs?: number })[]
     try {
       list = JSON.parse(readFileSync(join(this.#dir, 'active.json'), 'utf8'))
     } catch {
@@ -304,8 +317,8 @@ export class FlightLog {
     if (!Array.isArray(list)) return
     for (const r of list) {
       if (typeof r?.hex !== 'string' || typeof r.file !== 'string') continue
-      const { airborne, ...state } = r
-      const a: Active = { state, route: null, airborne: airborne === true, slowSinceMs: null }
+      const { airborne, lostMs, ...state } = r
+      const a: Active = { state, route: null, airborne: airborne === true, slowSinceMs: null, lostMs: typeof lostMs === 'number' ? lostMs : LOST_MS }
       try {
         let n = 0
         for (const line of readFileSync(join(this.#dir, r.file), 'utf8').split('\n')) {

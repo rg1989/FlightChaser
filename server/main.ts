@@ -6,6 +6,7 @@
 //   GET /api/status                     the poller's StatusReport
 //   GET /api/record                     the flights being recorded (FLIGHTS_DIR set; else 404)
 //   POST /api/record?hex&on=1|0         start or stop recording one aircraft → RecordResponse
+//   GET /api/watch, POST /api/watch?id&on=1|0   the watch list (flightWatch.ts): flights recorded whenever heard → WatchReply
 //   GET /api/recordings                 every recorded flight, newest first; /api/recordings/track?file= one of them
 //   POST /api/recordings/rename?file&name, POST /api/recordings/delete?file   name one (blank clears), delete one for good
 //   GET /api/recordings/file?file[&as=kml]   one of them as a download: its own file, or KML for other programs
@@ -55,7 +56,7 @@ import type { AddressInfo } from 'node:net'
 import { extname, join, resolve, sep } from 'node:path'
 import { promisify } from 'node:util'
 import { gzip } from 'node:zlib'
-import type { ChaseResponse, RecordingInfo, RecordResponse, StatusBrief, ViewResponse } from '../shared/api.ts'
+import type { ChaseResponse, FlightPlace, RecordingInfo, RecordResponse, StatusBrief, ViewResponse } from '../shared/api.ts'
 import { airlineOf, icaoOfIata } from '../shared/airlines.ts'
 import type { LiveFlight } from '../shared/api.ts'
 import { FIELD, FILE_MAX_BYTES, FlightFileError, cleanName, parseFlightFile, toKml, withMeta, type FlightFile, type FlightMeta } from '../shared/flightFile.ts'
@@ -69,6 +70,7 @@ import { readServerConfig, type ServerConfig } from './config.ts'
 import { AdsbdbRoutes } from './adsbdb.ts'
 import { FlightRoutes } from './flightRoutes.ts'
 import { FlightSearch } from './flightSearch.ts'
+import { FlightWatch, WATCH_LOST_MS, WATCH_TICK_MS } from './flightWatch.ts'
 import { SlotCallsStore } from './slotCalls.ts'
 import { TlvBoard } from './tlvBoard.ts'
 import { Alerts, ntfyPush } from './alerts.ts'
@@ -118,7 +120,7 @@ const TYPES_WAIT_MS = 5000
 const META_TICK_MS = 60_000 // the type table (once it is needed) and the oldest day are checked this often; each loads when it is due
 const SPAN_MAX_MS = 48 * 3_600_000 // the longest span of one aircraft's legs: the client asks for a day and the 12 h before it
 const gzipAsync = promisify(gzip)
-const POSTS = new Set(['/api/record', '/api/recordings/rename', '/api/recordings/delete', '/api/recordings/import', '/api/events']) // the only writes
+const POSTS = new Set(['/api/record', '/api/watch', '/api/recordings/rename', '/api/recordings/delete', '/api/recordings/import', '/api/events']) // the only writes
 
 const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -467,6 +469,7 @@ export function createServer(
           })
   const routesFor = (): ReadonlySet<string> | undefined => (allRoutes ? undefined : new Set([...poller.chasedHexes(), ...(flights?.hexes() ?? [])]))
   let flightTimer: ReturnType<typeof setInterval> | null = null
+  let watchTimer: ReturnType<typeof setInterval> | null = null
   let routeTimer: ReturnType<typeof setInterval> | null = null
   const root = resolve(cfg.staticDir)
   const wx = makeWx({ userAgent: userAgent(cfg.contact ?? 'personal use'), fetchFn: deps.wxFetch, nowMs })
@@ -521,6 +524,21 @@ export function createServer(
     day: (hex, fromMs, toMs) => traces.day(hex, fromMs, toMs),
     oldestSlotMs: () => history.oldestSlotMs(),
     board: (airline, number) => board.times(airline, number),
+  })
+  // The watch list (flightWatch.ts): flights looked up every 30 s the way the search finds them, and recorded once heard,
+  // with no page open. A live source with FLIGHTS_DIR set only: a replay's world is not now.
+  const place = (p: FlightPlace): string => p.iata ?? p.icao ?? p.name
+  const watch = flights === null || cfg.flightsDir === null || source.caps.kind === 'replay' ? null : new FlightWatch(join(cfg.flightsDir, 'watch.json'), {
+    nowMs,
+    find: async (text) => {
+      const r = await flightSearch.ask(text)
+      if (r === null || r === 'failed') return r
+      const route = r.route === null ? null : `${place(r.route[0])} → ${place(r.route[1])}`
+      return { id: r.id, label: r.ticket ?? r.id, route, live: (r.live ?? []).map((l) => ({ hex: l.hex, callsign: l.callsign })) }
+    },
+    recording: (hex) => flights.get(hex),
+    record: (hex) => flights.start(hex, info.get(hex), store.track(hex, 0), { by: 'watch', lostMs: WATCH_LOST_MS }),
+    endedWhy: (hex) => flights.endedWhy(hex),
   })
 
   /**
@@ -703,6 +721,19 @@ export function createServer(
     return r === null ? [400, { error: 'q must be a flight: a ticket number (W4 3257) or a callsign (WMT7403)' }] : [200, r]
   }
 
+  /** The watch list: [200, WatchReply]; POST id&on=1|0 puts a flight on it or takes it off; [404, …] when there is none here. */
+  async function watchList(q: URLSearchParams, post: boolean): Promise<[number, unknown]> {
+    if (watch === null) return [404, { error: 'no watch list on this server: it needs a live source and FLIGHTS_DIR' }]
+    if (!post) return [200, { watches: watch.list() }]
+    const id = q.get('id') ?? ''
+    const on = q.get('on')
+    check(id.length <= 32, 'id is too long')
+    check(on === '1' || on === '0', 'on must be 1 or 0')
+    const r = await watch.set(id, on === '1')
+    if (r === 'failed') return [503, { error: 'the route lists did not answer: the flight could not be looked up' }]
+    return r === null ? [400, { error: 'id must be a flight: a ticket number (EY 593) or a callsign (ETD5SM)' }] : [200, { watches: r }]
+  }
+
   function recordings(): { recordings: RecordingInfo[] } {
     if (flights === null) throw new BadRequest('recording is off: set FLIGHTS_DIR')
     return { recordings: flights.list() }
@@ -827,6 +858,7 @@ export function createServer(
       else if (url.pathname === '/api/flights') [status, body] = await findFlight(url.searchParams)
       else if (url.pathname === '/api/record') body = record(url.searchParams, post)
       else if (url.pathname === '/api/recordings') body = recordings()
+      else if (url.pathname === '/api/watch') [status, body] = await watchList(url.searchParams, post)
       else if (post && url.pathname === '/api/recordings/rename') [status, body] = editRecording(url.searchParams, 'rename')
       else if (post && url.pathname === '/api/recordings/delete') [status, body] = editRecording(url.searchParams, 'delete')
       else if (post && url.pathname === '/api/recordings/import') {
@@ -932,6 +964,10 @@ export function createServer(
             flightTimer = setInterval(() => flights.tick(), FLIGHT_LOG_TICK_MS)
             flightTimer.unref()
           }
+          if (watch !== null && watchTimer === null) {
+            watchTimer = setInterval(() => void watch.tick().catch((e: unknown) => console.error('watch: the look-up failed:', e)), WATCH_TICK_MS)
+            watchTimer.unref()
+          }
           poller.start()
           done(`http://${HOST}:${(server.address() as AddressInfo).port}`)
         })
@@ -950,6 +986,8 @@ export function createServer(
       routeTimer = null
       if (flightTimer !== null) clearInterval(flightTimer)
       flightTimer = null
+      if (watchTimer !== null) clearInterval(watchTimer)
+      watchTimer = null
       if (historyTimer !== null) clearInterval(historyTimer)
       historyTimer = null
       poller.stop()

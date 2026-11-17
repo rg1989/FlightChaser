@@ -119,6 +119,7 @@ import { mountTimePill } from './ui/timePill.ts'
 import { readFlight, readHist, readScenario, readView, writeUrl, type FlightSpan, type Orbit } from './ui/urlState.ts'
 import { mountTable, type TableHandle } from './ui/table.ts'
 import { mountSearchBox, type SearchBoxHandle } from './ui/searchBox.ts'
+import { mountWatchPanel, watchModel } from './ui/watchList.ts'
 import { mountWxHud } from './ui/wxHud.ts'
 import { mountRadarCard } from './ui/wxRadarCard.ts'
 import { mountWxMenu, type WxMenuHandle } from './ui/wxMenu.ts'
@@ -720,6 +721,9 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
   // A dashboard this copy is run for (Homebase): the corner's Home button goes back to it. Only an https address.
   const homeRaw = import.meta.env.VITE_HOME_URL?.trim() ?? ''
   const homeUrl: string | undefined = /^https:\/\/[^\s"'<>]+$/.test(homeRaw) ? homeRaw : undefined
+  // The watch list (ui/watchList.ts, server/flightWatch.ts): flights the server looks up and records even while no page is
+  // open; a change shows as a toast with the Events' (alertsUi). Its first ask waits for this run's start (api, below).
+  const watches = watchModel({ get: () => api.watches(), set: (text, on) => api.watch(text, on), notice: (title, text) => alertsUi.notice(title, text) })
   const rail = mountRail(ui, [
     // Phones only: the search box's tab (wider screens have the box itself at the top centre).
     { id: 'search', icon: 'search', label: 'Search', short: 'Search', spot: 'phone', action: () => searchBox.open() },
@@ -781,6 +785,11 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
         onBadge: (t) => rail.setBadge('events', t),
       })),
     } },
+    // The flights on the watch list: each with its state (waiting, in range, out of range, landed) and a remove button; one in
+    // range is shown on the map by a click. Hidden on a server without one (it records nothing); the eye counts those in range.
+    { id: 'watching', icon: 'eye', label: 'Watching: the flights on your watch list', short: 'Watching', panel: {
+      title: 'Watching', mount: (b) => mountWatchPanel(b, watches, { onPick: pickFromList }),
+    } },
     // A square of its own under the rail: map or satellite, roads, and the 3-D scene's switches.
     { id: 'scene', icon: 'layers', label: 'Layers: map, roads, 3-D scene', short: 'Layers', spot: 'under', panel: {
       title: 'Layers', mount: (b) => (toggles = mountSceneToggles(b, { prefs, onChange: (next) => setPrefs(next) })),
@@ -814,6 +823,13 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       openedScenarios()
     }
   })
+  const paintWatching = (): void => {
+    rail.setHidden('watching', watches.list === null)
+    const n = (watches.list ?? []).filter((w) => w.seen).length
+    rail.setBadge('watching', n > 0 ? String(n) : null)
+  }
+  watches.subscribe(paintWatching)
+  paintWatching()
   const layoutBtn = rail.button('layout')
   layoutBtn.setAttribute('aria-pressed', 'false') // a toggle: edit mode
   rail.button('history').setAttribute('aria-pressed', 'false') // a toggle: History
@@ -843,6 +859,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     flightSearch: (q, o) => api.flights(q, o), // a flight by its number, worldwide: where it is now and when it flew before
     store,
     tools: [pills[0].el],
+    watch: watches,
     onPick: (item) => goTo(item),
   })
   const photos = new PhotoCache() // shared: a traffic aircraft's photo is there when it is chased
@@ -859,6 +876,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
     },
     photos, lookup: lookupFor,
     onRecord: (hex, on) => api.record(hex, on).then((r) => r.rec),
+    watch: watches,
     modelWords: (type, category) => (chasing ? modelWords(type, category) : null), // the map draws no model
   })
   // A click in a traffic aircraft's brackets opens its card: live from the fleet, its full object asked for as a focused
@@ -2847,6 +2865,7 @@ export async function startApp(root: HTMLElement, cfg: ClientConfig, hooks: { on
       frameLayer.remove()
       scenarioPanel.destroy()
       alertsUi.destroy()
+      watches.destroy()
       searchBox.destroy()
       toggles.destroy()
       wxMenu.destroy()

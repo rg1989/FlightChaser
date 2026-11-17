@@ -3,7 +3,7 @@
 // past (/history, /trace) for the flown path and the History mode; the alerts' switch and events (/events); a flight by
 // its number (/flights).
 import type { EventsReply } from '../shared/alerts.ts'
-import type { ChaseResponse, FlightSearchReply, HistorySlot, HistoryStatus, RecordingInfo, RecordingTrack, RecordResponse, TraceDay, TraceReply, ViewResponse } from '../shared/api.ts'
+import type { ChaseResponse, FlightSearchReply, HistorySlot, HistoryStatus, RecordingInfo, RecordingTrack, RecordResponse, TraceDay, TraceReply, ViewResponse, WatchReply, WatchState } from '../shared/api.ts'
 import { MinOffset } from '../shared/clock.ts'
 
 const OFFSET_WINDOW_MS = 60_000
@@ -57,6 +57,21 @@ export class ApiClient {
     if (res.status === 400) return null
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     return ((await res.json()) as { recordings: RecordingInfo[] }).recordings
+  }
+
+  /** The watch list (server/flightWatch.ts); null when this server has none (it records nothing, or has no live source). */
+  async watches(): Promise<WatchState[] | null> {
+    const res = await this.#fetch(`${this.#base}/watch`, { signal: AbortSignal.timeout(TIMEOUT_MS) })
+    if (res.status === 404) return null
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return ((await res.json()) as WatchReply).watches
+  }
+
+  /** Puts a flight (its number or callsign, as typed) on the watch list or takes it off; the list after. */
+  async watch(id: string, on: boolean): Promise<WatchState[]> {
+    const res = await this.#fetch(`${this.#base}/watch?id=${encodeURIComponent(id)}&on=${on ? 1 : 0}`, { method: 'POST', signal: AbortSignal.timeout(TIMEOUT_MS) })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return ((await res.json()) as WatchReply).watches
   }
 
   /** Names a recording (blank clears the name); the list after. */

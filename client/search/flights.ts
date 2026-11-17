@@ -194,3 +194,8 @@ export function flightRecent(r: FlightSearchReply): Item {
   const route = r.route === null ? null : `${r.route[0].city ?? r.route[0].name} → ${r.route[1].city ?? r.route[1].name}`
   return { key: `find:${r.id}`, kind: 'flight', label: r.ticket ?? r.id, sub: [r.airline, route].filter(Boolean).join(' · '), iso2: null, go: { to: 'find', q: r.id } }
 }
+
+/** The past pick a lookup's answer keeps by itself, with no row picked: a flight the search knows (else null). */
+export function knownRecent(r: FlightSearchReply | null): Item | null {
+  return r !== null && r.known ? flightRecent(r) : null
+}

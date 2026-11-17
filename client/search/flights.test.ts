@@ -2,7 +2,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { FlightPlace, FlightSearchReply, PastFlight } from '../../shared/api.ts'
-import { clockText, dayText, durationText, flightRecent, flightView, flownRow, liveRow, nextDays, similarRow, type FlightEnv, type FlightLookup } from './flights.ts'
+import { clockText, dayText, durationText, flightRecent, flightView, knownRecent, flownRow, liveRow, nextDays, similarRow, type FlightEnv, type FlightLookup } from './flights.ts'
 
 // Local times: built with the Date constructor's own zone, so the texts hold in any zone the tests run in.
 const at = (d: number, h: number, min = 0): number => new Date(2026, 9, d, h, min).getTime()
@@ -137,4 +137,12 @@ test('nextDays, flightRecent: how far back the next ask goes; a looked-up flight
   assert.equal(nextDays(28), 42)
   assert.equal(nextDays(42), null)
   assert.deepEqual(flightRecent(reply()), { key: 'find:W43257', kind: 'flight', label: 'W4 3257', sub: 'Wizz Air Malta · Bucharest → Tel Aviv', iso2: null, go: { to: 'find', q: 'W43257' } })
+})
+
+test('knownRecent: a looked-up flight the search knows is a past pick at once, even with no row to pick; an unknown one is not', () => {
+  // EY 593 out of range: not in the air, its past days not read. It is kept all the same.
+  const out = reply({ live: [], scan: { state: 'failed', fromMs: null, oldestMs: at(1, 0), more: true } })
+  assert.deepEqual(knownRecent(out), flightRecent(out))
+  assert.equal(knownRecent(reply({ known: false })), null)
+  assert.equal(knownRecent(null), null)
 })

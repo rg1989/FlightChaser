@@ -1,0 +1,105 @@
+/* client/ui/watchList.css */
+/* The Watching panel (watchList.ts): a row a watched flight (eye, name · route, its state; remove), and the eye toggle
+   of the search's flight and the flight card: accent while on, as the Record button is red while recording. */
+.fh-watchbtn[hidden] {
+  display: none;
+}
+
+.fh-watchbtn.fh-on,
+.fh-watchbtn.fh-on:hover {
+  color: var(--fh-accent);
+  background: var(--fh-accent-soft);
+}
+
+.fh-watch {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 6px;
+}
+
+.fh-watch-empty {
+  margin: 0;
+  padding: 14px;
+  color: var(--fh-muted);
+  font: 400 13px/1.4 var(--fh-font);
+}
+
+.fh-watch-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fh-watch-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 48px;
+  padding: 4px 8px 4px 6px;
+}
+
+.fh-watch-row + .fh-watch-row {
+  border-top: 1px solid var(--fh-hairline);
+}
+
+.fh-watch-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--fh-muted);
+  text-align: left;
+  font: inherit;
+}
+
+.fh-watch-main:not(:disabled) {
+  cursor: pointer;
+}
+
+.fh-watch-main:not(:disabled):hover {
+  background: var(--fh-hover);
+}
+
+.fh-watch-row[data-state='seen'] .fh-watch-main > .fh-icon {
+  color: var(--fh-accent);
+}
+
+.fh-watch-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fh-watch-name {
+  color: var(--fh-text);
+  font: 600 13px/1.3 var(--fh-font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fh-watch-route {
+  color: var(--fh-muted);
+  font-weight: 400;
+}
+
+.fh-watch-state {
+  color: var(--fh-muted);
+  font: 400 12px/1.3 var(--fh-font);
+}
+
+.fh-watch-row[data-state='seen'] .fh-watch-state {
+  color: var(--fh-accent);
+}
+
+/* The search's flight: the eye sits at the block's end, before the spinner. */
+.fh-search-flight .fh-watchbtn {
+  flex: none;
+  align-self: flex-start;
+}

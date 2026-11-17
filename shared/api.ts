@@ -167,6 +167,30 @@ export interface FlightSearchReply {
   due: { arrival: boolean; tMs: number } | null // not heard, yet Ben Gurion's board has it in the air now: when it lands there (or left)
 }
 
+/**
+ * A flight on the watch list (server/flightWatch.ts): looked up every 30 s by its number or callsign, even while no page is
+ * open; recorded from the moment it is heard, through gaps out of range, until it lands. Times on the server clock.
+ */
+export interface WatchState {
+  id: string                     // as the search reads it: 'EY593', 'ETD5SM'
+  label: string                  // as shown: 'EY 593', 'ETD5SM'
+  route: string | null           // 'AUH → TLV' when known
+  sinceMs: number                // when it was put on the list
+  hex: string | null             // its aircraft, once heard
+  callsign: string | null        // what it flies as, once heard
+  heardMs: number | null         // its newest sample
+  seen: boolean                  // heard within WATCH_SEEN_MS: on the map now
+  file: string | null            // its recording, once heard (see RecordingState.file)
+  ended: 'landed' | 'lost' | null // its recording ended: the watch is done and leaves the list an hour later
+}
+
+/** GET /api/watch and the answer of POST /api/watch?id&on=1|0: the whole list, oldest first. */
+export interface WatchReply {
+  watches: WatchState[]
+}
+
+export const WATCH_SEEN_MS = 90_000 // a watched flight heard this recently is on the map; older: lost (out of range)
+
 /** One flight being recorded to its own file (server/flightLog.ts). Times on the server clock. */
 export interface RecordingState {
   hex: string

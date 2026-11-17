@@ -511,6 +511,9 @@ test('FLIGHTS_DIR: POST /api/record starts and stops one aircraft; chase reports
   assert.deepEqual(off, { rec: null, active: [] })
   assert.equal((await fetch(`${base}/api/record?hex=zz&on=1`, { method: 'POST' })).status, 400)
   assert.equal((await fetch(`${base}/api/view`, { method: 'POST' })).status, 405)
+  // A replay's world is not now: no watch list (the page hides its panel).
+  assert.equal((await fetch(`${base}/api/watch`)).status, 404)
+  assert.equal((await fetch(`${base}/api/watch?id=EY593&on=1`, { method: 'POST' })).status, 404)
 
   const plain = createServer({ ...readServerConfig({ REPLAY_FILES: FILE }), staticDir: join(tmp(), 'dist') })
   const b2 = await plain.listen(0)
