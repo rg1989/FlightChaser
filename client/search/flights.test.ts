@@ -71,6 +71,8 @@ test('flightView: nothing before the lookup; the heading with its route; not in 
   assert.equal(first.route, 'Bucharest OTP → Tel Aviv TLV')
   assert.deepEqual(first.notes, ['Callsign WMT7403.', 'Not in the air now.'])
   assert.deepEqual([first.busy, first.doing], [false, null])
+  // A server older than the page sends no due: the box still reads.
+  assert.deepEqual(flightView(look({ reply: { ...reply(), due: undefined as unknown as null } }), env, 0)!.notes, ['Callsign WMT7403.', 'Not in the air now.'])
   // Not heard, yet in the air by Ben Gurion's board: out of range, with its landing time.
   const due = new Date(2026, 9, 11, 11, 44).getTime()
   assert.deepEqual(flightView(look({ reply: reply({ due: { arrival: true, tMs: due } }) }), env, 0)!.notes, ['Callsign WMT7403.', "In the air, out of the receivers' range now. Ben Gurion expects it at 11:44."])
