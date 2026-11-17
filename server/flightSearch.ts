@@ -315,13 +315,14 @@ export class FlightSearch {
       // A ticket number with its route: the airline's list says whether the number's own callsign flies it (then that is
       // the flight), flies another route (then it is another flight: not looked for when the list names others on the
       // route; with none it is still tried, as the list may be behind, and a flight off the route is not listed anyway),
-      // or is not in use (then perhaps).
+      // or is not in use (then perhaps). When it flies the route, the route's lettered callsigns are held too: an airline may
+      // fly the number under one of them on a day (Etihad's EY 593 is ETD593 or ETD5SM). Its numbered ones are other tickets.
       const route = `${job.route[0].icao}-${job.route[1].icao}`
       const its = job.primary === null ? undefined : list.get(job.primary)
-      if (its !== route) {
-        for (const [callsign, r2] of list) if (r2 === route && callsign !== job.primary && job.others.length < MAX_CALLSIGNS) job.others.push(callsign)
-        if (its !== undefined && job.others.length > 0) job.primary = null
+      for (const [callsign, r2] of list) {
+        if (r2 === route && callsign !== job.primary && (its !== route || /[A-Z]/.test(callsign.slice(3))) && job.others.length < MAX_CALLSIGNS) job.others.push(callsign)
       }
+      if (its !== route && its !== undefined && job.others.length > 0) job.primary = null
       listed = its === route || job.others.length > 0
     }
     job.callsigns = job.primary === null ? [] : [job.primary]

@@ -283,6 +283,25 @@ test('a ticket number flown under other callsigns: its airline\'s callsigns on t
   assert.deepEqual(f.live, [])
 })
 
+test('a ticket number whose own callsign is on the route, flown today under a lettered one (EY 593 as ETD5SM, 17 Nov 2026)', async () => {
+  const AUH = place('OMAA', 24.44, 54.65)
+  const sky: Sky = {
+    flown: [],
+    routes: { EY593: { callsign: 'ETD593', airline: { name: 'Etihad Airways', icao: 'ETD' }, from: AUH, to: TLV } },
+    lists: { ETD: { ETD593: 'OMAA-LLBG', ETD595: 'OMAA-LLBG', ETD5SM: 'OMAA-LLBG', ETD69W: 'OMAA-EGLL' } },
+  }
+  // Climbing out of Abu Dhabi to the south-west, where the route to Tel Aviv begins.
+  const out = world({ ...sky, live: (cs) => (cs.includes('ETD5SM') ? [{ hex: '89653a', callsign: 'ETD5SM', lat: 23.6, lon: 53.32 }] : []) })
+  const r = await ask(new FlightSearch(out.deps), 'EY 593')
+  assert.equal(r.byRoute, true)
+  assert.deepEqual(r.live?.map((x) => x.callsign), ['ETD5SM'])
+  // A numbered callsign on the route is another ticket number (ETD595 is EY 595): never this one.
+  const other = world({ ...sky, live: (cs) => (cs.includes('ETD595') ? [{ hex: '896000', callsign: 'ETD595', lat: 23.6, lon: 53.32 }] : []) })
+  const o = await ask(new FlightSearch(other.deps), 'EY 593')
+  assert.equal(o.byRoute, false)
+  assert.deepEqual(o.live, [])
+})
+
 test('a flight to Ben Gurion under other callsigns: the board\'s times say which callsign is the number\'s, and only its flights are listed', async () => {
   const way: [FlightPlace, FlightPlace] = [OTP, TLV]
   const sky: Sky = {
