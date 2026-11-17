@@ -164,6 +164,7 @@ export interface FlightSearchReply {
     more: boolean                // days it keeps are still unsearched
   }
   similar: SimilarFlight[]       // when nothing is known under id
+  due: { arrival: boolean; tMs: number } | null // not heard, yet Ben Gurion's board has it in the air now: when it lands there (or left)
 }
 
 /** One flight being recorded to its own file (server/flightLog.ts). Times on the server clock. */

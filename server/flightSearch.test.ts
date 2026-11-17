@@ -302,6 +302,23 @@ test('a ticket number whose own callsign is on the route, flown today under a le
   assert.deepEqual(o.live, [])
 })
 
+test('a flight to Ben Gurion not heard now: the board says it is on its way (out of the receivers\' range) and when it lands', async () => {
+  const sky: Sky = {
+    flown: [],
+    routes: { FZ1073: { callsign: 'FDB1073', airline: { name: 'Fly Dubai', icao: 'FDB' }, from: DXB, to: TLV } },
+    lists: { FDB: { FDB1073: 'OMDB-LLBG' } },
+    live: () => [],
+    board: { arrival: true, times: [TODAY - DAY + 14 * H, TODAY + 14 * H] }, // lands 14:00; now 12:10
+  }
+  assert.deepEqual((await ask(new FlightSearch(world(sky).deps), 'FZ1073')).due, { arrival: true, tMs: TODAY + 14 * H })
+  // Heard: no word from the board. Landed already, or not due for hours: none either.
+  const heard = world({ ...sky, live: () => [{ hex: '896000', callsign: 'FDB1073', lat: 29, lon: 45 }] })
+  assert.equal((await ask(new FlightSearch(heard.deps), 'FZ1073')).due, null)
+  for (const t of [TODAY + 12 * H, TODAY + 20 * H]) {
+    assert.equal((await ask(new FlightSearch(world({ ...sky, board: { arrival: true, times: [t] } }).deps), 'FZ1073')).due, null)
+  }
+})
+
 test('a flight to Ben Gurion under other callsigns: the board\'s times say which callsign is the number\'s, and only its flights are listed', async () => {
   const way: [FlightPlace, FlightPlace] = [OTP, TLV]
   const sky: Sky = {

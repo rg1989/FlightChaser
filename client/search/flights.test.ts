@@ -20,7 +20,7 @@ const flown = (d: number, h: number, min: number, o: Partial<PastFlight> = {}): 
 })
 const reply = (o: Partial<FlightSearchReply> = {}): FlightSearchReply => ({
   id: 'W43257', ticket: 'W4 3257', callsigns: ['WMT7403'], byRoute: false, airline: 'Wizz Air Malta', route: [OTP, TLV], known: true, live: [], past: [],
-  scan: { state: 'idle', fromMs: null, oldestMs: at(1, 0), more: true }, similar: [], ...o,
+  scan: { state: 'idle', fromMs: null, oldestMs: at(1, 0), more: true }, similar: [], due: null, ...o,
 })
 const look = (o: Partial<FlightLookup> = {}): FlightLookup => ({ id: 'W43257', state: 'ok', reply: reply(), past: false, days: 14, deep: false, ...o })
 
@@ -71,6 +71,9 @@ test('flightView: nothing before the lookup; the heading with its route; not in 
   assert.equal(first.route, 'Bucharest OTP → Tel Aviv TLV')
   assert.deepEqual(first.notes, ['Callsign WMT7403.', 'Not in the air now.'])
   assert.deepEqual([first.busy, first.doing], [false, null])
+  // Not heard, yet in the air by Ben Gurion's board: out of range, with its landing time.
+  const due = new Date(2026, 9, 11, 11, 44).getTime()
+  assert.deepEqual(flightView(look({ reply: reply({ due: { arrival: true, tMs: due } }) }), env, 0)!.notes, ['Callsign WMT7403.', "In the air, out of the receivers' range now. Ben Gurion expects it at 11:44."])
   // Its past asked for and being read: a note says how far, the rows come as they are found.
   const running = flightView(look({ past: true, reply: reply({ past: [flown(11, 6, 146)], scan: { state: 'running', fromMs: at(9, 15), oldestMs: at(1, 0), more: true } }) }), env, 0)!
   assert.deepEqual(running.notes, ['Callsign WMT7403.', 'Not in the air now.', 'Searching the past days… back to Fri 9 Oct'])

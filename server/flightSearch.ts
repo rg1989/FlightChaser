@@ -111,6 +111,7 @@ interface Job {
   askedMs: number // the last ask that wanted the past
   madeMs: number
   broken: boolean // what it is could not be found out (a route list did not answer): not kept, and ask() says so
+  due: { arrival: boolean; tMs: number } | null // not heard, but in the air by Ben Gurion's board (#due)
 }
 
 const lastMs = (leg: TraceReply): number => leg.t0Ms + (leg.t.at(-1) ?? 0) * 1000
@@ -269,7 +270,7 @@ export class FlightSearch {
     const job: Job = {
       id, ticket: id.ticket === null ? null : ticketText(id.ticket), airline: null, route: null, primary: id.callsign, callsigns: [], others: [], byRoute: false, boarded: false, reread: new Set(),
       known: false, live: null, liveAtMs: -Infinity, similar: [], resolved: Promise.resolve(), flights: [], anchors: [], endMs: null, fromMs: null,
-      days: 0, evenDays: UNANCHORED_DAYS, stepSlots: 2, scanning: false, failed: false, failedMs: -Infinity, askedMs: -Infinity, madeMs: now, broken: false,
+      days: 0, evenDays: UNANCHORED_DAYS, stepSlots: 2, scanning: false, failed: false, failedMs: -Infinity, askedMs: -Infinity, madeMs: now, broken: false, due: null,
     }
     job.resolved = this.#resolve(job).catch((e: unknown) => {
       job.broken = true
@@ -353,11 +354,31 @@ export class FlightSearch {
     if (live.some((l) => job.others.includes(l.callsign)) && !live.some((l) => l.callsign === job.primary)) this.#widen(job)
     job.live = live.filter((l) => job.callsigns.includes(l.callsign))
     this.#own(job, job.live.map((l) => l.callsign))
+    job.due = job.live.length > 0 ? null : await this.#due(job)
     // Since when each flies (its trace's leg): asked once, not waited for; the next reply has it.
     const now = this.#deps.nowMs()
     for (const l of job.live) {
       if (!job.flights.some((f) => f.hex === l.hex && now - f.to.tMs < ONGOING_MS)) void this.#flightAt(job, l.hex, l.callsign, now, LIVE_SLACK_MS).catch(() => null)
     }
+  }
+
+  /**
+   * A ticket number to or from Ben Gurion that no receiver hears: the board's time of its flight that is in the air now by
+   * the board (landing within the route's time at 430 kt and 1.5 h for the airways' bends, the taxi and a delay; or left
+   * that long ago). Such a flight is out of the receivers' range (central Saudi Arabia has none). null: none such.
+   */
+  async #due(job: Job): Promise<{ arrival: boolean; tMs: number } | null> {
+    const { ticket } = job.id
+    if (ticket === null || job.route === null || this.#deps.board === undefined) return null
+    const [a, b] = job.route
+    const arrival = b.icao === BOARD_AIRPORT
+    if (!arrival && a.icao !== BOARD_AIRPORT) return null
+    const board = await this.#deps.board(ticket.airline, ticket.number).catch(() => null)
+    if (board === null || board.arrival !== arrival) return null
+    const now = this.#deps.nowMs()
+    const flyMs = (distanceNm(a.lat, a.lon, b.lat, b.lon) / 430 + 1.5) * 3_600_000
+    const t = board.times.find((t) => (arrival ? now >= t - flyMs && now < t : now >= t && now < t + flyMs))
+    return t === undefined ? null : { arrival, tMs: t }
   }
 
   /** Once the number's own callsign is heard on its route, the route's other callsigns are other flights: they go, with what was found under them. */
@@ -643,6 +664,7 @@ export class FlightSearch {
         more: job.fromMs === null || job.fromMs > oldest,
       },
       similar: job.similar,
+      due: job.due,
     }
   }
 }

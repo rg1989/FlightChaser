@@ -483,7 +483,7 @@ test('a flight over HTTP: what it is; then its past days, read while the page ke
   assert.deepEqual(what, {
     id: 'AEE4266', ticket: null, callsigns: ['AEE4266'], byRoute: false, airline: 'Aegean Airlines', known: true,
     live: null, // a replay has no live lookup
-    past: [], scan: { state: 'idle', fromMs: null, oldestMs: GUESS, more: true }, similar: [],
+    past: [], scan: { state: 'idle', fromMs: null, oldestMs: GUESS, more: true }, similar: [], due: null,
   })
   assert.deepEqual(route?.map((p) => [p.icao, p.iata, p.city]), [['LGAV', 'ATH', 'Athens'], ['LLBG', 'TLV', 'Tel Aviv']])
   assert.ok(asked.includes(`${ADSBDB_FLIGHT_URL}AEE4266`))

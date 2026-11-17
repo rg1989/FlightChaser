@@ -156,7 +156,11 @@ export function flightView(look: FlightLookup | null, env: FlightEnv, otherRows:
   else if (r.ticket !== null && r.known && r.callsigns.length === 1) notes.push(`Callsign ${r.callsigns[0]}.`)
   const live = r.live ?? []
   for (const l of live) rows.push(liveRow(l))
-  if (r.known && r.live !== null && live.length === 0) notes.push('Not in the air now.')
+  if (r.known && r.live !== null && live.length === 0) {
+    // In the air by Ben Gurion's board, yet no receiver hears it: out of range (central Saudi Arabia has none).
+    if (r.due === null) notes.push('Not in the air now.')
+    else notes.push(`In the air, out of the receivers' range now. ${r.due.arrival ? `Ben Gurion expects it at ${clockText(r.due.tMs)}.` : `It left Ben Gurion at ${clockText(r.due.tMs)}.`}`)
+  }
   for (const f of r.past) rows.push(flownRow(f, env, r.ticket, r.route))
   const scan = r.scan
   const back = scan.fromMs === null ? null : dayText(scan.fromMs)
